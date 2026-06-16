@@ -1,3 +1,5 @@
+import Link from "next/link";
+
 export const dynamic = "force-dynamic";
 
 type Run = {
@@ -102,7 +104,9 @@ function RunsTable({ runs }: { runs: Run[] }) {
           {runs.map((run) => (
             <tr key={run.id} className="hover:bg-stone-50">
               <td className="px-4 py-3">
-                <div className="font-medium text-stone-950">{run.name}</div>
+                <Link className="font-medium text-stone-950 underline-offset-4 hover:underline" href={`/runs/${run.id}`}>
+                  {run.name}
+                </Link>
                 <div className="mt-1 font-mono text-xs text-stone-500">{run.id}</div>
               </td>
               <td className="px-4 py-3">
