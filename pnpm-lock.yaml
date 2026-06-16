@@ -40,6 +40,19 @@ importers:
         specifier: ^4.21.0
         version: 4.22.4
 
+  examples/simple-agent:
+    dependencies:
+      '@tooltrace/sdk':
+        specifier: workspace:*
+        version: link:../../packages/sdk-js
+    devDependencies:
+      '@types/node':
+        specifier: ^24.10.2
+        version: 24.13.2
+      tsx:
+        specifier: ^4.21.0
+        version: 4.22.4
+
   packages/schema:
     dependencies:
       zod:
