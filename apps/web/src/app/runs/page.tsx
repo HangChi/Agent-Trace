@@ -9,6 +9,13 @@ type Run = {
   startedAt: string;
   endedAt?: string;
   error?: string;
+  metadata?: AgentMetadata;
+};
+
+type AgentMetadata = {
+  agent?: string;
+  surface?: string;
+  redactionLevel?: string;
 };
 
 const collectorUrl = process.env.TOOLTRACE_API_URL ?? "http://localhost:4319";
@@ -90,10 +97,11 @@ async function getRuns(): Promise<{ runs: Run[]; error?: string }> {
 function RunsTable({ runs }: { runs: Run[] }) {
   return (
     <div className="overflow-x-auto">
-      <table className="w-full min-w-[760px] text-left text-sm">
+      <table className="w-full min-w-[920px] text-left text-sm">
         <thead className="bg-stone-50 text-xs uppercase tracking-[0.12em] text-stone-500">
           <tr>
             <th className="px-4 py-3 font-semibold">Name</th>
+            <th className="px-4 py-3 font-semibold">Source</th>
             <th className="px-4 py-3 font-semibold">Status</th>
             <th className="px-4 py-3 font-semibold">Started</th>
             <th className="px-4 py-3 font-semibold">Duration</th>
@@ -110,6 +118,9 @@ function RunsTable({ runs }: { runs: Run[] }) {
                 <div className="mt-1 font-mono text-xs text-stone-500">{run.id}</div>
               </td>
               <td className="px-4 py-3">
+                <SourceCell metadata={run.metadata} />
+              </td>
+              <td className="px-4 py-3">
                 <StatusBadge status={run.status} />
               </td>
               <td className="px-4 py-3 text-stone-700">{formatDate(run.startedAt)}</td>
@@ -120,6 +131,35 @@ function RunsTable({ runs }: { runs: Run[] }) {
         </tbody>
       </table>
     </div>
+  );
+}
+
+function SourceCell({ metadata }: { metadata?: AgentMetadata }) {
+  const agent = metadata?.agent ?? "manual";
+  const details = [metadata?.surface, metadata?.redactionLevel].filter(Boolean);
+
+  return (
+    <div>
+      <SourceBadge agent={agent} />
+      <div className="mt-1 font-mono text-xs text-stone-500">
+        {details.length > 0 ? details.join(" / ") : "-"}
+      </div>
+    </div>
+  );
+}
+
+function SourceBadge({ agent }: { agent: string }) {
+  const className =
+    agent === "codex"
+      ? "border-teal-200 bg-teal-50 text-teal-800"
+      : agent === "claude-code"
+        ? "border-violet-200 bg-violet-50 text-violet-800"
+        : "border-stone-200 bg-stone-50 text-stone-700";
+
+  return (
+    <span className={`inline-flex border px-2 py-1 font-mono text-xs font-medium ${className}`}>
+      {agent}
+    </span>
   );
 }
 

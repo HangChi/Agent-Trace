@@ -21,6 +21,15 @@ type TraceEvent = {
     code?: string;
   };
   metadata?: {
+    agent?: string;
+    surface?: string;
+    sessionId?: string;
+    turnId?: string;
+    promptId?: string;
+    toolUseId?: string;
+    hookEvent?: string;
+    permissionMode?: string;
+    redactionLevel?: string;
     provider?: string;
     model?: string;
     tokenUsage?: {
@@ -45,6 +54,7 @@ export default async function RunDetailPage({
   const totalDurationMs = events.reduce((sum, event) => sum + (event.durationMs ?? 0), 0);
   const failedEvents = events.filter((event) => event.status === "error").length;
   const failureInsights = inspectFailures(events);
+  const sourceMetadata = getSourceMetadata(events);
 
   return (
     <main className="min-h-screen">
@@ -83,6 +93,10 @@ export default async function RunDetailPage({
           <h2 className="text-sm font-semibold text-stone-950">Run summary</h2>
           <dl className="mt-4 space-y-3 text-sm">
             <SummaryRow label="Collector" value={collectorUrl} />
+            <SummaryRow label="Agent" value={sourceMetadata.agent ?? "manual"} />
+            <SummaryRow label="Surface" value={sourceMetadata.surface ?? "-"} />
+            <SummaryRow label="Session" value={sourceMetadata.sessionId ?? "-"} />
+            <SummaryRow label="Redaction" value={sourceMetadata.redactionLevel ?? "-"} />
             <SummaryRow label="Total duration" value={formatDuration(totalDurationMs)} />
             <SummaryRow label="Failed steps" value={failedEvents.toString()} />
             <SummaryRow label="Token usage" value={totalTokens.toLocaleString()} />
@@ -160,12 +174,33 @@ function Timeline({ events }: { events: TraceEvent[] }) {
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2 text-xs text-stone-500">
                   <span>{event.durationMs ?? 0}ms</span>
+                  {event.metadata?.agent ? <SourceBadge agent={event.metadata.agent} /> : null}
+                  {event.metadata?.hookEvent ? <MetadataBadge value={event.metadata.hookEvent} /> : null}
+                  {event.metadata?.permissionMode ? (
+                    <MetadataBadge value={event.metadata.permissionMode} />
+                  ) : null}
                   {event.metadata?.provider ? <span>{event.metadata.provider}</span> : null}
                   {event.metadata?.model ? <span>{event.metadata.model}</span> : null}
                   {event.metadata?.tokenUsage ? (
                     <span>{event.metadata.tokenUsage.total.toLocaleString()} tokens</span>
                   ) : null}
                 </div>
+                {hasTraceIds(event) ? (
+                  <div className="mt-2 flex flex-wrap gap-2 text-xs text-stone-500">
+                    {event.metadata?.sessionId ? (
+                      <TraceId label="session" value={event.metadata.sessionId} />
+                    ) : null}
+                    {event.metadata?.turnId ? (
+                      <TraceId label="turn" value={event.metadata.turnId} />
+                    ) : null}
+                    {event.metadata?.promptId ? (
+                      <TraceId label="prompt" value={event.metadata.promptId} />
+                    ) : null}
+                    {event.metadata?.toolUseId ? (
+                      <TraceId label="tool" value={event.metadata.toolUseId} />
+                    ) : null}
+                  </div>
+                ) : null}
               </div>
               <div className="font-mono text-xs text-stone-400">{event.id}</div>
             </div>
@@ -195,6 +230,50 @@ function Timeline({ events }: { events: TraceEvent[] }) {
         </li>
       ))}
     </ol>
+  );
+}
+
+function getSourceMetadata(events: TraceEvent[]) {
+  return events.find((event) => event.metadata?.agent)?.metadata ?? {};
+}
+
+function hasTraceIds(event: TraceEvent) {
+  return Boolean(
+    event.metadata?.sessionId ||
+      event.metadata?.turnId ||
+      event.metadata?.promptId ||
+      event.metadata?.toolUseId
+  );
+}
+
+function SourceBadge({ agent }: { agent: string }) {
+  const className =
+    agent === "codex"
+      ? "border-teal-200 bg-teal-50 text-teal-800"
+      : agent === "claude-code"
+        ? "border-violet-200 bg-violet-50 text-violet-800"
+        : "border-stone-200 bg-stone-50 text-stone-700";
+
+  return (
+    <span className={`inline-flex border px-2 py-0.5 font-mono text-xs font-medium ${className}`}>
+      {agent}
+    </span>
+  );
+}
+
+function MetadataBadge({ value }: { value: string }) {
+  return (
+    <span className="inline-flex border border-stone-200 bg-white px-2 py-0.5 font-mono text-xs text-stone-700">
+      {value}
+    </span>
+  );
+}
+
+function TraceId({ label, value }: { label: string; value: string }) {
+  return (
+    <span className="max-w-full truncate font-mono">
+      {label}:{value}
+    </span>
   );
 }
 
