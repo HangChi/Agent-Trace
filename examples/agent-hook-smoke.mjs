@@ -81,15 +81,15 @@ assert(
   "Expected Codex SessionStart to create a run_started event."
 );
 assert(
-  codexEvents.some((event) => event.name === "Bash" && event.status === "success"),
+  codexEvents.some((event) => event.name === "Bash command" && event.status === "success"),
   "Expected Codex PostToolUse to create a successful tool event."
 );
 assert(
-  claudeEvents.some((event) => event.name === "Bash" && event.status === "error"),
+  claudeEvents.some((event) => event.name === "Bash command" && event.status === "error"),
   "Expected Claude Code PostToolUseFailure to create an error tool event."
 );
 assert(!combined.includes(secretPrompt), "Raw prompt was unexpectedly persisted.");
-assert(!combined.includes(secretCommand), "Raw tool command was unexpectedly persisted.");
+assert(combined.includes(secretCommand), "Executed command text was not persisted.");
 
 console.log("ToolTrace agent hook smoke passed.");
 console.log(`Codex run: ${endpoint}/runs/${codexRunId}/events`);

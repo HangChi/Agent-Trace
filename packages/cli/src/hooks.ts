@@ -76,13 +76,37 @@ interface HookEvent {
   matcher?: string;
 }
 
-// Lifecycle, prompt, and tool events that map onto the collector's normalizer.
+// Lifecycle, prompt, tool, skill, MCP, and token-bearing events that map onto
+// the collector's normalizer. Tool matchers also catch MCP tool names such as
+// mcp__github__search.
 const HOOK_EVENTS: HookEvent[] = [
   { event: "SessionStart" },
+  { event: "Setup" },
+  { event: "InstructionsLoaded" },
   { event: "UserPromptSubmit" },
+  { event: "UserPromptExpansion" },
   { event: "PreToolUse", matcher: "*" },
+  { event: "PermissionRequest", matcher: "*" },
+  { event: "PermissionDenied", matcher: "*" },
   { event: "PostToolUse", matcher: "*" },
+  { event: "PostToolUseFailure", matcher: "*" },
+  { event: "PostToolBatch" },
+  { event: "Notification" },
+  { event: "SubagentStart" },
+  { event: "SubagentStop" },
+  { event: "TaskCreated" },
+  { event: "TaskCompleted" },
   { event: "Stop" },
+  { event: "StopFailure" },
+  { event: "TeammateIdle" },
+  { event: "ConfigChange" },
+  { event: "CwdChanged" },
+  { event: "WorktreeCreate" },
+  { event: "WorktreeRemove" },
+  { event: "PreCompact" },
+  { event: "PostCompact" },
+  { event: "Elicitation" },
+  { event: "ElicitationResult" },
   { event: "SessionEnd" }
 ];
 
@@ -121,11 +145,11 @@ export function installHooks(target: HookTarget, options: InstallOptions = {}): 
   removeManagedEntries(hooks);
   dropEmptyEventArrays(hooks);
 
-  const command = buildCommand(collectorUrl, INTEGRATION_PATHS[target], redaction);
+  const handler = buildHandler(target, collectorUrl, INTEGRATION_PATHS[target], redaction);
 
   for (const { event, matcher } of HOOK_EVENTS) {
     const group = asArray(hooks[event]) ?? [];
-    group.push(buildManagedGroup(matcher, command));
+    group.push(buildManagedGroup(matcher, handler));
     hooks[event] = group;
   }
 
@@ -144,18 +168,33 @@ export function installHooks(target: HookTarget, options: InstallOptions = {}): 
   };
 }
 
-function buildCommand(collectorUrl: string, integrationPath: string, redaction: RedactionLevel) {
+function buildHandler(
+  target: HookTarget,
+  collectorUrl: string,
+  integrationPath: string,
+  redaction: RedactionLevel
+) {
   const url = `${collectorUrl}${integrationPath}?redaction=${redaction}`;
 
+  if (target === "claude-code") {
+    return {
+      type: "http",
+      url,
+      timeout: 5
+    };
+  }
+
   return {
+    type: "command",
     command: `curl -sS -m 5 -X POST "${url}" -H "Content-Type: application/json" --data-binary @-`,
-    commandWindows: `curl.exe -sS -m 5 -X POST "${url}" -H "Content-Type: application/json" --data-binary '@-'`
+    commandWindows: `curl.exe -sS -m 5 -X POST "${url}" -H "Content-Type: application/json" --data-binary '@-'`,
+    timeout: 5
   };
 }
 
 function buildManagedGroup(
   matcher: string | undefined,
-  commands: { command: string; commandWindows: string }
+  handler: Record<string, unknown>
 ) {
   const group: Record<string, unknown> = {};
 
@@ -163,7 +202,7 @@ function buildManagedGroup(
     group.matcher = matcher;
   }
 
-  group.hooks = [{ type: "command", command: commands.command, commandWindows: commands.commandWindows }];
+  group.hooks = [handler];
   group[MANAGED_MARKER] = true;
 
   return group;

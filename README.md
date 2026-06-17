@@ -113,7 +113,8 @@ node packages/cli/dist/index.js uninstall claude-code
 - A timestamped `.tooltrace-backup.<timestamp>` file is created before any change.
 - Re-running install is idempotent, and uninstall removes only ToolTrace-managed entries, leaving your own hooks untouched.
 - `CODEX_HOME` and `CLAUDE_CONFIG_DIR` override the config directories; `TOOLTRACE_COLLECTOR_URL` (or `--collector-url`) overrides the collector base URL.
-- By default, hooks use metadata redaction. ToolTrace stores event names, tool names, IDs, statuses, durations, models, and payload sizes, but not raw prompts, command text, tool input/output, file contents, or hidden reasoning.
+- By default, hooks use metadata redaction. ToolTrace stores event names, tool names, executed shell commands, IDs, statuses, durations, models, official token usage when provided, and payload sizes for non-command tool input/output. It does not store raw prompts, full non-command tool input/output, file contents, or hidden reasoning.
+- For accurate Codex token usage, configure the official Codex OTel JSON log exporter to `http://localhost:4319/integrations/codex/otel/v1/logs`; ToolTrace does not estimate tokens from text length.
 
 To verify hook ingestion without running Codex or Claude Code, start the local collector and run:
 

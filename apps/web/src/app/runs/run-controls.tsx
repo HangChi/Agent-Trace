@@ -1,7 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useEffect, useState, useTransition } from "react";
 import { RefreshCw, Trash2 } from "lucide-react";
 
 import { Button } from "~/components/ui/button";
@@ -36,6 +36,20 @@ export function RefreshButton({
       {isPending ? refreshingLabel : label}
     </Button>
   );
+}
+
+export function AutoRefresh({ intervalMs = 2000 }: { intervalMs?: number }) {
+  const router = useRouter();
+
+  useEffect(() => {
+    const timer = window.setInterval(() => {
+      router.refresh();
+    }, intervalMs);
+
+    return () => window.clearInterval(timer);
+  }, [intervalMs, router]);
+
+  return null;
 }
 
 export function DeleteRunButton({

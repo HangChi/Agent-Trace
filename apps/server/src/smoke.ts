@@ -125,8 +125,8 @@ if (metadataRun?.metadata?.agent !== "codex") {
 
 const oldPayloadRun = Array.isArray(runs) ? runs.find((run) => run.id === runId) : undefined;
 
-if (oldPayloadRun?.metadata !== undefined) {
-  throw new Error("Expected old run payload without metadata to remain valid.");
+if (oldPayloadRun?.metadata?.agent !== undefined) {
+  throw new Error("Expected old run payload without agent metadata to remain valid.");
 }
 
 const eventsResponse = await app.request(`/runs/${runId}/events`);
@@ -209,6 +209,23 @@ await expectAccepted(
   "codex PostToolUse hook"
 );
 
+await expectAccepted(
+  app.request("/integrations/codex/hook", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      session_id: codexSessionId,
+      hook_event_name: "Stop",
+      turn_id: "codex_turn_1",
+      last_assistant_message: "Done.",
+      cwd: "/workspace/tooltrace",
+      model: "gpt-5.4",
+      permission_mode: "default"
+    })
+  }),
+  "codex Stop hook"
+);
+
 const codexRunsResponse = await app.request("/runs");
 const codexRuns = await codexRunsResponse.json();
 const codexRun = Array.isArray(codexRuns)
@@ -219,24 +236,32 @@ if (codexRun?.metadata?.agent !== "codex") {
   throw new Error("Expected Codex hook ingestion to create a metadata-backed run.");
 }
 
+if (codexRun?.status !== "success") {
+  throw new Error("Expected Codex Stop to mark the run successful.");
+}
+
 const codexEventsResponse = await app.request(`/runs/${codexRunId}/events`);
 const codexEvents = await codexEventsResponse.json();
 const codexEventsJson = JSON.stringify(codexEvents);
 
-if (!Array.isArray(codexEvents) || codexEvents.length !== 3) {
-  throw new Error("Expected Codex hook ingestion to create three events.");
+if (!Array.isArray(codexEvents) || codexEvents.length !== 4) {
+  throw new Error("Expected Codex hook ingestion to create four events.");
 }
 
 if (!codexEvents.some((event) => event.type === "run_started")) {
   throw new Error("Expected Codex SessionStart to map to run_started.");
 }
 
-if (!codexEvents.some((event) => event.name === "Bash" && event.status === "success")) {
+if (!codexEvents.some((event) => event.name === "Bash command" && event.status === "success")) {
   throw new Error("Expected Codex PostToolUse to map to a successful tool event.");
 }
 
-if (codexEventsJson.includes(codexSecretPrompt) || codexEventsJson.includes(codexSecretCommand)) {
-  throw new Error("Expected Codex hook ingestion to redact raw prompt and tool input.");
+if (codexEventsJson.includes(codexSecretPrompt)) {
+  throw new Error("Expected Codex hook ingestion to redact raw prompt.");
+}
+
+if (!codexEventsJson.includes(codexSecretCommand)) {
+  throw new Error("Expected Codex hook ingestion to store executed command text.");
 }
 
 await expectAccepted(
@@ -256,6 +281,54 @@ if (
   !unknownCodexEvents.some((event) => event.name === "unknown_hook_event" && event.status === "error")
 ) {
   throw new Error("Expected unknown Codex hook payload to create a minimal error event.");
+}
+
+const codexOtelSessionId = "codex_otel_session_smoke";
+const codexOtelRunId = "run_codex_codex_otel_session_smoke";
+
+await expectAccepted(
+  app.request("/integrations/codex/otel/v1/logs", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      resourceLogs: [
+        {
+          resource: {
+            attributes: [{ key: "service.name", value: { stringValue: "codex" } }]
+          },
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  timeUnixNano: (BigInt(Date.now()) * 1_000_000n).toString(),
+                  body: { stringValue: "codex.sse_event" },
+                  attributes: [
+                    { key: "event.name", value: { stringValue: "codex.sse_event" } },
+                    { key: "conversation_id", value: { stringValue: codexOtelSessionId } },
+                    { key: "gen_ai.response.model", value: { stringValue: "gpt-5.4" } },
+                    { key: "input_tokens", value: { intValue: "100" } },
+                    { key: "cached_input_tokens", value: { intValue: "60" } },
+                    { key: "output_tokens", value: { intValue: "20" } }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    })
+  }),
+  "Codex OTel log ingestion"
+);
+
+const codexOtelEventsResponse = await app.request(`/runs/${codexOtelRunId}/events`);
+const codexOtelEvents = await codexOtelEventsResponse.json();
+
+if (
+  !Array.isArray(codexOtelEvents) ||
+  !codexOtelEvents.some((event) => event.metadata?.tokenUsage?.total === 120)
+) {
+  throw new Error("Expected Codex OTel logs to persist official token usage.");
 }
 
 const claudeSessionId = "claude_session_smoke";
@@ -327,6 +400,37 @@ await expectAccepted(
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       session_id: claudeSessionId,
+      hook_event_name: "PostToolUse",
+      tool_name: "Agent",
+      tool_use_id: "claude_tool_agent_1",
+      tool_input: {
+        description: "Find endpoints",
+        subagent_type: "Explore"
+      },
+      tool_response: {
+        status: "completed",
+        totalTokens: 12450,
+        totalDurationMs: 48211,
+        usage: {
+          input_tokens: 8320,
+          output_tokens: 900,
+          cache_creation_input_tokens: 1000,
+          cache_read_input_tokens: 2230
+        }
+      },
+      cwd: "/workspace/tooltrace",
+      permission_mode: "acceptEdits"
+    })
+  }),
+  "Claude Code Agent usage hook"
+);
+
+await expectAccepted(
+  app.request("/integrations/claude-code/hook", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      session_id: claudeSessionId,
       hook_event_name: "Stop",
       last_assistant_message: "I could not read the key.",
       cwd: "/workspace/tooltrace",
@@ -347,24 +451,32 @@ if (claudeRun?.metadata?.agent !== "claude-code") {
   throw new Error("Expected Claude Code hook ingestion to create a metadata-backed run.");
 }
 
+if (claudeRun?.status !== "success") {
+  throw new Error("Expected Claude Code Stop to mark the run successful.");
+}
+
 const claudeEventsResponse = await app.request(`/runs/${claudeRunId}/events`);
 const claudeEvents = await claudeEventsResponse.json();
 const claudeEventsJson = JSON.stringify(claudeEvents);
 
-if (!Array.isArray(claudeEvents) || claudeEvents.length !== 4) {
-  throw new Error("Expected Claude Code hook ingestion to create four events.");
+if (!Array.isArray(claudeEvents) || claudeEvents.length !== 5) {
+  throw new Error("Expected Claude Code hook ingestion to create five events.");
 }
 
-if (!claudeEvents.some((event) => event.name === "Bash" && event.status === "error")) {
+if (!claudeEvents.some((event) => event.name === "Bash command" && event.status === "error")) {
   throw new Error("Expected Claude Code PostToolUseFailure to map to an error tool event.");
+}
+
+if (!claudeEvents.some((event) => event.metadata?.tokenUsage?.total === 12450)) {
+  throw new Error("Expected Claude Code Agent response usage to be persisted.");
 }
 
 if (!claudeEvents.some((event) => event.type === "step_ended" && event.name === "turn")) {
   throw new Error("Expected Claude Code Stop to map to a completed turn event.");
 }
 
-if (claudeEventsJson.includes(claudeSecretCommand)) {
-  throw new Error("Expected Claude Code hook ingestion to redact raw tool input.");
+if (!claudeEventsJson.includes(claudeSecretCommand)) {
+  throw new Error("Expected Claude Code hook ingestion to store executed command text.");
 }
 
 console.log("ToolTrace API smoke test passed.");

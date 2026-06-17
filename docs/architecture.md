@@ -14,7 +14,7 @@ User agent
 
 `@tooltrace/schema` defines shared run and trace event contracts. It exports TypeScript types and Zod schemas so SDK, server, and future integrations can agree on the same payload shape.
 
-`@tooltrace/server` owns local persistence and HTTP ingestion. It stores runs and events in SQLite, with JSON fields for input, output, error, and metadata. The API validates request bodies with the shared schema package before writing data.
+`@tooltrace/server` owns local persistence and HTTP ingestion. It stores runs and events in SQLite, with JSON fields for input, output, error, and metadata. The API validates request bodies with the shared schema package before writing data. It also accepts Codex OTLP/HTTP JSON logs for official token usage ingestion.
 
 `@tooltrace/sdk` is the user-facing instrumentation layer. It exposes `startRun`, `traceLLM`, `traceTool`, `end`, and `fail`. Step wrappers capture duration, successful output, and thrown errors.
 
@@ -45,4 +45,4 @@ No data is uploaded by default.
 
 ## Current Scope
 
-The MVP intentionally does not include OpenTelemetry export, LangChain integration, MCP auto-instrumentation, auth, team dashboards, or hosted storage. Those are future layers after the manual SDK to local dashboard loop feels solid.
+The MVP intentionally does not include LangChain integration, MCP auto-instrumentation beyond agent hook metadata, auth, team dashboards, or hosted storage. Those are future layers after the local dashboard loop feels solid.

@@ -23,7 +23,12 @@ export const traceErrorSchema = z.object({
 export const tokenUsageSchema = z.object({
   input: z.number().int().nonnegative(),
   output: z.number().int().nonnegative(),
-  total: z.number().int().nonnegative()
+  total: z.number().int().nonnegative(),
+  cachedInput: z.number().int().nonnegative().optional(),
+  cacheCreationInput: z.number().int().nonnegative().optional(),
+  cacheReadInput: z.number().int().nonnegative().optional(),
+  reasoningOutput: z.number().int().nonnegative().optional(),
+  source: z.string().optional()
 });
 
 export const traceMetadataSchema = z
@@ -82,7 +87,7 @@ export const createRunSchema = runSchema.extend({
 
 export const updateRunSchema = z.object({
   status: traceStatusSchema,
-  endedAt: z.string().datetime().optional(),
+  endedAt: z.string().datetime().nullable().optional(),
   output: z.unknown().optional(),
   error: z.string().optional()
 });

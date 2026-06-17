@@ -35,7 +35,8 @@ export const copy = {
     },
     runs: {
       title: "Agent \u8ffd\u8e2a\u53f0",
-      subtitle: "\u8ffd\u8e2a Codex\u3001Claude Code \u548c\u672c\u5730 Agent \u7684\u8fd0\u884c\u4e0e Hook \u4e8b\u4ef6\u3002",
+      subtitle:
+        "\u8ffd\u8e2a Codex\u3001Claude Code \u548c\u672c\u5730 Agent \u7684\u547d\u4ee4\u3001\u5de5\u5177\u3001skill\u3001MCP \u548c token\u3002",
       allRuns: "\u5168\u90e8\u8fd0\u884c",
       agentSource: "Agent \u6765\u6e90",
       running: "\u8fdb\u884c\u4e2d",
@@ -45,28 +46,33 @@ export const copy = {
       tableRun: "\u8fd0\u884c",
       tableSource: "\u6765\u6e90",
       tableStatus: "\u72b6\u6001",
+      tableTracked: "\u8ffd\u8e2a\u5185\u5bb9",
+      tableTokens: "Tokens",
       tableStarted: "\u5f00\u59cb\u65f6\u95f4",
       tableDuration: "\u8017\u65f6",
       tableError: "\u9519\u8bef",
       tableActions: "\u64cd\u4f5c",
       refresh: "\u5237\u65b0",
-      refreshing: "\u5237\u65b0\u4e2d\u2026",
+      refreshing: "\u5237\u65b0\u4e2d...",
       delete: "\u5220\u9664",
-      deleting: "\u5220\u9664\u4e2d\u2026",
+      deleting: "\u5220\u9664\u4e2d...",
       confirmPrompt: "\u786e\u8ba4\u5220\u9664\uff1f",
       confirm: "\u786e\u8ba4",
       cancel: "\u53d6\u6d88",
-      confirmDelete: "\u786e\u5b9a\u5220\u9664\u8fd9\u6761\u8fd0\u884c\u8bb0\u5f55\u5417\uff1f\u6b64\u64cd\u4f5c\u4e0d\u53ef\u64a4\u9500\u3002",
+      confirmDelete:
+        "\u786e\u5b9a\u5220\u9664\u8fd9\u6761\u8fd0\u884c\u8bb0\u5f55\u5417\uff1f\u6b64\u64cd\u4f5c\u4e0d\u53ef\u64a4\u9500\u3002",
       deleteFailed: "\u5220\u9664\u5931\u8d25\uff1a",
       emptyTitle: "\u8fd8\u6ca1\u6709\u6355\u83b7\u5230\u8fd0\u884c",
-      emptyBody: "\u542f\u52a8\u672c\u5730 collector \u540e\uff0c\u4f7f\u7528\u5df2\u63a5\u5165 hook \u7684 Agent \u5373\u53ef\u5728\u8fd9\u91cc\u770b\u5230\u8bb0\u5f55\u3002"
+      emptyBody:
+        "\u542f\u52a8\u672c\u5730 collector \u540e\uff0c\u4f7f\u7528\u5df2\u63a5\u5165 hook \u7684 Agent \u5373\u53ef\u5728\u8fd9\u91cc\u770b\u5230\u8bb0\u5f55\u3002"
     },
     detail: {
       back: "\u8fd4\u56de\u8fd0\u884c\u5217\u8868",
       steps: "\u6b65\u9aa4",
       errors: "\u5f02\u5e38",
-      timeline: "\u4e8b\u4ef6\u65f6\u95f4\u7ebf",
-      timelineHelp: "\u6309\u53d1\u751f\u987a\u5e8f\u67e5\u770b\u6a21\u578b\u8c03\u7528\u3001\u5de5\u5177\u8c03\u7528\u3001Hook\u3001\u8f93\u51fa\u548c\u5f02\u5e38\u3002",
+      timeline: "\u8ffd\u8e2a\u65f6\u95f4\u7ebf",
+      timelineHelp:
+        "\u9ed8\u8ba4\u53ea\u5c55\u793a\u547d\u4ee4\u3001\u5de5\u5177\u3001skill\u3001MCP \u548c token \u4e8b\u4ef6\u3002",
       summary: "\u8fd0\u884c\u6458\u8981",
       surface: "\u8fd0\u884c\u7aef",
       session: "\u4f1a\u8bdd",
@@ -77,8 +83,10 @@ export const copy = {
       failureInspector: "\u5931\u8d25\u8bca\u65ad",
       noFailures: "\u5f53\u524d\u8fd0\u884c\u6ca1\u6709\u68c0\u6d4b\u5230\u5931\u8d25\u6b65\u9aa4\u3002",
       step: "\u6b65\u9aa4",
-      emptyTitle: "\u8fd9\u4e2a\u8fd0\u884c\u8fd8\u6ca1\u6709\u4e8b\u4ef6",
-      emptyBody: "Collector \u5df2\u521b\u5efa\u8fd0\u884c\uff0c\u4f46\u8fd8\u6ca1\u6709\u8bb0\u5f55\u5230\u6a21\u578b\u6216\u5de5\u5177\u6b65\u9aa4\u3002"
+      hiddenEvents: "\u5df2\u9690\u85cf\u5176\u4ed6\u4e8b\u4ef6",
+      emptyTitle: "\u8fd9\u4e2a\u8fd0\u884c\u8fd8\u6ca1\u6709\u53ef\u5c55\u793a\u4e8b\u4ef6",
+      emptyBody:
+        "Collector \u5df2\u4fdd\u5b58\u4e8b\u4ef6\uff0c\u4f46\u8fd8\u6ca1\u6709\u547d\u4ee4\u3001\u5de5\u5177\u3001skill\u3001MCP \u6216 token \u8bb0\u5f55\u3002"
     }
   },
   en: {
@@ -92,7 +100,7 @@ export const copy = {
     },
     runs: {
       title: "Agent Trace Console",
-      subtitle: "Track Codex, Claude Code, and local agent runs with hook events.",
+      subtitle: "Track Codex, Claude Code, and local agent commands, tools, skills, MCP calls, and tokens.",
       allRuns: "All runs",
       agentSource: "Agent source",
       running: "Running",
@@ -102,14 +110,16 @@ export const copy = {
       tableRun: "Run",
       tableSource: "Source",
       tableStatus: "Status",
+      tableTracked: "Tracked",
+      tableTokens: "Tokens",
       tableStarted: "Started",
       tableDuration: "Duration",
       tableError: "Error",
       tableActions: "Actions",
       refresh: "Refresh",
-      refreshing: "Refreshing…",
+      refreshing: "Refreshing...",
       delete: "Delete",
-      deleting: "Deleting…",
+      deleting: "Deleting...",
       confirmPrompt: "Delete?",
       confirm: "Confirm",
       cancel: "Cancel",
@@ -122,8 +132,8 @@ export const copy = {
       back: "Back to runs",
       steps: "Steps",
       errors: "Errors",
-      timeline: "Event timeline",
-      timelineHelp: "Review model calls, tool calls, hooks, outputs, and failures in order.",
+      timeline: "Trace timeline",
+      timelineHelp: "Shows commands, tools, skills, MCP calls, and token events by default.",
       summary: "Run summary",
       surface: "Surface",
       session: "Session",
@@ -134,8 +144,9 @@ export const copy = {
       failureInspector: "Failure inspector",
       noFailures: "No failed steps detected for this run.",
       step: "Step",
-      emptyTitle: "No events captured for this run",
-      emptyBody: "The collector has created the run, but no model or tool steps were recorded yet."
+      hiddenEvents: "Other events hidden",
+      emptyTitle: "No displayable events captured for this run",
+      emptyBody: "The collector has stored events, but no command, tool, skill, MCP, or token record is available yet."
     }
   }
 } as const;
@@ -206,21 +217,23 @@ export function formatEventType(type: string, locale: Locale) {
   const labels: Record<Locale, Record<string, string>> = {
     zh: {
       run_started: "\u8fd0\u884c\u5f00\u59cb",
-      run_completed: "\u8fd0\u884c\u5b8c\u6210",
+      run_ended: "\u8fd0\u884c\u7ed3\u675f",
       step_started: "\u6b65\u9aa4\u5f00\u59cb",
-      step_completed: "\u6b65\u9aa4\u5b8c\u6210",
+      step_ended: "\u6b65\u9aa4\u7ed3\u675f",
       tool_call: "\u5de5\u5177\u8c03\u7528",
       llm_call: "\u6a21\u578b\u8c03\u7528",
+      retrieval: "\u68c0\u7d22",
       memory_update: "\u8bb0\u5fc6\u66f4\u65b0",
       error: "\u5f02\u5e38"
     },
     en: {
       run_started: "Run started",
-      run_completed: "Run completed",
+      run_ended: "Run ended",
       step_started: "Step started",
-      step_completed: "Step completed",
+      step_ended: "Step ended",
       tool_call: "Tool call",
       llm_call: "Model call",
+      retrieval: "Retrieval",
       memory_update: "Memory update",
       error: "Error"
     }

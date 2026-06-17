@@ -1,7 +1,8 @@
 import Link from "next/link";
-import { Activity, Cpu, AlertCircle, Play } from "lucide-react";
+import { Activity, AlertCircle, Cpu, Play } from "lucide-react";
 
-import { SourceBadge, StatusBadge, EmptyState, ErrorState, LanguageSwitcher } from "~/components";
+import { EmptyState, ErrorState, LanguageSwitcher, SourceBadge, StatusBadge } from "~/components";
+import { Card, CardContent } from "~/components/ui/card";
 import {
   Table,
   TableBody,
@@ -10,8 +11,6 @@ import {
   TableHeader,
   TableRow
 } from "~/components/ui/table";
-import { Card, CardContent } from "~/components/ui/card";
-import { cn } from "~/lib/utils";
 import {
   copy,
   formatDateTime,
@@ -22,7 +21,8 @@ import {
   runningDurationLabel,
   type Locale
 } from "~/lib/i18n";
-import { DeleteRunButton, RefreshButton } from "./run-controls";
+import { cn } from "~/lib/utils";
+import { AutoRefresh, DeleteRunButton, RefreshButton } from "./run-controls";
 
 export const dynamic = "force-dynamic";
 
@@ -40,6 +40,27 @@ type AgentMetadata = {
   agent?: string;
   surface?: string;
   redactionLevel?: string;
+  summary?: RunSummary;
+};
+
+type RunSummary = {
+  commandCount?: number;
+  toolCount?: number;
+  mcpCount?: number;
+  skillCount?: number;
+  commands?: string[];
+  tools?: string[];
+  mcpTools?: string[];
+  skills?: string[];
+  tokenUsage?: {
+    input?: number;
+    output?: number;
+    total?: number;
+    cachedInput?: number;
+    cacheCreationInput?: number;
+    cacheReadInput?: number;
+    reasoningOutput?: number;
+  };
 };
 
 type RunsSearchParams = Promise<{ lang?: string | string[] }>;
@@ -57,6 +78,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
 
   return (
     <main id="main-content" className="min-h-screen bg-background">
+      <AutoRefresh />
       <header className="border-b border-border/40 bg-card/60 backdrop-blur-sm">
         <div className="mx-auto max-w-7xl px-6 py-5">
           <div className="flex flex-col gap-4 md:flex-row md:items-end md:justify-between">
@@ -79,7 +101,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
             <div className="flex flex-col gap-3 md:items-end">
               <LanguageSwitcher locale={locale} path="/runs" />
               <div className="flex items-center gap-2 rounded-lg border border-border/40 bg-muted/30 px-3 py-2">
-                <span className="h-1.5 w-1.5 rounded-full bg-emerald-500 animate-pulse" />
+                <span className="h-1.5 w-1.5 animate-pulse rounded-full bg-emerald-500" />
                 <span className="text-xs font-medium text-foreground">{text.common.collector}</span>
                 <span className="font-mono text-xs text-muted-foreground">{collectorUrl}</span>
               </div>
@@ -96,9 +118,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
           <MetricCard label={text.runs.errors} value={failedRuns} icon={AlertCircle} accent="red" />
         </div>
 
-        {/* ── Table Card ── */}
         <Card className="mt-6 overflow-hidden border-border/40 shadow-sm">
-          {/* Card Toolbar */}
           <div className="flex items-center justify-between gap-4 px-5 py-3">
             <div className="flex items-center gap-3">
               <h2 className="text-sm font-semibold text-foreground">{text.runs.recent}</h2>
@@ -128,13 +148,16 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                       {text.runs.tableStatus}
                     </TableHead>
                     <TableHead className="h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {text.runs.tableTracked}
+                    </TableHead>
+                    <TableHead className="h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
+                      {text.runs.tableTokens}
+                    </TableHead>
+                    <TableHead className="h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       {text.runs.tableStarted}
                     </TableHead>
                     <TableHead className="h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
                       {text.runs.tableDuration}
-                    </TableHead>
-                    <TableHead className="h-9 text-[11px] font-semibold uppercase tracking-wider text-muted-foreground">
-                      {text.runs.tableError}
                     </TableHead>
                     <TableHead className="h-9 pr-5" />
                   </TableRow>
@@ -158,7 +181,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                             >
                               {run.name}
                             </Link>
-                            <p className="mt-0.5 font-mono text-[11px] text-muted-foreground/50 truncate">
+                            <p className="mt-0.5 truncate font-mono text-[11px] text-muted-foreground/50">
                               {run.id}
                             </p>
                           </div>
@@ -169,26 +192,32 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                       </TableCell>
                       <TableCell className="py-3">
                         <StatusBadge status={run.status} locale={locale} />
+                        {run.error ? (
+                          <div className="mt-1 max-w-[180px] truncate font-mono text-[11px] text-destructive/80">
+                            {run.error}
+                          </div>
+                        ) : null}
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <SummaryCell summary={run.metadata?.summary} locale={locale} />
+                      </TableCell>
+                      <TableCell className="py-3">
+                        <TokenCell tokenUsage={run.metadata?.summary?.tokenUsage} />
                       </TableCell>
                       <TableCell className="py-3 text-[13px] text-muted-foreground tabular-nums">
                         {formatDateTime(run.startedAt, locale)}
                       </TableCell>
                       <TableCell className="py-3">
-                        <span className={cn(
-                          "text-[13px] tabular-nums",
-                          run.status === "running" ? "text-amber-600 dark:text-amber-400 font-medium" : "text-muted-foreground"
-                        )}>
+                        <span
+                          className={cn(
+                            "text-[13px] tabular-nums",
+                            run.status === "running"
+                              ? "font-medium text-amber-600 dark:text-amber-400"
+                              : "text-muted-foreground"
+                          )}
+                        >
                           {formatDuration(run.startedAt, run.endedAt, locale)}
                         </span>
-                      </TableCell>
-                      <TableCell className="py-3">
-                        {run.error ? (
-                          <span className="inline-flex items-center gap-1.5 rounded-md bg-destructive/5 px-2 py-0.5 font-mono text-[12px] text-destructive/80 max-w-[220px] truncate block">
-                            {run.error}
-                          </span>
-                        ) : (
-                          <span className="text-[13px] text-muted-foreground/40">—</span>
-                        )}
                       </TableCell>
                       <TableCell className="py-3 pr-5 text-right">
                         <DeleteRunButton
@@ -214,7 +243,6 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
   );
 }
 
-/* ── Status Dot ── */
 function StatusDot({ status }: { status: string }) {
   return (
     <span
@@ -222,36 +250,48 @@ function StatusDot({ status }: { status: string }) {
         "h-2 w-2 shrink-0 rounded-full",
         status === "success" && "bg-emerald-500",
         status === "error" && "bg-red-500",
-        status === "running" && "bg-amber-500 animate-pulse"
+        status === "running" && "animate-pulse bg-amber-500"
       )}
     />
   );
 }
 
-/* ── Data Fetching ── */
 async function getRuns(locale: Locale): Promise<{ runs: Run[]; error?: string }> {
   try {
     const response = await fetch(`${collectorUrl}/runs`, { cache: "no-store" });
+
     if (!response.ok) {
       return {
         runs: [],
-        error: locale === "zh" ? `Collector 返回 ${response.status}` : `Collector returned ${response.status}`
+        error:
+          locale === "zh"
+            ? `Collector 返回 ${response.status}`
+            : `Collector returned ${response.status}`
       };
     }
+
     return { runs: (await response.json()) as Run[] };
   } catch (err) {
     return {
       runs: [],
-      error: err instanceof Error ? err.message : locale === "zh" ? "Collector 无法访问" : "Collector is unreachable"
+      error:
+        err instanceof Error
+          ? err.message
+          : locale === "zh"
+            ? "Collector 无法访问"
+            : "Collector is unreachable"
     };
   }
 }
 
-/* ── Metric Card ── */
 function MetricCard({
-  label, value, icon: Icon, accent
+  label,
+  value,
+  icon: Icon,
+  accent
 }: {
-  label: string; value: number;
+  label: string;
+  value: number;
   icon: React.ComponentType<{ className?: string }>;
   accent: "sky" | "teal" | "amber" | "red";
 }) {
@@ -267,12 +307,15 @@ function MetricCard({
     amber: "text-amber-600 dark:text-amber-400",
     red: "text-red-600 dark:text-red-400"
   };
+
   return (
     <Card className={cn("overflow-hidden rounded-xl border-l-4 border-border/40 shadow-sm", accents[accent])}>
       <CardContent className="flex items-center justify-between px-4 py-4">
         <div>
           <p className="text-xs font-medium text-muted-foreground">{label}</p>
-          <p className="mt-1 text-2xl font-bold tracking-tight text-foreground tabular-nums">{value}</p>
+          <p className="mt-1 text-2xl font-bold tracking-tight text-foreground tabular-nums">
+            {value}
+          </p>
         </div>
         <div className={cn("rounded-lg bg-background/60 p-2", iconColors[accent])}>
           <Icon className="h-5 w-5" />
@@ -282,24 +325,110 @@ function MetricCard({
   );
 }
 
-/* ── Source Cell ── */
 function SourceCell({ metadata, locale }: { metadata?: AgentMetadata; locale: Locale }) {
   const agent = metadata?.agent ?? "manual";
-  const details = [formatSurface(metadata?.surface, locale), formatRedaction(metadata?.redactionLevel, locale)].filter(Boolean);
+  const details = [
+    formatSurface(metadata?.surface, locale),
+    formatRedaction(metadata?.redactionLevel, locale)
+  ].filter(Boolean);
+
   return (
     <div>
       <SourceBadge agent={agent} locale={locale} />
-      {details.length > 0 && (
-        <div className="mt-1 font-mono text-[11px] text-muted-foreground/50">{details.join(" / ")}</div>
-      )}
+      {details.length > 0 ? (
+        <div className="mt-1 font-mono text-[11px] text-muted-foreground/50">
+          {details.join(" / ")}
+        </div>
+      ) : null}
     </div>
   );
 }
 
+function SummaryCell({ summary, locale }: { summary?: RunSummary; locale: Locale }) {
+  if (!summary || getSummaryTotal(summary) === 0) {
+    return <span className="text-[13px] text-muted-foreground/40">-</span>;
+  }
+
+  const counts = [
+    countLabel(summary.commandCount, locale === "zh" ? "命令" : "cmd"),
+    countLabel(summary.toolCount, locale === "zh" ? "工具" : "tool"),
+    countLabel(summary.mcpCount, "MCP"),
+    countLabel(summary.skillCount, "skill")
+  ].filter((item): item is string => Boolean(item));
+  const examples = [
+    ...(summary.commands ?? []),
+    ...(summary.mcpTools ?? []),
+    ...(summary.skills ?? []),
+    ...(summary.tools ?? [])
+  ].slice(0, 2);
+
+  return (
+    <div className="min-w-[180px]">
+      <div className="flex flex-wrap gap-1.5">
+        {counts.map((item) => (
+          <span
+            key={item}
+            className="rounded-md border border-border/50 bg-muted/40 px-1.5 py-0.5 text-[11px] text-muted-foreground"
+          >
+            {item}
+          </span>
+        ))}
+      </div>
+      {examples.length > 0 ? (
+        <div className="mt-1 max-w-[260px] truncate font-mono text-[11px] text-muted-foreground/70">
+          {examples.join(" / ")}
+        </div>
+      ) : null}
+    </div>
+  );
+}
+
+function TokenCell({ tokenUsage }: { tokenUsage?: RunSummary["tokenUsage"] }) {
+  const total = tokenUsage?.total ?? 0;
+
+  if (total === 0) {
+    return <span className="text-[13px] text-muted-foreground/40">-</span>;
+  }
+
+  return (
+    <div className="font-mono text-xs tabular-nums">
+      <div className="font-semibold text-foreground">{total.toLocaleString()}</div>
+      <div className="text-[11px] text-muted-foreground/60">
+        in {(tokenUsage?.input ?? 0).toLocaleString()} / out{" "}
+        {(tokenUsage?.output ?? 0).toLocaleString()}
+      </div>
+    </div>
+  );
+}
+
+function getSummaryTotal(summary: RunSummary) {
+  return (
+    (summary.commandCount ?? 0) +
+    (summary.toolCount ?? 0) +
+    (summary.mcpCount ?? 0) +
+    (summary.skillCount ?? 0) +
+    (summary.tokenUsage?.total ?? 0)
+  );
+}
+
+function countLabel(count: number | undefined, label: string) {
+  return count && count > 0 ? `${count} ${label}` : undefined;
+}
+
 function formatDuration(startedAt: string, endedAt: string | undefined, locale: Locale) {
-  if (!endedAt) return runningDurationLabel(locale);
+  if (!endedAt) {
+    return runningDurationLabel(locale);
+  }
+
   const ms = new Date(endedAt).getTime() - new Date(startedAt).getTime();
-  if (!Number.isFinite(ms) || ms < 0) return "—";
-  if (ms < 1000) return `${ms}ms`;
+
+  if (!Number.isFinite(ms) || ms < 0) {
+    return "-";
+  }
+
+  if (ms < 1000) {
+    return `${ms}ms`;
+  }
+
   return `${(ms / 1000).toFixed(1)}s`;
 }

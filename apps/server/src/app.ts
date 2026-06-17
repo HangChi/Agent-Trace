@@ -2,7 +2,7 @@ import { createRunSchema, createTraceEventSchema, updateRunSchema } from "@toolt
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 
-import { ingestAgentHook, type AgentHookSource } from "./agent-hooks.js";
+import { ingestAgentHook, ingestCodexOtelLogs, type AgentHookSource } from "./agent-hooks.js";
 import { createEvent, createRun, deleteRun, listEventsByRunId, listRuns, updateRun } from "./storage.js";
 
 export function createApp() {
@@ -57,6 +57,14 @@ export function createApp() {
     return ingestHook(c, "codex");
   });
 
+  app.post("/integrations/codex/otel/v1/logs", async (c) => {
+    return ingestCodexOtel(c);
+  });
+
+  app.post("/v1/logs", async (c) => {
+    return ingestCodexOtel(c);
+  });
+
   app.post("/integrations/claude-code/hook", async (c) => {
     return ingestHook(c, "claude-code");
   });
@@ -101,6 +109,27 @@ async function ingestHook(
       {
         ok: true,
         stored: false,
+        error: error instanceof Error ? error.message : String(error)
+      },
+      202
+    );
+  }
+}
+
+async function ingestCodexOtel(
+  c: { req: { json: () => Promise<unknown> }; json: (value: unknown, status?: number) => Response }
+) {
+  const body = await readJson(c.req);
+
+  try {
+    const result = await ingestCodexOtelLogs(body);
+
+    return c.json({ ok: true, ...result }, 202);
+  } catch (error) {
+    return c.json(
+      {
+        ok: true,
+        stored: 0,
         error: error instanceof Error ? error.message : String(error)
       },
       202
