@@ -7,7 +7,7 @@
   "scripts": {
     "build": "tsc -p tsconfig.json",
     "db:init": "tsx src/init-db.ts",
-    "dev": "tsx src/index.ts",
+    "dev": "tsx watch src/index.ts",
     "smoke": "tsx src/smoke.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },

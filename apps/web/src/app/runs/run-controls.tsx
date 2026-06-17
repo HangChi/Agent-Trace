@@ -14,9 +14,9 @@ export function RefreshButton({ label, refreshingLabel }: { label: string; refre
       type="button"
       onClick={() => startTransition(() => router.refresh())}
       disabled={isPending}
-      className="inline-flex items-center gap-1 border border-stone-300 bg-white px-3 py-1 text-xs font-medium text-stone-700 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-60"
+      className="inline-flex h-8 items-center gap-1 border border-stone-200 bg-white px-3 text-xs font-medium text-stone-700 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-60"
     >
-      <span aria-hidden className={isPending ? "animate-spin" : undefined}>
+      <span aria-hidden className={`text-sm leading-none ${isPending ? "animate-spin" : ""}`}>
         ↻
       </span>
       {isPending ? refreshingLabel : label}

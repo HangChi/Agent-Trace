@@ -84,7 +84,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
               <p className="mt-1 text-xs text-stone-500">{text.runs.latest}</p>
             </div>
             <div className="flex items-center gap-2">
-              <span className="border border-stone-200 bg-stone-50 px-2 py-1 text-xs text-stone-600">
+              <span className="inline-flex h-8 items-center border border-stone-200 bg-stone-50 px-3 text-xs text-stone-600">
                 {text.common.shown} {totalRuns} {text.common.rows}
               </span>
               <RefreshButton label={text.runs.refresh} refreshingLabel={text.runs.refreshing} />
