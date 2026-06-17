@@ -2,6 +2,7 @@ import Link from "next/link";
 import {
   AlertTriangle,
   ArrowLeft,
+  ArrowUp,
   CheckCircle2,
   ChevronDown,
   Clock3,
@@ -92,7 +93,7 @@ export default async function RunDetailPage({
   const locale = parseLocale((await searchParams).lang);
   const text = copy[locale];
   const { events, error } = await getEvents(id, locale);
-  const displayEvents = events.filter(isDisplayEvent);
+  const displayEvents = sortEventsDesc(events.filter(isDisplayEvent));
   const hiddenEvents = Math.max(events.length - displayEvents.length, 0);
   const totalTokens = events.reduce((sum, event) => sum + (event.metadata?.tokenUsage?.total ?? 0), 0);
   const totalDurationMs = events.reduce((sum, event) => sum + (event.durationMs ?? 0), 0);
@@ -208,6 +209,11 @@ export default async function RunDetailPage({
           </Card>
         </aside>
       </section>
+      <Button asChild size="icon" className="fixed right-5 bottom-5 z-50 rounded-full shadow-lg">
+        <a href="#main-content" aria-label={text.detail.backToTop} title={text.detail.backToTop}>
+          <ArrowUp className="h-4 w-4" aria-hidden />
+        </a>
+      </Button>
     </main>
   );
 }
@@ -430,6 +436,16 @@ function isDisplayEvent(event: TraceEvent) {
     category === "tokens" ||
     event.metadata?.tokenUsage !== undefined
   );
+}
+
+function sortEventsDesc(events: TraceEvent[]) {
+  return [...events].sort((a, b) => getTimestampMs(b.timestamp) - getTimestampMs(a.timestamp));
+}
+
+function getTimestampMs(value: string) {
+  const ms = new Date(value).getTime();
+
+  return Number.isFinite(ms) ? ms : 0;
 }
 
 function getSourceMetadata(events: TraceEvent[]): NonNullable<TraceEvent["metadata"]> {

@@ -68,6 +68,7 @@ export const copy = {
     },
     detail: {
       back: "\u8fd4\u56de\u8fd0\u884c\u5217\u8868",
+      backToTop: "\u8fd4\u56de\u9876\u90e8",
       steps: "\u6b65\u9aa4",
       errors: "\u5f02\u5e38",
       timeline: "\u8ffd\u8e2a\u65f6\u95f4\u7ebf",
@@ -130,6 +131,7 @@ export const copy = {
     },
     detail: {
       back: "Back to runs",
+      backToTop: "Back to top",
       steps: "Steps",
       errors: "Errors",
       timeline: "Trace timeline",
