@@ -310,6 +310,30 @@ await expectAccepted(
                     { key: "cached_input_tokens", value: { intValue: "60" } },
                     { key: "output_tokens", value: { intValue: "20" } }
                   ]
+                },
+                {
+                  timeUnixNano: (BigInt(Date.now()) * 1_000_000n).toString(),
+                  body: {
+                    stringValue: JSON.stringify({
+                      type: "response.completed",
+                      model: "gpt-5.4",
+                      response: {
+                        usage: {
+                          prompt_tokens: 50,
+                          completion_tokens: 25,
+                          prompt_tokens_details: {
+                            cached_tokens: 10
+                          },
+                          output_tokens_details: {
+                            reasoning_tokens: 5
+                          }
+                        }
+                      }
+                    })
+                  },
+                  attributes: [
+                    { key: "conversation_id", value: { stringValue: codexOtelSessionId } }
+                  ]
                 }
               ]
             }
@@ -329,6 +353,18 @@ if (
   !codexOtelEvents.some((event) => event.metadata?.tokenUsage?.total === 120)
 ) {
   throw new Error("Expected Codex OTel logs to persist official token usage.");
+}
+
+if (
+  !Array.isArray(codexOtelEvents) ||
+  !codexOtelEvents.some(
+    (event) =>
+      event.metadata?.tokenUsage?.total === 75 &&
+      event.metadata.tokenUsage.cachedInput === 10 &&
+      event.metadata.tokenUsage.reasoningOutput === 5
+  )
+) {
+  throw new Error("Expected Codex OTel stringified usage payloads to be normalized.");
 }
 
 const claudeSessionId = "claude_session_smoke";

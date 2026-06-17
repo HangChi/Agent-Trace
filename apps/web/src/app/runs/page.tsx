@@ -80,7 +80,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
     <main id="main-content" className="min-h-screen bg-background">
       <AutoRefresh />
       <header className="border-b border-border bg-card/95">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1800px] px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
             <div className="min-w-0">
               <div className="flex items-center gap-3">
@@ -114,7 +114,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
         </div>
       </header>
 
-      <section className="mx-auto max-w-7xl px-4 py-6 sm:px-6 lg:px-8">
+      <section className="mx-auto max-w-[1800px] px-4 py-6 sm:px-6 lg:px-8">
         <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard label={text.runs.allRuns} value={totalRuns} icon={Activity} accent="sky" />
           <MetricCard label={text.runs.agentSource} value={agentRuns} icon={Cpu} accent="teal" />
@@ -142,7 +142,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
           ) : null}
           {!error && runs.length > 0 ? (
             <div className="overflow-x-auto">
-              <Table>
+              <Table className="min-w-[1380px]">
                 <TableHeader>
                   <TableRow className="border-border bg-muted/60 hover:bg-muted/60">
                     <TableHead className="h-10 min-w-[260px] pl-5 text-xs font-semibold text-muted-foreground">
@@ -180,12 +180,12 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                           <StatusDot status={run.status} />
                           <div className="min-w-0">
                             <Link
-                              className="block max-w-[280px] truncate text-sm font-semibold text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
+                              className="block break-all text-sm font-semibold text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
                               href={localizedHref(`/runs/${run.id}`, locale)}
                             >
                               {run.name}
                             </Link>
-                            <p className="mt-0.5 max-w-[280px] truncate font-mono text-[11px] text-muted-foreground">
+                            <p className="mt-0.5 break-all font-mono text-[11px] text-muted-foreground">
                               {run.id}
                             </p>
                           </div>
@@ -197,7 +197,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                       <TableCell className="py-3">
                         <StatusBadge status={run.status} locale={locale} />
                         {run.error ? (
-                          <div className="mt-1 max-w-[220px] truncate font-mono text-[11px] text-destructive">
+                          <div className="mt-1 break-words font-mono text-[11px] text-destructive">
                             {run.error}
                           </div>
                         ) : null}

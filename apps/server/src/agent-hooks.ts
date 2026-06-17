@@ -226,7 +226,7 @@ export function normalizeCodexOtelLogs(payload: unknown): NormalizedTrace[] {
           ...resourceAttributes,
           ...attributesToObject(record.attributes)
         };
-        const body = otelValueToUnknown(record.body);
+        const body = parseJsonString(otelValueToUnknown(record.body));
         const bodyRecord = asRecord(body);
         const eventName = getOtelEventName(attributes, bodyRecord, body);
         const sessionId = getFirstString(
@@ -704,35 +704,113 @@ function extractTokenUsage(source: AgentHookSource, value: unknown): TokenUsage 
 }
 
 function getUsageCandidates(value: unknown): Record<string, unknown>[] {
-  const root = asRecord(value);
-  const candidates = [
-    root,
-    asRecord(getValue(root, "usage", "token_usage", "tokenUsage")),
-    asRecord(getValue(root, "response")),
-    asRecord(getValue(asRecord(getValue(root, "response")), "usage", "token_usage", "tokenUsage")),
-    asRecord(getValue(root, "tool_response", "toolResponse")),
-    asRecord(getValue(asRecord(getValue(root, "tool_response", "toolResponse")), "usage")),
-    asRecord(getValue(root, "body")),
-    asRecord(getValue(asRecord(getValue(root, "body")), "usage", "token_usage", "tokenUsage"))
-  ];
+  const candidates: Record<string, unknown>[] = [];
 
-  return candidates.filter((entry) => Object.keys(entry).length > 0);
+  collectUsageCandidates(value, candidates, 0);
+
+  return candidates;
+}
+
+function collectUsageCandidates(
+  value: unknown,
+  candidates: Record<string, unknown>[],
+  depth: number
+) {
+  if (depth > 4) {
+    return;
+  }
+
+  const record = asRecord(parseJsonString(value));
+
+  if (Object.keys(record).length === 0) {
+    return;
+  }
+
+  candidates.push(record);
+
+  for (const key of [
+    "usage",
+    "usage_metadata",
+    "usageMetadata",
+    "token_usage",
+    "tokenUsage",
+    "response_usage",
+    "responseUsage",
+    "response",
+    "result",
+    "message",
+    "output",
+    "tool_response",
+    "toolResponse",
+    "body",
+    "metadata"
+  ]) {
+    collectUsageCandidates(record[key], candidates, depth + 1);
+  }
 }
 
 function parseCodexUsage(usage: Record<string, unknown>): TokenUsage | undefined {
   const input =
-    getNumber(usage, "input_tokens", "inputTokens", "input", "gen_ai.usage.input_tokens") ?? 0;
+    getNumber(
+      usage,
+      "input_tokens",
+      "inputTokens",
+      "input",
+      "prompt_tokens",
+      "promptTokens",
+      "prompt",
+      "promptTokenCount",
+      "gen_ai.usage.input_tokens",
+      "gen_ai.usage.prompt_tokens"
+    ) ?? 0;
   const output =
-    getNumber(usage, "output_tokens", "outputTokens", "output", "gen_ai.usage.output_tokens") ?? 0;
+    getNumber(
+      usage,
+      "output_tokens",
+      "outputTokens",
+      "output",
+      "completion_tokens",
+      "completionTokens",
+      "completion",
+      "completionTokenCount",
+      "candidatesTokenCount",
+      "gen_ai.usage.output_tokens",
+      "gen_ai.usage.completion_tokens"
+    ) ?? 0;
   const total =
-    getNumber(usage, "total_tokens", "totalTokens", "total", "gen_ai.usage.total_tokens") ??
+    getNumber(
+      usage,
+      "total_tokens",
+      "totalTokens",
+      "total",
+      "totalTokenCount",
+      "gen_ai.usage.total_tokens"
+    ) ??
     input + output;
   const cachedInput =
-    getNumber(usage, "cached_input_tokens", "cachedInputTokens", "cachedInput") ??
+    getNumber(
+      usage,
+      "cached_input_tokens",
+      "cachedInputTokens",
+      "cachedInput",
+      "cache_read_input_tokens",
+      "cacheReadInputTokens",
+      "gen_ai.usage.cached_input_tokens"
+    ) ??
+    getNumber(usage, "input_tokens_details.cached_tokens", "prompt_tokens_details.cached_tokens") ??
     getNestedNumber(usage, ["input_tokens_details", "cached_tokens"]) ??
-    getNestedNumber(usage, ["inputTokensDetails", "cachedTokens"]);
+    getNestedNumber(usage, ["inputTokensDetails", "cachedTokens"]) ??
+    getNestedNumber(usage, ["prompt_tokens_details", "cached_tokens"]) ??
+    getNestedNumber(usage, ["promptTokensDetails", "cachedTokens"]);
   const reasoningOutput =
-    getNumber(usage, "reasoning_output_tokens", "reasoningOutputTokens", "reasoningOutput") ??
+    getNumber(
+      usage,
+      "reasoning_output_tokens",
+      "reasoningOutputTokens",
+      "reasoningOutput",
+      "gen_ai.usage.reasoning_output_tokens"
+    ) ??
+    getNumber(usage, "output_tokens_details.reasoning_tokens") ??
     getNestedNumber(usage, ["output_tokens_details", "reasoning_tokens"]) ??
     getNestedNumber(usage, ["outputTokensDetails", "reasoningTokens"]);
 
@@ -754,12 +832,19 @@ function parseClaudeUsage(usage: Record<string, unknown>): TokenUsage | undefine
   const nestedUsage = asRecord(getValue(usage, "usage"));
   const anthropicUsage = Object.keys(nestedUsage).length > 0 ? nestedUsage : usage;
   const input =
-    getNumber(anthropicUsage, "input_tokens", "inputTokens", "input") ??
-    getNumber(usage, "input_tokens", "inputTokens", "input") ??
+    getNumber(anthropicUsage, "input_tokens", "inputTokens", "input", "prompt_tokens", "promptTokens") ??
+    getNumber(usage, "input_tokens", "inputTokens", "input", "prompt_tokens", "promptTokens") ??
     0;
   const output =
-    getNumber(anthropicUsage, "output_tokens", "outputTokens", "output") ??
-    getNumber(usage, "output_tokens", "outputTokens", "output") ??
+    getNumber(
+      anthropicUsage,
+      "output_tokens",
+      "outputTokens",
+      "output",
+      "completion_tokens",
+      "completionTokens"
+    ) ??
+    getNumber(usage, "output_tokens", "outputTokens", "output", "completion_tokens", "completionTokens") ??
     0;
   const cacheCreationInput =
     getNumber(anthropicUsage, "cache_creation_input_tokens", "cacheCreationInputTokens") ??
@@ -859,6 +944,24 @@ function otelValueToUnknown(value: unknown): unknown {
   }
 
   return value;
+}
+
+function parseJsonString(value: unknown): unknown {
+  if (typeof value !== "string") {
+    return value;
+  }
+
+  const trimmed = value.trim();
+
+  if (!trimmed.startsWith("{") && !trimmed.startsWith("[")) {
+    return value;
+  }
+
+  try {
+    return JSON.parse(trimmed) as unknown;
+  } catch {
+    return value;
+  }
 }
 
 function getOtelEventName(

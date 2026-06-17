@@ -6,8 +6,10 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock3,
+  Filter,
   FileJson,
   Hash,
+  Search,
   Zap
 } from "lucide-react";
 
@@ -20,6 +22,7 @@ import {
   formatClockTime,
   formatEventType,
   formatRedaction,
+  formatStatus,
   formatSurface,
   localizedHref,
   parseLocale,
@@ -78,7 +81,22 @@ type TraceEvent = {
   };
 };
 
-type DetailSearchParams = Promise<{ lang?: string | string[] }>;
+type SearchParamValue = string | string[] | undefined;
+
+type DetailSearchParams = Promise<{
+  lang?: SearchParamValue;
+  q?: SearchParamValue;
+  status?: SearchParamValue;
+  type?: SearchParamValue;
+  category?: SearchParamValue;
+}>;
+
+type EventFilters = {
+  q: string;
+  status: string;
+  type: string;
+  category: string;
+};
 
 const collectorUrl = process.env.TOOLTRACE_API_URL ?? "http://localhost:4319";
 
@@ -90,10 +108,13 @@ export default async function RunDetailPage({
   searchParams: DetailSearchParams;
 }) {
   const { id } = await params;
-  const locale = parseLocale((await searchParams).lang);
+  const query = await searchParams;
+  const locale = parseLocale(query.lang);
   const text = copy[locale];
+  const filters = parseEventFilters(query);
   const { events, error } = await getEvents(id, locale);
   const displayEvents = sortEventsDesc(events.filter(isDisplayEvent));
+  const filteredEvents = applyEventFilters(displayEvents, filters);
   const hiddenEvents = Math.max(events.length - displayEvents.length, 0);
   const totalTokens = events.reduce((sum, event) => sum + (event.metadata?.tokenUsage?.total ?? 0), 0);
   const totalDurationMs = events.reduce((sum, event) => sum + (event.durationMs ?? 0), 0);
@@ -105,7 +126,7 @@ export default async function RunDetailPage({
     <main id="main-content" className="min-h-screen bg-background">
       <AutoRefresh />
       <header className="border-b border-border bg-card/95">
-        <div className="mx-auto max-w-7xl px-4 py-4 sm:px-6 lg:px-8">
+        <div className="mx-auto max-w-[1800px] px-4 py-4 sm:px-6 lg:px-8">
           <div className="flex items-center justify-between gap-3">
             <Button variant="ghost" size="sm" className="-ml-2" asChild>
               <Link href={localizedHref("/runs", locale)}>
@@ -132,26 +153,45 @@ export default async function RunDetailPage({
         </div>
       </header>
 
-      <section className="mx-auto grid max-w-7xl gap-5 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_320px] lg:px-8">
+      <section className="mx-auto grid max-w-[1800px] gap-5 px-4 py-6 sm:px-6 lg:grid-cols-[minmax(0,1fr)_360px] lg:px-8">
         <Card className="overflow-hidden border-border bg-card py-0 shadow-sm">
           <div className="border-b border-border px-5 py-4">
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center sm:justify-between">
+            <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h2 className="text-sm font-semibold text-foreground">{text.detail.timeline}</h2>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">{text.detail.timelineHelp}</p>
               </div>
-              {hiddenEvents > 0 ? (
+              <div className="flex flex-wrap items-center gap-2 sm:justify-end">
                 <span className="inline-flex w-fit items-center rounded-md border border-border bg-muted px-2 py-1 text-xs text-muted-foreground">
-                  {text.detail.hiddenEvents}: {hiddenEvents}
+                  {formatFilterCount(filteredEvents.length, displayEvents.length, locale)}
                 </span>
-              ) : null}
+                {hiddenEvents > 0 ? (
+                  <span className="inline-flex w-fit items-center rounded-md border border-border bg-muted px-2 py-1 text-xs text-muted-foreground">
+                    {text.detail.hiddenEvents}: {hiddenEvents}
+                  </span>
+                ) : null}
+              </div>
             </div>
+            <FilterBar
+              runId={id}
+              locale={locale}
+              filters={filters}
+              events={displayEvents}
+              resultCount={filteredEvents.length}
+            />
           </div>
           {error ? <ErrorState message={error} locale={locale} /> : null}
           {!error && displayEvents.length === 0 ? (
             <EmptyState locale={locale} title={text.detail.emptyTitle} body={text.detail.emptyBody} />
           ) : null}
-          {!error && displayEvents.length > 0 ? <Timeline events={displayEvents} locale={locale} /> : null}
+          {!error && displayEvents.length > 0 && filteredEvents.length === 0 ? (
+            <EmptyState
+              locale={locale}
+              title={text.detail.emptyFilterTitle}
+              body={text.detail.emptyFilterBody}
+            />
+          ) : null}
+          {!error && filteredEvents.length > 0 ? <Timeline events={filteredEvents} locale={locale} /> : null}
         </Card>
 
         <aside className="flex flex-col gap-4">
@@ -275,6 +315,119 @@ function MiniStat({
   );
 }
 
+function FilterBar({
+  runId,
+  locale,
+  filters,
+  events,
+  resultCount
+}: {
+  runId: string;
+  locale: Locale;
+  filters: EventFilters;
+  events: TraceEvent[];
+  resultCount: number;
+}) {
+  const text = copy[locale];
+  const typeOptions = getUniqueValues(events.map((event) => event.type));
+  const categoryOptions = getUniqueValues(events.map(getEventCategory).filter(Boolean));
+  const hasActiveFilters = filters.q || filters.status !== "all" || filters.type !== "all" || filters.category !== "all";
+
+  return (
+    <form
+      action={localizedHref(`/runs/${runId}`, locale)}
+      className="mt-4 grid gap-3 rounded-lg border border-border bg-background/70 p-3 lg:grid-cols-[minmax(220px,1fr)_160px_180px_160px_auto_auto]"
+    >
+      {locale === "en" ? <input type="hidden" name="lang" value="en" /> : null}
+      <label className="min-w-0 text-xs font-medium text-muted-foreground">
+        {text.detail.filterSearch}
+        <span className="mt-1 flex h-9 items-center gap-2 rounded-md border border-input bg-background px-3 text-foreground shadow-xs">
+          <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+          <input
+            name="q"
+            defaultValue={filters.q}
+            placeholder={text.detail.filterSearchPlaceholder}
+            className="min-w-0 flex-1 bg-transparent text-sm outline-none placeholder:text-muted-foreground"
+          />
+        </span>
+      </label>
+      <FilterSelect
+        label={text.detail.filterStatus}
+        name="status"
+        value={filters.status}
+        options={["all", "running", "success", "error"].map((value) => ({
+          value,
+          label: value === "all" ? text.detail.filterAll : formatStatus(value, locale)
+        }))}
+      />
+      <FilterSelect
+        label={text.detail.filterType}
+        name="type"
+        value={filters.type}
+        options={[
+          { value: "all", label: text.detail.filterAll },
+          ...typeOptions.map((value) => ({ value, label: formatEventType(value, locale) }))
+        ]}
+      />
+      <FilterSelect
+        label={text.detail.filterCategory}
+        name="category"
+        value={filters.category}
+        options={[
+          { value: "all", label: text.detail.filterAll },
+          ...categoryOptions.map((value) => ({ value, label: formatCategory(value, locale) }))
+        ]}
+      />
+      <div className="flex items-end">
+        <Button type="submit" size="sm" className="w-full">
+          <Filter className="h-4 w-4" aria-hidden />
+          {text.detail.applyFilters}
+        </Button>
+      </div>
+      <div className="flex items-end">
+        {hasActiveFilters ? (
+          <Button type="button" variant="ghost" size="sm" className="w-full" asChild>
+            <Link href={localizedHref(`/runs/${runId}`, locale)}>{text.detail.clearFilters}</Link>
+          </Button>
+        ) : (
+          <span className="flex h-8 items-center text-xs text-muted-foreground tabular-nums">
+            {resultCount.toLocaleString()}
+          </span>
+        )}
+      </div>
+    </form>
+  );
+}
+
+function FilterSelect({
+  label,
+  name,
+  value,
+  options
+}: {
+  label: string;
+  name: keyof EventFilters;
+  value: string;
+  options: Array<{ value: string; label: string }>;
+}) {
+  return (
+    <label className="min-w-0 text-xs font-medium text-muted-foreground">
+      {label}
+      <select
+        name={name}
+        defaultValue={value}
+        className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground shadow-xs outline-none transition-colors focus:border-ring focus:ring-[3px] focus:ring-ring/50"
+      >
+        {options.map((option) => (
+          <option key={option.value} value={option.value}>
+            {option.label}
+          </option>
+        ))}
+      </select>
+    </label>
+  );
+}
+
 function Timeline({ events, locale }: { events: TraceEvent[]; locale: Locale }) {
   const text = copy[locale];
 
@@ -329,7 +482,7 @@ function Timeline({ events, locale }: { events: TraceEvent[]; locale: Locale }) 
                   </div>
                 ) : null}
               </div>
-              <div className="max-w-[220px] shrink-0 truncate font-mono text-[10px] text-muted-foreground">
+              <div className="max-w-[360px] shrink-0 break-all text-right font-mono text-[10px] text-muted-foreground">
                 {event.id}
               </div>
             </div>
@@ -425,6 +578,98 @@ function CategoryBadge({ event, locale }: { event: TraceEvent; locale: Locale })
   );
 }
 
+function parseEventFilters(searchParams: Awaited<DetailSearchParams>): EventFilters {
+  return {
+    q: getSearchParam(searchParams.q).trim(),
+    status: normalizeFilterValue(getSearchParam(searchParams.status)),
+    type: normalizeFilterValue(getSearchParam(searchParams.type)),
+    category: normalizeFilterValue(getSearchParam(searchParams.category))
+  };
+}
+
+function applyEventFilters(events: TraceEvent[], filters: EventFilters) {
+  const query = filters.q.toLowerCase();
+
+  return events.filter((event) => {
+    if (filters.status !== "all" && event.status !== filters.status) {
+      return false;
+    }
+
+    if (filters.type !== "all" && event.type !== filters.type) {
+      return false;
+    }
+
+    if (filters.category !== "all" && getEventCategory(event) !== filters.category) {
+      return false;
+    }
+
+    if (!query) {
+      return true;
+    }
+
+    return getEventSearchText(event).toLowerCase().includes(query);
+  });
+}
+
+function getEventSearchText(event: TraceEvent) {
+  return [
+    event.id,
+    event.parentId,
+    event.type,
+    event.name,
+    event.status,
+    event.error?.message,
+    event.metadata?.agent,
+    event.metadata?.hookEvent,
+    event.metadata?.command,
+    event.metadata?.toolName,
+    event.metadata?.toolKind,
+    event.metadata?.mcpServer,
+    event.metadata?.mcpTool,
+    event.metadata?.skillName,
+    event.metadata?.model,
+    getObjectString(event.input, "command")
+  ]
+    .filter((value): value is string => typeof value === "string" && value.length > 0)
+    .join(" ");
+}
+
+function getEventCategory(event: TraceEvent) {
+  return event.metadata?.category ?? (event.metadata?.tokenUsage ? "tokens" : undefined);
+}
+
+function getUniqueValues(values: Array<string | undefined>) {
+  return [...new Set(values.filter((value): value is string => Boolean(value)))].sort((a, b) =>
+    a.localeCompare(b)
+  );
+}
+
+function normalizeFilterValue(value: string) {
+  return value.length > 0 ? value : "all";
+}
+
+function getSearchParam(value: SearchParamValue) {
+  return Array.isArray(value) ? (value[0] ?? "") : (value ?? "");
+}
+
+function formatCategory(category: string, locale: Locale) {
+  const labels: Record<string, string> = {
+    command: locale === "zh" ? "\u547d\u4ee4" : "command",
+    tool: locale === "zh" ? "\u5de5\u5177" : "tool",
+    mcp: "MCP",
+    skill: "skill",
+    tokens: "tokens"
+  };
+
+  return labels[category] ?? category;
+}
+
+function formatFilterCount(shown: number, total: number, locale: Locale) {
+  return locale === "zh"
+    ? `\u5df2\u663e\u793a ${shown.toLocaleString()} / ${total.toLocaleString()} \u6761`
+    : `Showing ${shown.toLocaleString()} / ${total.toLocaleString()}`;
+}
+
 function isDisplayEvent(event: TraceEvent) {
   const category = event.metadata?.category;
 
@@ -470,7 +715,7 @@ function MetadataBadge({ value }: { value: string }) {
 }
 
 function TraceId({ label, value }: { label: string; value: string }) {
-  return <span className="max-w-[220px] truncate">{label}:{value}</span>;
+  return <span className="break-all">{label}:{value}</span>;
 }
 
 function SummaryRow({ label, value }: { label: string; value: string }) {
