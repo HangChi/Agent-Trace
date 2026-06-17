@@ -1,8 +1,10 @@
 "use client";
 
 import { useRouter } from "next/navigation";
-import { useState, useTransition } from "react";
+import { useState, useTransition, useEffect, useRef } from "react";
+import { RefreshCw, Trash2, X } from "lucide-react";
 
+import { Button } from "../components";
 import { deleteRunAction } from "./actions";
 
 export function RefreshButton({ label, refreshingLabel }: { label: string; refreshingLabel: string }) {
@@ -10,17 +12,15 @@ export function RefreshButton({ label, refreshingLabel }: { label: string; refre
   const [isPending, startTransition] = useTransition();
 
   return (
-    <button
-      type="button"
+    <Button
+      variant="default"
+      size="sm"
       onClick={() => startTransition(() => router.refresh())}
       disabled={isPending}
-      className="inline-flex h-8 items-center gap-1 border border-stone-200 bg-white px-3 text-xs font-medium text-stone-700 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-60"
     >
-      <span aria-hidden className={`text-sm leading-none ${isPending ? "animate-spin" : ""}`}>
-        ↻
-      </span>
+      <RefreshCw aria-hidden className={`h-3.5 w-3.5 ${isPending ? "animate-spin" : ""}`} />
       {isPending ? refreshingLabel : label}
-    </button>
+    </Button>
   );
 }
 
@@ -46,6 +46,7 @@ export function DeleteRunButton({
   const [open, setOpen] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [isPending, startTransition] = useTransition();
+  const closeRef = useRef<HTMLButtonElement>(null);
 
   const close = () => {
     if (isPending) {
@@ -56,51 +57,76 @@ export function DeleteRunButton({
     setError(null);
   };
 
+  useEffect(() => {
+    if (open) {
+      closeRef.current?.focus();
+    }
+  }, [open]);
+
+  useEffect(() => {
+    if (!open) {
+      return;
+    }
+
+    const onKey = (event: KeyboardEvent) => {
+      if (event.key === "Escape") {
+        close();
+      }
+    };
+
+    document.addEventListener("keydown", onKey);
+    return () => document.removeEventListener("keydown", onKey);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, isPending]);
+
   return (
     <>
-      <button
-        type="button"
-        onClick={() => {
-          setError(null);
-          setOpen(true);
-        }}
-        className="inline-flex h-7 items-center border border-red-200 bg-white px-2 text-xs font-medium text-red-700 transition hover:bg-red-50"
-      >
+      <Button variant="danger" size="sm" onClick={() => { setError(null); setOpen(true); }}>
+        <Trash2 aria-hidden className="h-3.5 w-3.5" />
         {label}
-      </button>
+      </Button>
 
       {open ? (
         <div
           role="dialog"
           aria-modal="true"
-          className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/40 p-4"
+          aria-label={title}
+          className="fixed inset-0 z-50 flex items-center justify-center bg-stone-950/50 p-4 backdrop-blur-sm"
           onClick={close}
         >
           <div
-            className="w-full max-w-sm border border-stone-200 bg-white p-5 text-left shadow-xl"
+            className="w-full max-w-sm border border-[var(--color-border-primary)] bg-[var(--color-surface-primary)] p-6 shadow-[var(--shadow-modal)]"
             onClick={(event) => event.stopPropagation()}
           >
-            <h3 className="text-sm font-semibold text-stone-950">{title}</h3>
-            <p className="mt-2 text-sm text-stone-600">{description}</p>
+            <div className="flex items-start justify-between gap-4">
+              <h3 className="text-sm font-semibold text-[var(--color-foreground-primary)]">{title}</h3>
+              <button
+                ref={closeRef}
+                type="button"
+                onClick={close}
+                disabled={isPending}
+                className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-[var(--color-foreground-tertiary)] transition-colors duration-150 hover:text-[var(--color-foreground-primary)] disabled:cursor-not-allowed disabled:opacity-50 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-[var(--color-accent)] focus-visible:ring-offset-1"
+              >
+                <X aria-hidden className="h-4 w-4" />
+                <span className="sr-only">{cancelLabel}</span>
+              </button>
+            </div>
+
+            <p className="mt-2 text-sm text-[var(--color-foreground-secondary)]">{description}</p>
 
             {error ? (
-              <p className="mt-3 border border-red-100 bg-red-50 px-3 py-2 text-xs text-red-700">
-                {failedText}
-                {error}
+              <p className="mt-3 border border-[var(--color-error-border)] bg-[var(--color-error-subtle)] px-3 py-2 text-xs text-[var(--color-error)]">
+                {failedText} {error}
               </p>
             ) : null}
 
             <div className="mt-5 flex justify-end gap-2">
-              <button
-                type="button"
-                disabled={isPending}
-                onClick={close}
-                className="inline-flex h-8 items-center border border-stone-200 bg-white px-3 text-xs font-medium text-stone-700 transition hover:bg-stone-100 disabled:cursor-not-allowed disabled:opacity-60"
-              >
+              <Button variant="default" size="sm" disabled={isPending} onClick={close}>
                 {cancelLabel}
-              </button>
-              <button
-                type="button"
+              </Button>
+              <Button
+                variant="danger"
+                size="sm"
                 disabled={isPending}
                 onClick={() => {
                   setError(null);
@@ -114,10 +140,9 @@ export function DeleteRunButton({
                     }
                   });
                 }}
-                className="inline-flex h-8 items-center border border-red-600 bg-red-600 px-3 text-xs font-medium text-white transition hover:bg-red-700 disabled:cursor-not-allowed disabled:opacity-60"
               >
                 {isPending ? deletingLabel : confirmLabel}
-              </button>
+              </Button>
             </div>
           </div>
         </div>
@@ -125,4 +150,3 @@ export function DeleteRunButton({
     </>
   );
 }
-

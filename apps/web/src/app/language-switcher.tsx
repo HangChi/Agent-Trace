@@ -4,15 +4,17 @@ import { languageLabels, localizedHref, type Locale } from "./i18n";
 
 export function LanguageSwitcher({ locale, path }: { locale: Locale; path: string }) {
   return (
-    <div className="inline-flex border border-stone-200 bg-stone-50 p-1 text-xs">
+    <div className="inline-flex border border-[var(--color-border-primary)] bg-[var(--color-surface-secondary)] p-1 text-xs transition-colors duration-300">
       {(["zh", "en"] as const).map((entry) => {
         const active = entry === locale;
 
         return (
           <Link
             key={entry}
-            className={`px-3 py-1 font-medium ${
-              active ? "bg-stone-950 text-white" : "text-stone-600 hover:bg-white hover:text-stone-950"
+            className={`px-3 py-1 font-medium transition-colors duration-150 ${
+              active
+                ? "bg-[var(--color-foreground-primary)] text-[var(--color-foreground-inverse)]"
+                : "text-[var(--color-foreground-secondary)] hover:bg-[var(--color-surface-primary)] hover:text-[var(--color-foreground-primary)]"
             }`}
             href={localizedHref(path, entry)}
           >
@@ -23,4 +25,3 @@ export function LanguageSwitcher({ locale, path }: { locale: Locale; path: strin
     </div>
   );
 }
-
