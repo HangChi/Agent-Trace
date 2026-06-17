@@ -166,6 +166,15 @@ export async function listEventsByRunId(
   }));
 }
 
+export async function deleteRun(id: string, database: Database = defaultDb): Promise<boolean> {
+  // Foreign keys cascade events, but delete them explicitly so the result is
+  // correct even if the connection has foreign_keys disabled.
+  await database.delete(events).where(eq(events.runId, id));
+  const result = await database.delete(runs).where(eq(runs.id, id));
+
+  return result.changes > 0;
+}
+
 function ensureColumn(
   sqlite: ReturnType<typeof createSqliteDatabase>,
   tableName: string,

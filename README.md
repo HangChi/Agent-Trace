@@ -176,6 +176,7 @@ pnpm --filter simple-agent dev
 - `POST /integrations/claude-code/hook`
 - `GET /runs`
 - `GET /runs/:id/events`
+- `DELETE /runs/:id`
 
 ## Contribution Workflow
 

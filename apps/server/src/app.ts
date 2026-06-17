@@ -3,7 +3,7 @@ import { Hono } from "hono";
 import { cors } from "hono/cors";
 
 import { ingestAgentHook, type AgentHookSource } from "./agent-hooks.js";
-import { createEvent, createRun, listEventsByRunId, listRuns, updateRun } from "./storage.js";
+import { createEvent, createRun, deleteRun, listEventsByRunId, listRuns, updateRun } from "./storage.js";
 
 export function createApp() {
   const app = new Hono();
@@ -71,6 +71,16 @@ export function createApp() {
     const events = await listEventsByRunId(c.req.param("id"));
 
     return c.json(events);
+  });
+
+  app.delete("/runs/:id", async (c) => {
+    const deleted = await deleteRun(c.req.param("id"));
+
+    if (!deleted) {
+      return c.json({ error: "run_not_found" }, 404);
+    }
+
+    return c.json({ ok: true });
   });
 
   return app;

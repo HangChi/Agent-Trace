@@ -13,6 +13,7 @@ import {
   type Locale
 } from "../i18n";
 import { LanguageSwitcher } from "../language-switcher";
+import { DeleteRunButton, RefreshButton } from "./run-controls";
 
 export const dynamic = "force-dynamic";
 
@@ -82,9 +83,12 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
               <h2 className="text-sm font-semibold text-stone-950">{text.runs.recent}</h2>
               <p className="mt-1 text-xs text-stone-500">{text.runs.latest}</p>
             </div>
-            <span className="border border-stone-200 bg-stone-50 px-2 py-1 text-xs text-stone-600">
-              {text.common.shown} {totalRuns} {text.common.rows}
-            </span>
+            <div className="flex items-center gap-2">
+              <span className="inline-flex h-8 items-center border border-stone-200 bg-stone-50 px-3 text-xs text-stone-600">
+                {text.common.shown} {totalRuns} {text.common.rows}
+              </span>
+              <RefreshButton label={text.runs.refresh} refreshingLabel={text.runs.refreshing} />
+            </div>
           </div>
 
           {error ? <ErrorState message={error} locale={locale} /> : null}
@@ -134,6 +138,7 @@ function RunsTable({ runs, locale }: { runs: Run[]; locale: Locale }) {
             <th className="px-4 py-3 font-semibold">{text.runs.tableStarted}</th>
             <th className="px-4 py-3 font-semibold">{text.runs.tableDuration}</th>
             <th className="px-4 py-3 font-semibold">{text.runs.tableError}</th>
+            <th className="px-4 py-3 text-right font-semibold">{text.runs.tableActions}</th>
           </tr>
         </thead>
         <tbody className="divide-y divide-stone-100">
@@ -157,6 +162,18 @@ function RunsTable({ runs, locale }: { runs: Run[]; locale: Locale }) {
               <td className="px-4 py-3 text-stone-700">{formatDateTime(run.startedAt, locale)}</td>
               <td className="px-4 py-3 text-stone-700">{formatDuration(run.startedAt, run.endedAt, locale)}</td>
               <td className="max-w-[260px] truncate px-4 py-3 text-stone-700">{run.error ?? "-"}</td>
+              <td className="px-4 py-3 text-right">
+                <DeleteRunButton
+                  runId={run.id}
+                  label={text.runs.delete}
+                  deletingLabel={text.runs.deleting}
+                  title={text.runs.confirmPrompt}
+                  description={text.runs.confirmDelete}
+                  confirmLabel={text.runs.confirm}
+                  cancelLabel={text.runs.cancel}
+                  failedText={text.runs.deleteFailed}
+                />
+              </td>
             </tr>
           ))}
         </tbody>
