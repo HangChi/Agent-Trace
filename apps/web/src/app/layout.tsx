@@ -1,6 +1,6 @@
 import type { Metadata } from "next";
+import { ThemeProvider } from "next-themes";
 
-import { ThemeProvider } from "./components/theme";
 import "./globals.css";
 
 export const metadata: Metadata = {
@@ -19,7 +19,12 @@ export default function RootLayout({
         <a href="#main-content" className="skip-link">
           Skip to content
         </a>
-        <ThemeProvider>
+        <ThemeProvider
+          attribute="class"
+          defaultTheme="system"
+          enableSystem
+          disableTransitionOnChange
+        >
           <div id="main-content">{children}</div>
         </ThemeProvider>
       </body>

@@ -8,6 +8,9 @@
     "module": "esnext",
     "moduleResolution": "bundler",
     "noEmit": true,
+    "paths": {
+      "~/*": ["./src/*"]
+    },
     "outDir": ".next/types",
     "plugins": [
       {
