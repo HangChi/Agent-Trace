@@ -1,5 +1,7 @@
 # ToolTrace
 
+[中文](README.zh-CN.md)
+
 Local-first DevTools for AI agents.
 
 ToolTrace records LLM calls, tool invocations, token usage, latency, outputs, and errors during an agent run, then shows the execution as a timeline.
