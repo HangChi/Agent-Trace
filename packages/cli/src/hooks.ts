@@ -147,17 +147,23 @@ export function installHooks(target: HookTarget, options: InstallOptions = {}): 
 function buildCommand(collectorUrl: string, integrationPath: string, redaction: RedactionLevel) {
   const url = `${collectorUrl}${integrationPath}?redaction=${redaction}`;
 
-  return `curl -sS -m 5 -X POST "${url}" -H "Content-Type: application/json" -d @-`;
+  return {
+    command: `curl -sS -m 5 -X POST "${url}" -H "Content-Type: application/json" --data-binary @-`,
+    commandWindows: `curl.exe -sS -m 5 -X POST "${url}" -H "Content-Type: application/json" --data-binary '@-'`
+  };
 }
 
-function buildManagedGroup(matcher: string | undefined, command: string) {
+function buildManagedGroup(
+  matcher: string | undefined,
+  commands: { command: string; commandWindows: string }
+) {
   const group: Record<string, unknown> = {};
 
   if (matcher !== undefined) {
     group.matcher = matcher;
   }
 
-  group.hooks = [{ type: "command", command }];
+  group.hooks = [{ type: "command", command: commands.command, commandWindows: commands.commandWindows }];
   group[MANAGED_MARKER] = true;
 
   return group;

@@ -178,7 +178,8 @@ async function runDev() {
   );
 
   children.push(
-    spawnPnpm(["--filter", "@tooltrace/web", "dev", "--", "-p", webPort], {
+    spawnPnpm(["--filter", "@tooltrace/web", "dev"], {
+      PORT: webPort,
       TOOLTRACE_API_URL: serverUrl
     })
   );

@@ -1,5 +1,18 @@
 import Link from "next/link";
 
+import {
+  copy,
+  formatAgent,
+  formatClockTime,
+  formatEventType,
+  formatRedaction,
+  formatStatus,
+  formatSurface,
+  localizedHref,
+  parseLocale,
+  type Locale
+} from "../../i18n";
+import { LanguageSwitcher } from "../../language-switcher";
 import { inspectFailures } from "./failure-inspector";
 
 export const dynamic = "force-dynamic";
@@ -41,15 +54,23 @@ type TraceEvent = {
   };
 };
 
+type DetailSearchParams = Promise<{
+  lang?: string | string[];
+}>;
+
 const collectorUrl = process.env.TOOLTRACE_API_URL ?? "http://localhost:4319";
 
 export default async function RunDetailPage({
-  params
+  params,
+  searchParams
 }: {
   params: Promise<{ id: string }>;
+  searchParams: DetailSearchParams;
 }) {
   const { id } = await params;
-  const { events, error } = await getEvents(id);
+  const locale = parseLocale((await searchParams).lang);
+  const text = copy[locale];
+  const { events, error } = await getEvents(id, locale);
   const totalTokens = events.reduce((sum, event) => sum + (event.metadata?.tokenUsage?.total ?? 0), 0);
   const totalDurationMs = events.reduce((sum, event) => sum + (event.durationMs ?? 0), 0);
   const failedEvents = events.filter((event) => event.status === "error").length;
@@ -57,68 +78,71 @@ export default async function RunDetailPage({
   const sourceMetadata = getSourceMetadata(events);
 
   return (
-    <main className="min-h-screen">
+    <main className="min-h-screen bg-stone-50">
       <header className="border-b border-stone-200 bg-white">
-        <div className="mx-auto max-w-7xl px-5 py-4">
-          <Link className="text-sm font-medium text-teal-700 underline-offset-4 hover:underline" href="/runs">
-            Back to runs
-          </Link>
+        <div className="mx-auto max-w-7xl px-5 py-5">
+          <div className="flex items-center justify-between gap-3">
+            <Link className="text-sm font-medium text-teal-700 underline-offset-4 hover:underline" href={localizedHref("/runs", locale)}>
+              {text.detail.back}
+            </Link>
+            <LanguageSwitcher locale={locale} path={`/runs/${id}`} />
+          </div>
           <div className="mt-3 flex flex-col gap-3 md:flex-row md:items-end md:justify-between">
             <div>
-              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-stone-500">Run timeline</p>
+              <p className="text-xs font-semibold uppercase tracking-[0.18em] text-teal-700">Trace Detail</p>
               <h1 className="mt-1 break-all font-mono text-xl font-semibold text-stone-950">{id}</h1>
             </div>
             <div className="grid grid-cols-3 gap-2 text-sm">
-              <SummaryPill label="Steps" value={events.length.toString()} />
-              <SummaryPill label="Tokens" value={totalTokens.toLocaleString()} />
-              <SummaryPill label="Errors" value={failedEvents.toString()} />
+              <SummaryPill label={text.detail.steps} value={events.length.toString()} />
+              <SummaryPill label={text.common.tokens} value={totalTokens.toLocaleString()} />
+              <SummaryPill label={text.detail.errors} value={failedEvents.toString()} />
             </div>
           </div>
         </div>
       </header>
 
       <section className="mx-auto grid max-w-7xl gap-5 px-5 py-6 lg:grid-cols-[minmax(0,1fr)_320px]">
-        <div className="border border-stone-200 bg-white">
+        <div className="border border-stone-200 bg-white shadow-sm">
           <div className="border-b border-stone-200 px-4 py-3">
-            <h2 className="text-sm font-semibold text-stone-950">Trace steps</h2>
-            <p className="mt-1 text-xs text-stone-500">LLM calls, tool calls, outputs, metadata, and errors in order.</p>
+            <h2 className="text-sm font-semibold text-stone-950">{text.detail.timeline}</h2>
+            <p className="mt-1 text-xs text-stone-500">{text.detail.timelineHelp}</p>
           </div>
 
-          {error ? <ErrorState message={error} /> : null}
-          {!error && events.length === 0 ? <EmptyState /> : null}
-          {!error && events.length > 0 ? <Timeline events={events} /> : null}
+          {error ? <ErrorState message={error} locale={locale} /> : null}
+          {!error && events.length === 0 ? <EmptyState locale={locale} /> : null}
+          {!error && events.length > 0 ? <Timeline events={events} locale={locale} /> : null}
         </div>
 
-        <aside className="h-fit border border-stone-200 bg-white px-4 py-4">
-          <h2 className="text-sm font-semibold text-stone-950">Run summary</h2>
+        <aside className="h-fit border border-stone-200 bg-white px-4 py-4 shadow-sm">
+          <h2 className="text-sm font-semibold text-stone-950">{text.detail.summary}</h2>
           <dl className="mt-4 space-y-3 text-sm">
-            <SummaryRow label="Collector" value={collectorUrl} />
-            <SummaryRow label="Agent" value={sourceMetadata.agent ?? "manual"} />
-            <SummaryRow label="Surface" value={sourceMetadata.surface ?? "-"} />
-            <SummaryRow label="Session" value={sourceMetadata.sessionId ?? "-"} />
-            <SummaryRow label="Redaction" value={sourceMetadata.redactionLevel ?? "-"} />
-            <SummaryRow label="Total duration" value={formatDuration(totalDurationMs)} />
-            <SummaryRow label="Failed steps" value={failedEvents.toString()} />
-            <SummaryRow label="Token usage" value={totalTokens.toLocaleString()} />
+            <SummaryRow label={text.common.collector} value={collectorUrl} />
+            <SummaryRow label="Agent" value={formatAgent(sourceMetadata.agent ?? "manual", locale)} />
+            <SummaryRow label={text.detail.surface} value={formatSurface(sourceMetadata.surface, locale) ?? "-"} />
+            <SummaryRow label={text.detail.session} value={sourceMetadata.sessionId ?? "-"} />
+            <SummaryRow label={text.detail.redaction} value={formatRedaction(sourceMetadata.redactionLevel, locale) ?? "-"} />
+            <SummaryRow label={text.detail.totalDuration} value={formatDuration(totalDurationMs)} />
+            <SummaryRow label={text.detail.failedSteps} value={failedEvents.toString()} />
+            <SummaryRow label={text.detail.tokenUsage} value={totalTokens.toLocaleString()} />
           </dl>
 
           <div className="mt-6 border-t border-stone-200 pt-4">
-            <h2 className="text-sm font-semibold text-stone-950">Failure inspector</h2>
+            <h2 className="text-sm font-semibold text-stone-950">{text.detail.failureInspector}</h2>
             {failureInsights.length > 0 ? (
               <div className="mt-3 space-y-3">
                 {failureInsights.map((insight) => (
                   <div key={`${insight.eventName}-${insight.title}`} className="border border-red-100 bg-red-50 px-3 py-3">
-                    <div className="text-sm font-semibold text-red-950">{insight.title}</div>
+                    <div className="text-sm font-semibold text-red-950">{formatFailureTitle(insight.title, locale)}</div>
                     <div className="mt-1 text-xs text-red-800">
-                      {insight.eventName} · {insight.eventType}
+                      {insight.eventName} - {insight.eventType}
                     </div>
-                    <p className="mt-2 text-sm text-red-900">{insight.reason}</p>
-                    <p className="mt-2 text-sm text-red-950">{insight.suggestion}</p>
+                    <p className="mt-2 text-sm text-red-900">{formatFailureReason(insight.reason, locale)}</p>
+                    <p className="mt-2 text-sm text-red-950">{formatFailureSuggestion(insight.suggestion, locale)}</p>
                   </div>
                 ))}
               </div>
             ) : (
-              <p className="mt-3 text-sm text-stone-500">No failed steps detected for this run.</p>
+              <p className="mt-3 text-sm text-stone-500">{text.detail.noFailures}</p>
             )}
           </div>
         </aside>
@@ -127,7 +151,7 @@ export default async function RunDetailPage({
   );
 }
 
-async function getEvents(runId: string): Promise<{ events: TraceEvent[]; error?: string }> {
+async function getEvents(runId: string, locale: Locale): Promise<{ events: TraceEvent[]; error?: string }> {
   try {
     const response = await fetch(`${collectorUrl}/runs/${runId}/events`, {
       cache: "no-store"
@@ -136,7 +160,7 @@ async function getEvents(runId: string): Promise<{ events: TraceEvent[]; error?:
     if (!response.ok) {
       return {
         events: [],
-        error: `Collector returned ${response.status}`
+        error: locale === "zh" ? `Collector \u8fd4\u56de ${response.status}` : `Collector returned ${response.status}`
       };
     }
 
@@ -146,19 +170,23 @@ async function getEvents(runId: string): Promise<{ events: TraceEvent[]; error?:
   } catch (err) {
     return {
       events: [],
-      error: err instanceof Error ? err.message : "Collector is unreachable"
+      error: err instanceof Error ? err.message : locale === "zh" ? "Collector \u65e0\u6cd5\u8bbf\u95ee" : "Collector is unreachable"
     };
   }
 }
 
-function Timeline({ events }: { events: TraceEvent[] }) {
+function Timeline({ events, locale }: { events: TraceEvent[]; locale: Locale }) {
+  const text = copy[locale];
+
   return (
     <ol className="divide-y divide-stone-100">
       {events.map((event, index) => (
         <li key={event.id} className="grid gap-4 px-4 py-4 md:grid-cols-[180px_minmax(0,1fr)]">
           <div className="text-xs text-stone-500">
-            <div className="font-mono">{formatTime(event.timestamp)}</div>
-            <div className="mt-1">Step {index + 1}</div>
+            <div className="font-mono">{formatClockTime(event.timestamp, locale)}</div>
+            <div className="mt-1">
+              {text.detail.step} {index + 1}
+            </div>
           </div>
 
           <article className="relative border-l-2 border-stone-200 pl-4">
@@ -167,18 +195,16 @@ function Timeline({ events }: { events: TraceEvent[] }) {
               <div>
                 <div className="flex flex-wrap items-center gap-2">
                   <h3 className="text-sm font-semibold text-stone-950">{event.name}</h3>
-                  <span className="rounded bg-stone-100 px-2 py-1 font-mono text-xs text-stone-600">
-                    {event.type}
+                  <span className="bg-stone-100 px-2 py-1 font-mono text-xs text-stone-600">
+                    {formatEventType(event.type, locale)}
                   </span>
-                  <StatusBadge status={event.status} />
+                  <StatusBadge status={event.status} locale={locale} />
                 </div>
                 <div className="mt-2 flex flex-wrap gap-2 text-xs text-stone-500">
                   <span>{event.durationMs ?? 0}ms</span>
-                  {event.metadata?.agent ? <SourceBadge agent={event.metadata.agent} /> : null}
+                  {event.metadata?.agent ? <SourceBadge agent={event.metadata.agent} locale={locale} /> : null}
                   {event.metadata?.hookEvent ? <MetadataBadge value={event.metadata.hookEvent} /> : null}
-                  {event.metadata?.permissionMode ? (
-                    <MetadataBadge value={event.metadata.permissionMode} />
-                  ) : null}
+                  {event.metadata?.permissionMode ? <MetadataBadge value={event.metadata.permissionMode} /> : null}
                   {event.metadata?.provider ? <span>{event.metadata.provider}</span> : null}
                   {event.metadata?.model ? <span>{event.metadata.model}</span> : null}
                   {event.metadata?.tokenUsage ? (
@@ -187,18 +213,10 @@ function Timeline({ events }: { events: TraceEvent[] }) {
                 </div>
                 {hasTraceIds(event) ? (
                   <div className="mt-2 flex flex-wrap gap-2 text-xs text-stone-500">
-                    {event.metadata?.sessionId ? (
-                      <TraceId label="session" value={event.metadata.sessionId} />
-                    ) : null}
-                    {event.metadata?.turnId ? (
-                      <TraceId label="turn" value={event.metadata.turnId} />
-                    ) : null}
-                    {event.metadata?.promptId ? (
-                      <TraceId label="prompt" value={event.metadata.promptId} />
-                    ) : null}
-                    {event.metadata?.toolUseId ? (
-                      <TraceId label="tool" value={event.metadata.toolUseId} />
-                    ) : null}
+                    {event.metadata?.sessionId ? <TraceId label="session" value={event.metadata.sessionId} /> : null}
+                    {event.metadata?.turnId ? <TraceId label="turn" value={event.metadata.turnId} /> : null}
+                    {event.metadata?.promptId ? <TraceId label="prompt" value={event.metadata.promptId} /> : null}
+                    {event.metadata?.toolUseId ? <TraceId label="tool" value={event.metadata.toolUseId} /> : null}
                   </div>
                 ) : null}
               </div>
@@ -212,7 +230,7 @@ function Timeline({ events }: { events: TraceEvent[] }) {
             ) : null}
 
             <details className="mt-3">
-              <summary className="cursor-pointer text-sm font-medium text-teal-700">JSON detail</summary>
+              <summary className="cursor-pointer text-sm font-medium text-teal-700">{text.common.jsonDetail}</summary>
               <pre className="mt-2 max-h-[420px] overflow-auto bg-stone-950 p-3 text-xs text-stone-50">
                 {JSON.stringify(
                   {
@@ -233,7 +251,7 @@ function Timeline({ events }: { events: TraceEvent[] }) {
   );
 }
 
-function getSourceMetadata(events: TraceEvent[]) {
+function getSourceMetadata(events: TraceEvent[]): NonNullable<TraceEvent["metadata"]> {
   return events.find((event) => event.metadata?.agent)?.metadata ?? {};
 }
 
@@ -246,7 +264,7 @@ function hasTraceIds(event: TraceEvent) {
   );
 }
 
-function SourceBadge({ agent }: { agent: string }) {
+function SourceBadge({ agent, locale }: { agent: string; locale: Locale }) {
   const className =
     agent === "codex"
       ? "border-teal-200 bg-teal-50 text-teal-800"
@@ -256,7 +274,7 @@ function SourceBadge({ agent }: { agent: string }) {
 
   return (
     <span className={`inline-flex border px-2 py-0.5 font-mono text-xs font-medium ${className}`}>
-      {agent}
+      {formatAgent(agent, locale)}
     </span>
   );
 }
@@ -289,13 +307,13 @@ function SummaryPill({ label, value }: { label: string; value: string }) {
 function SummaryRow({ label, value }: { label: string; value: string }) {
   return (
     <div>
-      <dt className="text-xs uppercase tracking-[0.14em] text-stone-500">{label}</dt>
+      <dt className="text-xs text-stone-500">{label}</dt>
       <dd className="mt-1 break-words font-mono text-xs text-stone-950">{value}</dd>
     </div>
   );
 }
 
-function StatusBadge({ status }: { status: string }) {
+function StatusBadge({ status, locale }: { status: string; locale: Locale }) {
   const className =
     status === "success"
       ? "bg-emerald-100 text-emerald-800"
@@ -303,24 +321,25 @@ function StatusBadge({ status }: { status: string }) {
         ? "bg-red-100 text-red-800"
         : "bg-amber-100 text-amber-800";
 
-  return <span className={`rounded px-2 py-1 text-xs font-medium ${className}`}>{status}</span>;
+  return <span className={`px-2 py-1 text-xs font-medium ${className}`}>{formatStatus(status, locale)}</span>;
 }
 
-function EmptyState() {
+function EmptyState({ locale }: { locale: Locale }) {
+  const text = copy[locale];
+
   return (
     <div className="px-4 py-12 text-center">
-      <h3 className="text-sm font-semibold text-stone-950">No events captured for this run</h3>
-      <p className="mx-auto mt-2 max-w-md text-sm text-stone-500">
-        The collector has a run id, but no LLM or tool steps were recorded yet.
-      </p>
+      <h3 className="text-sm font-semibold text-stone-950">{text.detail.emptyTitle}</h3>
+      <p className="mx-auto mt-2 max-w-md text-sm text-stone-500">{text.detail.emptyBody}</p>
     </div>
   );
 }
 
-function ErrorState({ message }: { message: string }) {
+function ErrorState({ message, locale }: { message: string; locale: Locale }) {
   return (
     <div className="border-t border-red-100 bg-red-50 px-4 py-4 text-sm text-red-900">
-      Collector unavailable: {message}
+      {copy[locale].common.unavailable}
+      {message}
     </div>
   );
 }
@@ -345,10 +364,54 @@ function formatDuration(durationMs: number) {
   return `${(durationMs / 1000).toFixed(1)}s`;
 }
 
-function formatTime(value: string) {
-  return new Intl.DateTimeFormat("en", {
-    hour: "2-digit",
-    minute: "2-digit",
-    second: "2-digit"
-  }).format(new Date(value));
+function formatFailureTitle(value: string, locale: Locale) {
+  const labels: Record<Locale, Record<string, string>> = {
+    zh: {
+      "Tool Timeout": "\u5de5\u5177\u8d85\u65f6",
+      "Invalid JSON": "JSON \u65e0\u6548",
+      "Token Budget Pressure": "\u4e0a\u4e0b\u6587\u9884\u7b97\u538b\u529b",
+      "Unknown Error": "\u672a\u77e5\u9519\u8bef"
+    },
+    en: {}
+  };
+
+  return labels[locale][value] ?? value;
+}
+
+function formatFailureReason(value: string, locale: Locale) {
+  if (locale === "en") {
+    return value;
+  }
+
+  const labels: Record<string, string> = {
+    "The step failed while waiting for an external operation to finish.":
+      "\u8be5\u6b65\u9aa4\u7b49\u5f85\u5916\u90e8\u64cd\u4f5c\u5b8c\u6210\u65f6\u5931\u8d25\u3002",
+    "The model or tool returned content that could not be parsed as JSON.":
+      "\u6a21\u578b\u6216\u5de5\u5177\u8fd4\u56de\u4e86\u65e0\u6cd5\u89e3\u6790\u4e3a JSON \u7684\u5185\u5bb9\u3002",
+    "The step likely exceeded the model or prompt context budget.":
+      "\u8be5\u6b65\u9aa4\u53ef\u80fd\u8d85\u51fa\u4e86\u6a21\u578b\u6216\u63d0\u793a\u8bcd\u7684\u4e0a\u4e0b\u6587\u9884\u7b97\u3002",
+    "The step failed without a recognizable error signature.":
+      "\u8be5\u6b65\u9aa4\u5931\u8d25\u4e86\uff0c\u4f46\u6ca1\u6709\u53ef\u8bc6\u522b\u7684\u9519\u8bef\u7279\u5f81\u3002"
+  };
+
+  return labels[value] ?? value;
+}
+
+function formatFailureSuggestion(value: string, locale: Locale) {
+  if (locale === "en") {
+    return value;
+  }
+
+  const labels: Record<string, string> = {
+    "Increase the timeout, add retry logic, or provide a fallback tool.":
+      "\u53ef\u4ee5\u63d0\u9ad8\u8d85\u65f6\u65f6\u95f4\u3001\u589e\u52a0\u91cd\u8bd5\u903b\u8f91\uff0c\u6216\u63d0\u4f9b\u5907\u7528\u5de5\u5177\u3002",
+    "Use schema validation and ask the model to return strict JSON.":
+      "\u53ef\u4ee5\u52a0\u5165 schema \u6821\u9a8c\uff0c\u5e76\u8981\u6c42\u6a21\u578b\u8fd4\u56de\u4e25\u683c JSON\u3002",
+    "Summarize earlier context, trim retrieved evidence, or split the task into smaller runs.":
+      "\u53ef\u4ee5\u603b\u7ed3\u65e9\u671f\u4e0a\u4e0b\u6587\u3001\u88c1\u526a\u68c0\u7d22\u8bc1\u636e\uff0c\u6216\u628a\u4efb\u52a1\u62c6\u6210\u66f4\u5c0f\u7684\u8fd0\u884c\u3002",
+    "Inspect the input, output, stack trace, and preceding steps.":
+      "\u5efa\u8bae\u68c0\u67e5\u8f93\u5165\u3001\u8f93\u51fa\u3001\u5806\u6808\u548c\u524d\u7f6e\u6b65\u9aa4\u3002"
+  };
+
+  return labels[value] ?? value;
 }
