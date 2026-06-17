@@ -113,6 +113,15 @@ node packages/cli/dist/index.js uninstall claude-code
 - A timestamped `.tooltrace-backup.<timestamp>` file is created before any change.
 - Re-running install is idempotent, and uninstall removes only ToolTrace-managed entries, leaving your own hooks untouched.
 - `CODEX_HOME` and `CLAUDE_CONFIG_DIR` override the config directories; `TOOLTRACE_COLLECTOR_URL` (or `--collector-url`) overrides the collector base URL.
+- By default, hooks use metadata redaction. ToolTrace stores event names, tool names, IDs, statuses, durations, models, and payload sizes, but not raw prompts, command text, tool input/output, file contents, or hidden reasoning.
+
+To verify hook ingestion without running Codex or Claude Code, start the local collector and run:
+
+```bash
+node examples/agent-hook-smoke.mjs
+```
+
+See [Agent Tracing](docs/agent-tracing.md) for privacy defaults, smoke testing, and known limitations.
 
 ## Workspace
 
@@ -126,8 +135,10 @@ packages/
   cli/             tooltrace dev command
 examples/
   simple-agent/    fake agent demo
+  agent-hook-smoke.mjs  Codex/Claude Code hook ingestion smoke
 docs/
   architecture.md  MVP architecture notes
+  agent-tracing.md Codex and Claude Code tracing guide
 ```
 
 ## Useful Commands
@@ -139,6 +150,7 @@ pnpm --filter @tooltrace/server dev
 pnpm --filter @tooltrace/web dev
 pnpm --filter @tooltrace/sdk smoke
 pnpm --filter simple-agent dev
+node examples/agent-hook-smoke.mjs
 ```
 
 Generate a failing demo run for the failure inspector:
@@ -160,6 +172,8 @@ pnpm --filter simple-agent dev
 - `POST /runs`
 - `PATCH /runs/:id`
 - `POST /events`
+- `POST /integrations/codex/hook`
+- `POST /integrations/claude-code/hook`
 - `GET /runs`
 - `GET /runs/:id/events`
 

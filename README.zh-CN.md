@@ -113,6 +113,15 @@ node packages/cli/dist/index.js uninstall claude-code
 - 修改前会创建带时间戳的 `.tooltrace-backup.<timestamp>` 备份。
 - 重复执行 install 是幂等的；uninstall 只移除 ToolTrace 管理块，不会动你自己的 hooks。
 - `CODEX_HOME` 和 `CLAUDE_CONFIG_DIR` 可覆盖配置目录；`TOOLTRACE_COLLECTOR_URL`（或 `--collector-url`）可覆盖 collector 地址。
+- 默认使用 metadata 脱敏级别。ToolTrace 会保存事件名、工具名、ID、状态、耗时、模型和 payload 大小，但不会保存原始 prompt、命令全文、工具输入/输出、文件内容或隐藏推理。
+
+不运行 Codex 或 Claude Code 也可以验证 hook ingestion。先启动本地 collector，再运行：
+
+```bash
+node examples/agent-hook-smoke.mjs
+```
+
+隐私默认值、smoke 验证和已知限制见 [Agent Tracing](docs/agent-tracing.md)。
 
 ## 工作区结构
 
@@ -126,8 +135,10 @@ packages/
   cli/             tooltrace dev 命令
 examples/
   simple-agent/    fake agent 示例
+  agent-hook-smoke.mjs  Codex/Claude Code hook ingestion smoke
 docs/
   architecture.md  MVP 架构说明
+  agent-tracing.md Codex 和 Claude Code tracing 指南
 ```
 
 ## 常用命令
@@ -139,6 +150,7 @@ pnpm --filter @tooltrace/server dev
 pnpm --filter @tooltrace/web dev
 pnpm --filter @tooltrace/sdk smoke
 pnpm --filter simple-agent dev
+node examples/agent-hook-smoke.mjs
 ```
 
 生成一条失败示例 run，用来查看 Failure Inspector：
@@ -160,6 +172,8 @@ pnpm --filter simple-agent dev
 - `POST /runs`
 - `PATCH /runs/:id`
 - `POST /events`
+- `POST /integrations/codex/hook`
+- `POST /integrations/claude-code/hook`
 - `GET /runs`
 - `GET /runs/:id/events`
 
