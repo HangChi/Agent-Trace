@@ -86,7 +86,17 @@ export const copy = {
       hiddenEvents: "\u5df2\u9690\u85cf\u5176\u4ed6\u4e8b\u4ef6",
       emptyTitle: "\u8fd9\u4e2a\u8fd0\u884c\u8fd8\u6ca1\u6709\u53ef\u5c55\u793a\u4e8b\u4ef6",
       emptyBody:
-        "Collector \u5df2\u4fdd\u5b58\u4e8b\u4ef6\uff0c\u4f46\u8fd8\u6ca1\u6709\u547d\u4ee4\u3001\u5de5\u5177\u3001skill\u3001MCP \u6216 token \u8bb0\u5f55\u3002"
+        "Collector \u5df2\u4fdd\u5b58\u4e8b\u4ef6\uff0c\u4f46\u8fd8\u6ca1\u6709\u547d\u4ee4\u3001\u5de5\u5177\u3001skill\u3001MCP \u6216 token \u8bb0\u5f55\u3002",
+      emptyFilterTitle: "\u6ca1\u6709\u5339\u914d\u7b5b\u9009\u6761\u4ef6\u7684\u4e8b\u4ef6",
+      emptyFilterBody: "\u8bd5\u7740\u8c03\u6574\u641c\u7d22\u3001\u72b6\u6001\u3001\u7c7b\u578b\u6216\u5206\u7c7b\u6761\u4ef6\u3002",
+      filterSearch: "\u641c\u7d22",
+      filterSearchPlaceholder: "\u6309\u540d\u79f0\u3001\u547d\u4ee4\u3001\u5de5\u5177\u6216 ID \u641c\u7d22",
+      filterStatus: "\u72b6\u6001",
+      filterType: "\u7c7b\u578b",
+      filterCategory: "\u5206\u7c7b",
+      filterAll: "\u5168\u90e8",
+      applyFilters: "\u7b5b\u9009",
+      clearFilters: "\u6e05\u9664"
     }
   },
   en: {
@@ -146,7 +156,17 @@ export const copy = {
       step: "Step",
       hiddenEvents: "Other events hidden",
       emptyTitle: "No displayable events captured for this run",
-      emptyBody: "The collector has stored events, but no command, tool, skill, MCP, or token record is available yet."
+      emptyBody: "The collector has stored events, but no command, tool, skill, MCP, or token record is available yet.",
+      emptyFilterTitle: "No events match the filters",
+      emptyFilterBody: "Adjust the search, status, type, or category filters.",
+      filterSearch: "Search",
+      filterSearchPlaceholder: "Search by name, command, tool, or ID",
+      filterStatus: "Status",
+      filterType: "Type",
+      filterCategory: "Category",
+      filterAll: "All",
+      applyFilters: "Filter",
+      clearFilters: "Clear"
     }
   }
 } as const;
