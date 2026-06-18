@@ -37,6 +37,7 @@ type EventSummary = {
   promptCount: number;
   turnCount: number;
   tokenUsage: TokenUsageSummary;
+  unmodeledTokenUsage: TokenUsageSummary;
   models: string[];
   modelUsage: ModelUsageSummary[];
   commands: string[];
@@ -422,6 +423,11 @@ function summarizeEventsByRun(eventRows: Array<typeof events.$inferSelect>) {
         output: 0,
         total: 0
       },
+      unmodeledTokenUsage: {
+        input: 0,
+        output: 0,
+        total: 0
+      },
       models: [],
       modelUsage: [],
       commands: [],
@@ -473,8 +479,14 @@ function summarizeEventsByRun(eventRows: Array<typeof events.$inferSelect>) {
     if (model !== undefined) {
       pushUnique(summary.models, model);
       addModelUsage(summary.modelUsage, model, provider, tokenUsage);
+    } else {
+      addTokenUsage(summary.unmodeledTokenUsage, tokenUsage);
     }
     summaries.set(row.runId, summary);
+  }
+
+  for (const summary of summaries.values()) {
+    attachUnmodeledTokenUsageToSingleModel(summary);
   }
 
   return summaries;
@@ -592,7 +604,7 @@ function formatMcpTool(
 }
 
 function toPublicSummary(summary: EventSummary) {
-  const { hasErrorEvent, lastEventAt, ...publicSummary } = summary;
+  const { hasErrorEvent, lastEventAt, unmodeledTokenUsage, ...publicSummary } = summary;
 
   return {
     ...publicSummary,
@@ -714,6 +726,21 @@ function addModelUsage(
   }
 
   addTokenUsage(entry.tokenUsage, source);
+}
+
+function attachUnmodeledTokenUsageToSingleModel(summary: EventSummary) {
+  if (summary.unmodeledTokenUsage.total === 0 || summary.models.length !== 1) {
+    return;
+  }
+
+  const model = summary.models[0];
+  if (model === undefined) {
+    return;
+  }
+
+  const provider = summary.modelUsage.find((item) => item.model === model)?.provider;
+
+  addModelUsage(summary.modelUsage, model, provider, summary.unmodeledTokenUsage);
 }
 
 function applyEventFilters(events: PublicTraceEvent[], filters: EventFilters) {

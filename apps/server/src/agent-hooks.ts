@@ -1,4 +1,5 @@
 import { randomUUID } from "node:crypto";
+import { closeSync, openSync, readSync, statSync } from "node:fs";
 
 import type {
   CreateRun,
@@ -29,6 +30,7 @@ type IngestHints = {
 type TrackingCategory = "command" | "tool" | "mcp" | "skill" | "tokens" | "lifecycle";
 
 const redactionLevel = "metadata";
+const maxClaudeTranscriptBytes = 2 * 1024 * 1024;
 
 export const knownHookEvents = [
   "SessionStart",
@@ -136,7 +138,8 @@ export function normalizeAgentHook(
   const promptId = getString(body, "prompt_id", "promptId");
   const toolName = getString(body, "tool_name", "toolName");
   const toolUseId = getString(body, "tool_use_id", "toolUseId");
-  const model = getString(body, "model");
+  const claudeTranscript = source === "claude-code" ? readClaudeTranscriptInfo(body) : undefined;
+  const model = getHookModel(source, body, claudeTranscript);
   const permissionMode = getString(body, "permission_mode", "permissionMode");
   const cwd = getString(body, "cwd");
   const command = getCommand(body, toolName);
@@ -169,6 +172,7 @@ export function normalizeAgentHook(
     permissionMode,
     cwd,
     redactionLevel,
+    provider: source === "claude-code" && model ? "anthropic" : undefined,
     model,
     category,
     command,
@@ -717,6 +721,84 @@ function getSkillName(body: Record<string, unknown>, toolName: string | undefine
   }
 
   return undefined;
+}
+
+function getHookModel(
+  source: AgentHookSource,
+  body: Record<string, unknown>,
+  claudeTranscript: ClaudeTranscriptInfo | undefined
+) {
+  return (
+    getString(body, "model", "model_id", "modelId") ??
+    getNestedString(body, ["message", "model"]) ??
+    getNestedString(body, ["message", "model_id"]) ??
+    getNestedString(body, ["response", "model"]) ??
+    getNestedString(body, ["result", "model"]) ??
+    (source === "claude-code" ? claudeTranscript?.model : undefined)
+  );
+}
+
+type ClaudeTranscriptInfo = {
+  model?: string;
+};
+
+function readClaudeTranscriptInfo(body: Record<string, unknown>): ClaudeTranscriptInfo | undefined {
+  const transcriptPath = getString(body, "transcript_path", "transcriptPath");
+
+  if (!transcriptPath) {
+    return undefined;
+  }
+
+  try {
+    const windowedContent = readTextFileTail(transcriptPath, maxClaudeTranscriptBytes);
+    const lines = windowedContent.split(/\r?\n/).filter((line) => line.trim().length > 0);
+
+    for (let index = lines.length - 1; index >= 0; index -= 1) {
+      const record = asRecord(parseJsonString(lines[index]));
+      const model = getClaudeTranscriptModel(record);
+
+      if (model !== undefined) {
+        return { model };
+      }
+    }
+  } catch {
+    return undefined;
+  }
+
+  return undefined;
+}
+
+function readTextFileTail(path: string, maxBytes: number) {
+  const stat = statSync(path);
+  const length = Math.min(stat.size, maxBytes);
+
+  if (length === 0) {
+    return "";
+  }
+
+  const buffer = Buffer.alloc(length);
+  const fd = openSync(path, "r");
+
+  try {
+    readSync(fd, buffer, 0, length, stat.size - length);
+  } finally {
+    closeSync(fd);
+  }
+
+  return buffer.toString("utf8");
+}
+
+function getClaudeTranscriptModel(record: Record<string, unknown>) {
+  const message = asRecord(record.message);
+  const response = asRecord(record.response);
+  const result = asRecord(record.result);
+
+  return (
+    getString(record, "model", "model_id", "modelId") ??
+    getString(message, "model", "model_id", "modelId") ??
+    getString(response, "model", "model_id", "modelId") ??
+    getString(result, "model", "model_id", "modelId")
+  );
 }
 
 function extractTokenUsage(source: AgentHookSource, value: unknown): TokenUsage | undefined {
@@ -1324,6 +1406,16 @@ function getNestedNumber(record: Record<string, unknown>, path: string[]) {
   }
 
   return toNumber(current);
+}
+
+function getNestedString(record: Record<string, unknown>, path: string[]) {
+  let current: unknown = record;
+
+  for (const key of path) {
+    current = asRecord(current)[key];
+  }
+
+  return typeof current === "string" && current.length > 0 ? current : undefined;
 }
 
 function toNumber(value: unknown) {

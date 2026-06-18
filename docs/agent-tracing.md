@@ -90,6 +90,10 @@ Completed Claude Code `Agent` tool responses can include `totalTokens` and a
 those directly without recalculating them. When those fields are absent,
 ToolTrace estimates exposed `UserPromptSubmit.prompt` input and
 `Stop.last_assistant_message` output locally.
+If Claude Code omits the model name from hook payloads, ToolTrace also
+opportunistically reads the tail of the hook-provided `transcript_path` JSONL
+file to recover the latest assistant model metadata. It does not persist
+transcript content.
 
 Fallback estimates only cover text that Codex and Claude Code hooks expose to
 the collector, such as `UserPromptSubmit.prompt` and
@@ -150,7 +154,7 @@ explicit and separate from the default metadata mode.
   local hooks; it does not capture hidden reasoning.
 - Cloud-hosted or web-only agent internals are not visible unless they emit
   events through a supported local hook or future telemetry adapter.
-- ToolTrace intentionally does not rely on unstable transcript file formats.
+- Claude Code transcript parsing is best-effort and limited to model metadata.
 - Token usage prefers source-provided official fields or Codex OTel. Hook-only
   prompt/output payloads from Codex or Claude Code use local estimates and are
   marked as estimated.

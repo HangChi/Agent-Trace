@@ -1,3 +1,4 @@
+import { writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -965,6 +966,32 @@ const claudeSessionId = "claude_session_smoke";
 const claudeRunId = "run_claude-code_claude_session_smoke";
 const claudeSecretPrompt = "summarize the private vendor token";
 const claudeSecretCommand = "cat ~/.ssh/id_rsa";
+const claudeTranscriptSessionId = "claude_transcript_model_smoke";
+const claudeTranscriptRunId = "run_claude-code_claude_transcript_model_smoke";
+const claudeTranscriptModel = "claude-sonnet-4-5-20250929";
+const claudeTranscriptPath = join(tmpdir(), `tooltrace-claude-transcript-${Date.now()}.jsonl`);
+
+writeFileSync(
+  claudeTranscriptPath,
+  [
+    JSON.stringify({
+      type: "user",
+      message: {
+        role: "user",
+        content: "hello"
+      }
+    }),
+    JSON.stringify({
+      type: "assistant",
+      message: {
+        role: "assistant",
+        model: claudeTranscriptModel,
+        content: [{ type: "text", text: "Transcript-backed response." }]
+      }
+    })
+  ].join("\n"),
+  "utf8"
+);
 
 await expectAccepted(
   app.request("/integrations/claude-code/hook", {
@@ -1170,6 +1197,72 @@ if (claudeEventsJson.includes(claudeSecretPrompt)) {
 
 if (!claudeEventsJson.includes(claudeSecretCommand)) {
   throw new Error("Expected Claude Code hook ingestion to store executed command text.");
+}
+
+await expectAccepted(
+  app.request("/integrations/claude-code/hook", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      session_id: claudeTranscriptSessionId,
+      hook_event_name: "SessionStart",
+      cwd: "/workspace/tooltrace",
+      permission_mode: "acceptEdits"
+    })
+  }),
+  "Claude Code transcript-model SessionStart hook"
+);
+
+await expectAccepted(
+  app.request("/integrations/claude-code/hook", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      session_id: claudeTranscriptSessionId,
+      hook_event_name: "UserPromptSubmit",
+      prompt: "hello from a prompt before Claude Code reports its model",
+      cwd: "/workspace/tooltrace",
+      permission_mode: "acceptEdits"
+    })
+  }),
+  "Claude Code transcript-model UserPromptSubmit hook"
+);
+
+await expectAccepted(
+  app.request("/integrations/claude-code/hook", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      session_id: claudeTranscriptSessionId,
+      hook_event_name: "Stop",
+      transcript_path: claudeTranscriptPath,
+      last_assistant_message: "Transcript-backed response.",
+      cwd: "/workspace/tooltrace",
+      permission_mode: "acceptEdits"
+    })
+  }),
+  "Claude Code transcript-model Stop hook"
+);
+
+const claudeTranscriptRunsResponse = await app.request("/runs");
+const claudeTranscriptRuns = await claudeTranscriptRunsResponse.json();
+const claudeTranscriptRun = Array.isArray(claudeTranscriptRuns)
+  ? claudeTranscriptRuns.find((run) => run.id === claudeTranscriptRunId)
+  : undefined;
+const claudeTranscriptSummary = claudeTranscriptRun?.metadata?.summary;
+const claudeTranscriptModelUsage = claudeTranscriptSummary?.modelUsage?.[0];
+
+if (!claudeTranscriptSummary?.models?.includes(claudeTranscriptModel)) {
+  throw new Error("Expected Claude Code transcript metadata to supply the run model.");
+}
+
+if (
+  claudeTranscriptSummary.modelUsage?.length !== 1 ||
+  claudeTranscriptModelUsage?.model !== claudeTranscriptModel ||
+  claudeTranscriptModelUsage.provider !== "anthropic" ||
+  claudeTranscriptModelUsage.tokenUsage.total !== claudeTranscriptSummary.tokenUsage.total
+) {
+  throw new Error("Expected unmodeled Claude Code estimates to be attributed to the transcript model.");
 }
 
 console.log("ToolTrace API smoke test passed.");
