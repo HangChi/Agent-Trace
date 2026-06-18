@@ -11,6 +11,7 @@ import type {
 } from "@tooltrace/schema";
 
 import { createEvent, createRun, getRunById, updateRun } from "./storage.js";
+import { estimateTextTokenUsage } from "./token-estimator.js";
 
 export type AgentHookSource = "codex" | "claude-code";
 
@@ -128,7 +129,7 @@ export function normalizeAgentHook(source: AgentHookSource, payload: unknown): N
   const command = getCommand(body, toolName);
   const mcpTool = parseMcpTool(toolName);
   const skillName = getSkillName(body, toolName);
-  const tokenUsage = extractTokenUsage(source, body);
+  const tokenUsage = extractTokenUsage(source, body) ?? estimateHookTokenUsage(source, body, hookEvent, model);
   const category = getTrackingCategory({ hookEvent, toolName, command, mcpTool, skillName, tokenUsage });
   const isKnownHookEvent = knownHookEventSet.has(hookEvent);
   const status = isKnownHookEvent ? getHookStatus(hookEvent) : "error";
@@ -698,6 +699,45 @@ function extractTokenUsage(source: AgentHookSource, value: unknown): TokenUsage 
     if (usage !== undefined) {
       return usage;
     }
+  }
+
+  return undefined;
+}
+
+function estimateHookTokenUsage(
+  source: AgentHookSource,
+  body: Record<string, unknown>,
+  hookEvent: string,
+  model: string | undefined
+): TokenUsage | undefined {
+  if (source !== "codex") {
+    return undefined;
+  }
+
+  if (hookEvent === "UserPromptSubmit") {
+    const prompt = getString(body, "prompt");
+
+    return prompt === undefined
+      ? undefined
+      : estimateTextTokenUsage({
+          text: prompt,
+          direction: "input",
+          model,
+          source
+        });
+  }
+
+  if (hookEvent === "Stop" || hookEvent === "StopFailure") {
+    const lastAssistantMessage = getString(body, "last_assistant_message", "lastAssistantMessage");
+
+    return lastAssistantMessage === undefined
+      ? undefined
+      : estimateTextTokenUsage({
+          text: lastAssistantMessage,
+          direction: "output",
+          model,
+          source
+        });
   }
 
   return undefined;

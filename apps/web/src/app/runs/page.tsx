@@ -61,6 +61,7 @@ type RunSummary = {
     cacheCreationInput?: number;
     cacheReadInput?: number;
     reasoningOutput?: number;
+    estimated?: boolean;
   };
 };
 
@@ -213,7 +214,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                         <SummaryCell summary={run.metadata?.summary} locale={locale} />
                       </TableCell>
                       <TableCell className="py-3">
-                        <TokenCell tokenUsage={run.metadata?.summary?.tokenUsage} />
+                        <TokenCell tokenUsage={run.metadata?.summary?.tokenUsage} locale={locale} />
                       </TableCell>
                       <TableCell className="py-3 text-[13px] text-muted-foreground tabular-nums">
                         {formatDateTime(run.startedAt, locale)}
@@ -419,7 +420,13 @@ function SummaryCell({ summary, locale }: { summary?: RunSummary; locale: Locale
   );
 }
 
-function TokenCell({ tokenUsage }: { tokenUsage?: RunSummary["tokenUsage"] }) {
+function TokenCell({
+  tokenUsage,
+  locale
+}: {
+  tokenUsage?: RunSummary["tokenUsage"];
+  locale: Locale;
+}) {
   const total = tokenUsage?.total ?? 0;
 
   if (total === 0) {
@@ -433,6 +440,11 @@ function TokenCell({ tokenUsage }: { tokenUsage?: RunSummary["tokenUsage"] }) {
         in {(tokenUsage?.input ?? 0).toLocaleString()} / out{" "}
         {(tokenUsage?.output ?? 0).toLocaleString()}
       </div>
+      {tokenUsage?.estimated ? (
+        <div className="text-[10px] text-muted-foreground">
+          {locale === "zh" ? "估算" : "estimated"}
+        </div>
+      ) : null}
     </div>
   );
 }

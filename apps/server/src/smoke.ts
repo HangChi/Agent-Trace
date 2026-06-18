@@ -240,6 +240,14 @@ if (codexRun?.status !== "success") {
   throw new Error("Expected Codex Stop to mark the run successful.");
 }
 
+if (
+  codexRun?.metadata?.summary?.tokenUsage?.estimated !== true ||
+  (codexRun.metadata.summary.tokenUsage.input ?? 0) <= 0 ||
+  (codexRun.metadata.summary.tokenUsage.output ?? 0) <= 0
+) {
+  throw new Error("Expected Codex hook fallback token estimates to be summarized.");
+}
+
 const codexEventsResponse = await app.request(`/runs/${codexRunId}/events`);
 const codexEvents = await codexEventsResponse.json();
 const codexEventsJson = JSON.stringify(codexEvents);
@@ -260,8 +268,40 @@ if (codexEventsJson.includes(codexSecretPrompt)) {
   throw new Error("Expected Codex hook ingestion to redact raw prompt.");
 }
 
+if (codexEventsJson.includes("Done.")) {
+  throw new Error("Expected Codex hook ingestion to redact raw assistant output.");
+}
+
 if (!codexEventsJson.includes(codexSecretCommand)) {
   throw new Error("Expected Codex hook ingestion to store executed command text.");
+}
+
+const codexPromptEvent = Array.isArray(codexEvents)
+  ? codexEvents.find((event) => event.name === "user_prompt")
+  : undefined;
+
+if (
+  codexPromptEvent?.metadata?.tokenUsage?.estimated !== true ||
+  codexPromptEvent.metadata.tokenUsage.source !== "codex-estimate" ||
+  codexPromptEvent.metadata.tokenUsage.method !== "tiktoken:o200k_base" ||
+  codexPromptEvent.metadata.tokenUsage.input <= 0 ||
+  codexPromptEvent.metadata.tokenUsage.output !== 0
+) {
+  throw new Error("Expected Codex user prompts to receive estimated input token usage.");
+}
+
+const codexStopEvent = Array.isArray(codexEvents)
+  ? codexEvents.find((event) => event.name === "turn")
+  : undefined;
+
+if (
+  codexStopEvent?.metadata?.tokenUsage?.estimated !== true ||
+  codexStopEvent.metadata.tokenUsage.source !== "codex-estimate" ||
+  codexStopEvent.metadata.tokenUsage.method !== "tiktoken:o200k_base" ||
+  codexStopEvent.metadata.tokenUsage.input !== 0 ||
+  codexStopEvent.metadata.tokenUsage.output <= 0
+) {
+  throw new Error("Expected Codex Stop hooks to receive estimated output token usage.");
 }
 
 await expectAccepted(
@@ -353,6 +393,15 @@ if (
   !codexOtelEvents.some((event) => event.metadata?.tokenUsage?.total === 120)
 ) {
   throw new Error("Expected Codex OTel logs to persist official token usage.");
+}
+
+if (
+  !Array.isArray(codexOtelEvents) ||
+  !codexOtelEvents.some(
+    (event) => event.metadata?.tokenUsage?.total === 120 && event.metadata.tokenUsage.estimated !== true
+  )
+) {
+  throw new Error("Expected Codex OTel usage to remain official, not estimated.");
 }
 
 if (
@@ -505,6 +554,14 @@ if (!claudeEvents.some((event) => event.name === "Bash command" && event.status 
 
 if (!claudeEvents.some((event) => event.metadata?.tokenUsage?.total === 12450)) {
   throw new Error("Expected Claude Code Agent response usage to be persisted.");
+}
+
+if (
+  !claudeEvents.some(
+    (event) => event.metadata?.tokenUsage?.total === 12450 && event.metadata.tokenUsage.estimated !== true
+  )
+) {
+  throw new Error("Expected Claude Code official usage to remain official, not estimated.");
 }
 
 if (!claudeEvents.some((event) => event.type === "step_ended" && event.name === "turn")) {

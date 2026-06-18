@@ -28,6 +28,8 @@ export const tokenUsageSchema = z.object({
   cacheCreationInput: z.number().int().nonnegative().optional(),
   cacheReadInput: z.number().int().nonnegative().optional(),
   reasoningOutput: z.number().int().nonnegative().optional(),
+  estimated: z.boolean().optional(),
+  method: z.string().optional(),
   source: z.string().optional()
 });
 

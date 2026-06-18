@@ -42,6 +42,8 @@ type TokenUsage = {
   cacheCreationInput?: number;
   cacheReadInput?: number;
   reasoningOutput?: number;
+  estimated?: boolean;
+  method?: string;
   source?: string;
 };
 
@@ -481,7 +483,7 @@ function Timeline({ events, locale }: { events: TraceEvent[]; locale: Locale }) 
                   {event.metadata?.provider ? <span>{event.metadata.provider}</span> : null}
                   {event.metadata?.model ? <span className="font-mono">{event.metadata.model}</span> : null}
                 </div>
-                <EventPrimaryDetail event={event} />
+                <EventPrimaryDetail event={event} locale={locale} />
                 {hasTraceIds(event) ? (
                   <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px] text-muted-foreground">
                     {event.metadata?.sessionId ? <TraceId label="session" value={event.metadata.sessionId} /> : null}
@@ -523,7 +525,7 @@ function Timeline({ events, locale }: { events: TraceEvent[]; locale: Locale }) 
   );
 }
 
-function EventPrimaryDetail({ event }: { event: TraceEvent }) {
+function EventPrimaryDetail({ event, locale }: { event: TraceEvent; locale: Locale }) {
   const command = event.metadata?.command ?? getObjectString(event.input, "command");
   const tokenUsage = event.metadata?.tokenUsage;
   const skillName = event.metadata?.skillName;
@@ -546,6 +548,8 @@ function EventPrimaryDetail({ event }: { event: TraceEvent }) {
         <MetadataBadge value={`total ${tokenUsage.total.toLocaleString()}`} />
         <MetadataBadge value={`in ${(tokenUsage.input ?? 0).toLocaleString()}`} />
         <MetadataBadge value={`out ${(tokenUsage.output ?? 0).toLocaleString()}`} />
+        {tokenUsage.estimated ? <MetadataBadge value={locale === "zh" ? "估算" : "estimated"} /> : null}
+        {tokenUsage.method ? <MetadataBadge value={tokenUsage.method} /> : null}
         {tokenUsage.cachedInput ? <MetadataBadge value={`cached ${tokenUsage.cachedInput.toLocaleString()}`} /> : null}
         {tokenUsage.reasoningOutput ? (
           <MetadataBadge value={`reasoning ${tokenUsage.reasoningOutput.toLocaleString()}`} />

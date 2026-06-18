@@ -247,6 +247,7 @@ function summarizeEventsByRun(eventRows: Array<typeof events.$inferSelect>) {
         cacheCreationInput?: number;
         cacheReadInput?: number;
         reasoningOutput?: number;
+        estimated?: boolean;
       };
       commands: string[];
       tools: string[];
@@ -309,6 +310,7 @@ function addTokenUsage(target: {
   cacheCreationInput?: number;
   cacheReadInput?: number;
   reasoningOutput?: number;
+  estimated?: boolean;
 }, source: Record<string, unknown>) {
   target.input += getNumber(source.input);
   target.output += getNumber(source.output);
@@ -317,6 +319,10 @@ function addTokenUsage(target: {
   target.cacheCreationInput = addOptional(target.cacheCreationInput, source.cacheCreationInput);
   target.cacheReadInput = addOptional(target.cacheReadInput, source.cacheReadInput);
   target.reasoningOutput = addOptional(target.reasoningOutput, source.reasoningOutput);
+
+  if (source.estimated === true) {
+    target.estimated = true;
+  }
 }
 
 function addOptional(current: number | undefined, value: unknown) {
