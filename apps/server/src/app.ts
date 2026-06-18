@@ -62,7 +62,10 @@ export function createApp() {
   });
 
   app.post("/v1/logs", async (c) => {
-    return ingestCodexOtel(c);
+    return ingestCodexOtel(c, {
+      surface: "desktop",
+      surfaceSource: "default-v1-logs"
+    });
   });
 
   app.post("/integrations/claude-code/hook", async (c) => {
@@ -124,12 +127,13 @@ async function ingestCodexOtel(
   c: {
     req: { json: () => Promise<unknown>; query: (name: string) => string | undefined };
     json: (value: unknown, status?: number) => Response;
-  }
+  },
+  defaultHints: { surface?: string; surfaceSource?: string } = {}
 ) {
   const body = await readJson(c.req);
 
   try {
-    const result = await ingestCodexOtelLogs(body, getIngestHints(c.req));
+    const result = await ingestCodexOtelLogs(body, getIngestHints(c.req, defaultHints));
 
     return c.json({ ok: true, ...result }, 202);
   } catch (error) {
@@ -144,10 +148,14 @@ async function ingestCodexOtel(
   }
 }
 
-function getIngestHints(request: { query: (name: string) => string | undefined }) {
+function getIngestHints(
+  request: { query: (name: string) => string | undefined },
+  defaults: { surface?: string; surfaceSource?: string } = {}
+) {
   return {
-    surface: request.query("surface"),
-    surfaceSource: request.query("surface_source") ?? request.query("surfaceSource")
+    surface: request.query("surface") ?? defaults.surface,
+    surfaceSource:
+      request.query("surface_source") ?? request.query("surfaceSource") ?? defaults.surfaceSource
   };
 }
 

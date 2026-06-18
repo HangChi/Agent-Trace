@@ -49,6 +49,8 @@ type RunSummary = {
   toolCount?: number;
   mcpCount?: number;
   skillCount?: number;
+  promptCount?: number;
+  turnCount?: number;
   commands?: string[];
   tools?: string[];
   mcpTools?: string[];
@@ -149,32 +151,42 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
             <EmptyState locale={locale} title={text.runs.emptyTitle} body={text.runs.emptyBody} />
           ) : null}
           {!error && runs.length > 0 ? (
-            <div className="overflow-x-auto">
-              <Table className="min-w-[1380px]">
+            <div>
+              <Table className="min-w-[1460px] table-fixed">
+                <colgroup>
+                  <col className="w-[360px]" />
+                  <col className="w-[150px]" />
+                  <col className="w-[190px]" />
+                  <col className="w-[270px]" />
+                  <col className="w-[220px]" />
+                  <col className="w-[180px]" />
+                  <col className="w-[90px]" />
+                  <col className="w-[72px]" />
+                </colgroup>
                 <TableHeader>
                   <TableRow className="border-border bg-muted/60 hover:bg-muted/60">
-                    <TableHead className="h-10 min-w-[260px] pl-5 text-xs font-semibold text-muted-foreground">
+                    <TableHead className="h-10 pl-5 text-xs font-semibold text-muted-foreground">
                       {text.runs.tableRun}
                     </TableHead>
-                    <TableHead className="h-10 min-w-[150px] text-xs font-semibold text-muted-foreground">
+                    <TableHead className="h-10 text-xs font-semibold text-muted-foreground">
                       {text.runs.tableSource}
                     </TableHead>
-                    <TableHead className="h-10 min-w-[130px] text-xs font-semibold text-muted-foreground">
+                    <TableHead className="h-10 text-xs font-semibold text-muted-foreground">
                       {text.runs.tableStatus}
                     </TableHead>
-                    <TableHead className="h-10 min-w-[220px] text-xs font-semibold text-muted-foreground">
+                    <TableHead className="h-10 text-xs font-semibold text-muted-foreground">
                       {text.runs.tableTracked}
                     </TableHead>
-                    <TableHead className="h-10 min-w-[130px] text-xs font-semibold text-muted-foreground">
+                    <TableHead className="h-10 text-xs font-semibold text-muted-foreground">
                       {text.runs.tableTokens}
                     </TableHead>
-                    <TableHead className="h-10 min-w-[190px] text-xs font-semibold text-muted-foreground">
+                    <TableHead className="h-10 text-xs font-semibold text-muted-foreground">
                       {text.runs.tableStarted}
                     </TableHead>
-                    <TableHead className="h-10 min-w-[100px] text-xs font-semibold text-muted-foreground">
+                    <TableHead className="h-10 text-xs font-semibold text-muted-foreground">
                       {text.runs.tableDuration}
                     </TableHead>
-                    <TableHead className="h-10 w-12 pr-5" />
+                    <TableHead className="h-10 pr-5" />
                   </TableRow>
                 </TableHeader>
                 <TableBody>
@@ -183,7 +195,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                       key={run.id}
                       className="group border-border/70 transition-colors hover:bg-accent/35"
                     >
-                      <TableCell className="py-3 pl-5">
+                      <TableCell className="py-3 pl-5 whitespace-normal">
                         <div className="flex min-w-0 items-center gap-3">
                           <StatusDot status={run.status} />
                           <div className="min-w-0">
@@ -199,10 +211,10 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                           </div>
                         </div>
                       </TableCell>
-                      <TableCell className="py-3">
+                      <TableCell className="py-3 align-top">
                         <SourceCell metadata={run.metadata} locale={locale} />
                       </TableCell>
-                      <TableCell className="py-3">
+                      <TableCell className="py-3 align-top whitespace-normal">
                         <StatusBadge status={run.status} locale={locale} />
                         {run.error ? (
                           <div className="mt-1 break-words font-mono text-[11px] text-destructive">
@@ -210,16 +222,16 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                           </div>
                         ) : null}
                       </TableCell>
-                      <TableCell className="py-3">
+                      <TableCell className="py-3 align-top">
                         <SummaryCell summary={run.metadata?.summary} locale={locale} />
                       </TableCell>
-                      <TableCell className="py-3">
+                      <TableCell className="py-3 align-top">
                         <TokenCell tokenUsage={run.metadata?.summary?.tokenUsage} locale={locale} />
                       </TableCell>
-                      <TableCell className="py-3 text-[13px] text-muted-foreground tabular-nums">
+                      <TableCell className="py-3 align-top text-[13px] text-muted-foreground tabular-nums">
                         {formatDateTime(run.startedAt, locale)}
                       </TableCell>
-                      <TableCell className="py-3">
+                      <TableCell className="py-3 align-top">
                         <span
                           className={cn(
                             "text-[13px] tabular-nums",
@@ -231,7 +243,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                           {formatDuration(run.startedAt, run.endedAt, locale)}
                         </span>
                       </TableCell>
-                      <TableCell className="py-3 pr-5 text-right">
+                      <TableCell className="py-3 pr-5 text-right align-top">
                         <DeleteRunButton
                           runId={run.id}
                           label={text.runs.delete}
@@ -387,6 +399,8 @@ function SummaryCell({ summary, locale }: { summary?: RunSummary; locale: Locale
   }
 
   const counts = [
+    countLabel(summary.promptCount, locale === "zh" ? "\u63d0\u793a" : "prompt"),
+    countLabel(summary.turnCount, locale === "zh" ? "\u56de\u5408" : "turn"),
     countLabel(summary.commandCount, locale === "zh" ? "命令" : "cmd"),
     countLabel(summary.toolCount, locale === "zh" ? "工具" : "tool"),
     countLabel(summary.mcpCount, "MCP"),
@@ -458,6 +472,8 @@ function getSummaryTotal(summary: RunSummary) {
     (summary.toolCount ?? 0) +
     (summary.mcpCount ?? 0) +
     (summary.skillCount ?? 0) +
+    (summary.promptCount ?? 0) +
+    (summary.turnCount ?? 0) +
     (summary.tokenUsage?.total ?? 0)
   );
 }

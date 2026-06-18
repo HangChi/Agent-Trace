@@ -13,6 +13,7 @@ const app = createApp();
 const runId = `run_${Date.now()}`;
 const metadataRunId = `run_metadata_${Date.now()}`;
 const untrackedRunId = `run_untracked_${Date.now()}`;
+const recoveredRunId = `run_recovered_${Date.now()}`;
 const eventId = `evt_${Date.now()}`;
 const metadataEventId = `evt_metadata_${Date.now()}`;
 const untrackedEventId = `evt_untracked_${Date.now()}`;
@@ -214,6 +215,57 @@ const untrackedRun = Array.isArray(allRuns)
 
 if (untrackedRun?.status !== "error" || !untrackedRun.endedAt || !untrackedRun.error) {
   throw new Error("Expected stale running runs to be closed when runs are listed.");
+}
+
+const createRecoveredRunResponse = await app.request("/runs", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({
+    id: recoveredRunId,
+    name: "recovered-stale-run",
+    status: "running",
+    startedAt: staleTimestamp,
+    input: { task: "recover stale run" }
+  })
+});
+
+if (createRecoveredRunResponse.status !== 201) {
+  throw new Error(
+    `Expected recovered run creation to return 201, got ${createRecoveredRunResponse.status}`
+  );
+}
+
+const staleRecoveredRunsResponse = await app.request("/runs?includeUntracked=1");
+const staleRecoveredRuns = await staleRecoveredRunsResponse.json();
+const staleRecoveredRun = Array.isArray(staleRecoveredRuns)
+  ? staleRecoveredRuns.find((run) => run.id === recoveredRunId)
+  : undefined;
+
+if (staleRecoveredRun?.status !== "error" || !staleRecoveredRun.error) {
+  throw new Error("Expected stale recovered run fixture to be closed with an error first.");
+}
+
+const recoverRunResponse = await app.request(`/runs/${recoveredRunId}`, {
+  method: "PATCH",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({
+    status: "success",
+    endedAt: new Date().toISOString()
+  })
+});
+
+if (recoverRunResponse.status !== 200) {
+  throw new Error(`Expected recovered run update to return 200, got ${recoverRunResponse.status}`);
+}
+
+const recoveredRunsResponse = await app.request("/runs?includeUntracked=1");
+const recoveredRuns = await recoveredRunsResponse.json();
+const recoveredRun = Array.isArray(recoveredRuns)
+  ? recoveredRuns.find((run) => run.id === recoveredRunId)
+  : undefined;
+
+if (recoveredRun?.status !== "success" || recoveredRun.error !== undefined) {
+  throw new Error("Expected success updates to clear stale run errors.");
 }
 
 const metadataEventsResponse = await app.request(`/runs/${metadataRunId}/events`);
@@ -537,6 +589,75 @@ if (
   )
 ) {
   throw new Error("Expected Codex OTel explicit totals to remain authoritative.");
+}
+
+const codexOtelRunsResponse = await app.request("/runs");
+const codexOtelRuns = await codexOtelRunsResponse.json();
+
+if (Array.isArray(codexOtelRuns) && codexOtelRuns.some((run) => run.id === codexOtelRunId)) {
+  throw new Error("Expected token-only Codex OTel runs to be hidden by default.");
+}
+
+const allCodexOtelRunsResponse = await app.request("/runs?includeUntracked=1");
+const allCodexOtelRuns = await allCodexOtelRunsResponse.json();
+const listedCodexOtelRun = Array.isArray(allCodexOtelRuns)
+  ? allCodexOtelRuns.find((run) => run.id === codexOtelRunId)
+  : undefined;
+
+if (
+  listedCodexOtelRun?.metadata?.surface !== "cli" ||
+  listedCodexOtelRun.metadata.surfaceSource !== "tooltrace-cli"
+) {
+  throw new Error("Expected untracked Codex OTel runs to keep CLI surface hints.");
+}
+
+const codexDesktopOtelSessionId = "codex_desktop_otel_session_smoke";
+const codexDesktopOtelRunId = "run_codex_codex_desktop_otel_session_smoke";
+
+await expectAccepted(
+  app.request("/v1/logs", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      resourceLogs: [
+        {
+          resource: {
+            attributes: [{ key: "service.name", value: { stringValue: "codex" } }]
+          },
+          scopeLogs: [
+            {
+              logRecords: [
+                {
+                  timeUnixNano: (BigInt(Date.now()) * 1_000_000n).toString(),
+                  body: { stringValue: "codex.sse_event" },
+                  attributes: [
+                    { key: "event.name", value: { stringValue: "codex.sse_event" } },
+                    { key: "conversation_id", value: { stringValue: codexDesktopOtelSessionId } },
+                    { key: "reasoning_output_tokens", value: { intValue: "9" } }
+                  ]
+                }
+              ]
+            }
+          ]
+        }
+      ]
+    })
+  }),
+  "Codex desktop OTel log ingestion"
+);
+
+const desktopOtelEventsResponse = await app.request(`/runs/${codexDesktopOtelRunId}/events`);
+const desktopOtelEvents = await desktopOtelEventsResponse.json();
+
+if (
+  !Array.isArray(desktopOtelEvents) ||
+  !desktopOtelEvents.every(
+    (event) =>
+      event.metadata?.surface === "desktop" &&
+      event.metadata.surfaceSource === "default-v1-logs"
+  )
+) {
+  throw new Error("Expected generic OTel /v1/logs ingestion to default to desktop surface.");
 }
 
 const claudeSessionId = "claude_session_smoke";

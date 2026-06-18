@@ -17,6 +17,8 @@ type EventSummary = {
   toolCount: number;
   mcpCount: number;
   skillCount: number;
+  promptCount: number;
+  turnCount: number;
   tokenUsage: {
     input: number;
     output: number;
@@ -147,8 +149,10 @@ export async function updateRun(
     values.outputJson = stringifyJson(run.output);
   }
 
-  if (run.error !== undefined || run.status === "running") {
-    values.error = run.error ?? null;
+  if (run.error !== undefined) {
+    values.error = run.error;
+  } else if (run.status !== "error") {
+    values.error = null;
   }
 
   await database
@@ -194,15 +198,17 @@ export async function listRuns(
       const staleRun = staleRuns.get(run.id);
       const isStale = staleRun !== undefined || isStaleClosedRun(run);
 
+      const status = staleRun?.status ?? run.status;
+
       return {
         id: run.id,
         name: run.name,
-        status: staleRun?.status ?? run.status,
+        status,
         startedAt: run.startedAt,
         endedAt: staleRun?.endedAt ?? run.endedAt ?? undefined,
         input,
         output: parseJson(run.outputJson),
-        error: staleRun?.error ?? run.error ?? undefined,
+        error: status === "error" ? (staleRun?.error ?? run.error ?? undefined) : undefined,
         metadata: mergeRunMetadata(metadata, summary),
         _include:
           options.includeUntracked ||
@@ -210,7 +216,7 @@ export async function listRuns(
             input,
             summary,
             isStale,
-            status: staleRun?.status ?? run.status
+            status
           })
       };
     })
@@ -288,6 +294,14 @@ function normalizeMetadataForDisplay(metadata: unknown) {
 
   if (
     base.agent === "codex" &&
+    base.source === "otel" &&
+    (base.surface === undefined ||
+      (base.surface === "unknown" && base.surfaceSource === "legacy-unmarked"))
+  ) {
+    base.surface = "desktop";
+    base.surfaceSource = "default-v1-logs";
+  } else if (
+    base.agent === "codex" &&
     typeof base.surface === "string" &&
     base.surfaceSource === undefined
   ) {
@@ -308,6 +322,8 @@ function summarizeEventsByRun(eventRows: Array<typeof events.$inferSelect>) {
       toolCount: 0,
       mcpCount: 0,
       skillCount: 0,
+      promptCount: 0,
+      turnCount: 0,
       tokenUsage: {
         input: 0,
         output: 0,
@@ -329,6 +345,7 @@ function summarizeEventsByRun(eventRows: Array<typeof events.$inferSelect>) {
     const mcpServer = getString(metadata.mcpServer);
     const mcpTool = getString(metadata.mcpTool);
     const skillName = getString(metadata.skillName);
+    const hookEvent = getString(metadata.hookEvent);
     const tokenUsage = asRecord(metadata.tokenUsage);
 
     if (command !== undefined) {
@@ -340,6 +357,10 @@ function summarizeEventsByRun(eventRows: Array<typeof events.$inferSelect>) {
     } else if (skillName !== undefined) {
       summary.skillCount += 1;
       pushUnique(summary.skills, skillName);
+    } else if (isPromptEvent(hookEvent, row.name)) {
+      summary.promptCount += 1;
+    } else if (isTurnEvent(hookEvent, row.name)) {
+      summary.turnCount += 1;
     } else if (toolName !== undefined) {
       summary.toolCount += 1;
       pushUnique(summary.tools, toolName);
@@ -401,7 +422,7 @@ function shouldIncludeRunInList({
     return true;
   }
 
-  if (isStale && (!summary || getSummarySignalTotal(summary) === 0)) {
+  if (isStale && (!summary || getSummaryActionTotal(summary) === 0)) {
     return false;
   }
 
@@ -409,7 +430,7 @@ function shouldIncludeRunInList({
     return status === "error";
   }
 
-  return getSummarySignalTotal(summary) > 0 || summary.hasErrorEvent;
+  return getSummaryActionTotal(summary) > 0 || summary.hasErrorEvent;
 }
 
 function isStaleClosedRun(run: typeof runs.$inferSelect) {
@@ -426,13 +447,25 @@ function isCollectorRun(input: unknown) {
   return source === "agent-hook" || source === "codex-otel";
 }
 
-function getSummarySignalTotal(summary: EventSummary) {
+function getSummaryActionTotal(summary: EventSummary) {
   return (
     summary.commandCount +
     summary.toolCount +
     summary.mcpCount +
-    summary.skillCount +
-    summary.tokenUsage.total
+    summary.skillCount
+  );
+}
+
+function isPromptEvent(hookEvent: string | undefined, name: string) {
+  return hookEvent === "UserPromptSubmit" || hookEvent === "codex.user_prompt" || name === "user_prompt";
+}
+
+function isTurnEvent(hookEvent: string | undefined, name: string) {
+  return (
+    hookEvent === "Stop" ||
+    hookEvent === "SessionEnd" ||
+    hookEvent?.includes("turn.completed") === true ||
+    name === "turn"
   );
 }
 
