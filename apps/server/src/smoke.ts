@@ -164,6 +164,87 @@ if (events[0]?.metadata?.toolUseId !== "tool_smoke") {
   throw new Error("Expected /runs/:id/events to return event metadata.");
 }
 
+const batchRunAId = `run_batch_${Date.now()}_a`;
+const batchRunBId = `run_batch_${Date.now()}_b`;
+const batchRunIds = [batchRunAId, batchRunBId];
+
+for (const id of batchRunIds) {
+  const createBatchRunResponse = await app.request("/runs", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      id,
+      name: `batch-${id}`,
+      status: "success",
+      startedAt: new Date().toISOString()
+    })
+  });
+
+  if (createBatchRunResponse.status !== 201) {
+    throw new Error(
+      `Expected batch run creation to return 201, got ${createBatchRunResponse.status}`
+    );
+  }
+}
+
+const createBatchEventResponse = await app.request("/events", {
+  method: "POST",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({
+    id: `evt_batch_${Date.now()}`,
+    runId: batchRunAId,
+    type: "tool_call",
+    name: "batch_event",
+    status: "success"
+  })
+});
+
+if (createBatchEventResponse.status !== 201) {
+  throw new Error(
+    `Expected batch event creation to return 201, got ${createBatchEventResponse.status}`
+  );
+}
+
+const invalidBatchDeleteResponse = await app.request("/runs", {
+  method: "DELETE",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ ids: [""] })
+});
+
+if (invalidBatchDeleteResponse.status !== 400) {
+  throw new Error(
+    `Expected invalid batch delete to return 400, got ${invalidBatchDeleteResponse.status}`
+  );
+}
+
+const batchDeleteResponse = await app.request("/runs", {
+  method: "DELETE",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({ ids: batchRunIds })
+});
+const batchDeleteResult = await batchDeleteResponse.json();
+
+if (batchDeleteResponse.status !== 200 || batchDeleteResult.deleted !== 2) {
+  throw new Error("Expected batch delete to remove both selected runs.");
+}
+
+const afterBatchDeleteRunsResponse = await app.request("/runs?includeUntracked=1");
+const afterBatchDeleteRuns = await afterBatchDeleteRunsResponse.json();
+
+if (
+  Array.isArray(afterBatchDeleteRuns) &&
+  afterBatchDeleteRuns.some((run) => batchRunIds.includes(run.id))
+) {
+  throw new Error("Expected batch deleted runs to be absent from /runs.");
+}
+
+const batchDeletedEventsResponse = await app.request(`/runs/${batchRunAId}/events`);
+const batchDeletedEvents = await batchDeletedEventsResponse.json();
+
+if (Array.isArray(batchDeletedEvents) && batchDeletedEvents.length > 0) {
+  throw new Error("Expected batch delete to remove events for deleted runs.");
+}
+
 const createUntrackedRunResponse = await app.request("/runs", {
   method: "POST",
   headers: { "content-type": "application/json" },

@@ -23,7 +23,13 @@ import {
   type Locale
 } from "~/lib/i18n";
 import { cn } from "~/lib/utils";
-import { AutoRefresh, DeleteRunButton, RefreshButton } from "./run-controls";
+import {
+  AutoRefresh,
+  BulkDeleteRunsButton,
+  DeleteRunButton,
+  RefreshButton,
+  SelectAllRunsCheckbox
+} from "./run-controls";
 import { calculateRunCost, getUsdCnyRate, type RunCost } from "~/lib/cost";
 
 export const dynamic = "force-dynamic";
@@ -79,6 +85,7 @@ type TokenUsage = {
 type RunsSearchParams = Promise<{ lang?: string | string[] }>;
 
 const collectorUrl = process.env.TOOLTRACE_API_URL ?? "http://localhost:4319";
+const runsBulkDeleteFormId = "runs-bulk-delete-form";
 
 export default async function RunsPage({ searchParams }: { searchParams: RunsSearchParams }) {
   const locale = parseLocale((await searchParams).lang);
@@ -152,7 +159,21 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
               </div>
               <p className="mt-1 text-xs text-muted-foreground">{text.runs.latest}</p>
             </div>
-            <RefreshButton label={text.runs.refresh} refreshingLabel={text.runs.refreshing} />
+            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <BulkDeleteRunsButton
+                formId={runsBulkDeleteFormId}
+                label={text.runs.bulkDelete}
+                deletingLabel={text.runs.deleting}
+                title={text.runs.bulkDeleteConfirmPrompt}
+                description={text.runs.bulkDeleteConfirm}
+                confirmLabel={text.runs.confirm}
+                cancelLabel={text.runs.cancel}
+                failedText={text.runs.bulkDeleteFailed}
+                selectedText={text.runs.selectedRuns}
+                clearSelectionLabel={text.runs.clearSelection}
+              />
+              <RefreshButton label={text.runs.refresh} refreshingLabel={text.runs.refreshing} />
+            </div>
           </div>
 
           {error ? <ErrorState message={error} locale={locale} /> : null}
@@ -160,9 +181,10 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
             <EmptyState locale={locale} title={text.runs.emptyTitle} body={text.runs.emptyBody} />
           ) : null}
           {!error && runs.length > 0 ? (
-            <div>
-              <Table className="min-w-[2100px] table-fixed">
+            <form id={runsBulkDeleteFormId}>
+              <Table className="min-w-[2148px] table-fixed">
                 <colgroup>
+                  <col className="w-[48px]" />
                   <col className="w-[420px]" />
                   <col className="w-[150px]" />
                   <col className="w-[110px]" />
@@ -176,7 +198,13 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                 </colgroup>
                 <TableHeader>
                   <TableRow className="border-border bg-muted/60 hover:bg-muted/60">
-                    <TableHead className="h-10 pl-5 text-xs font-semibold text-muted-foreground">
+                    <TableHead className="h-10 pl-5 pr-0">
+                      <SelectAllRunsCheckbox
+                        formId={runsBulkDeleteFormId}
+                        label={text.runs.selectAll}
+                      />
+                    </TableHead>
+                    <TableHead className="h-10 text-xs font-semibold text-muted-foreground">
                       {text.runs.tableRun}
                     </TableHead>
                     <TableHead className="h-10 text-xs font-semibold text-muted-foreground">
@@ -212,7 +240,17 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                       key={run.id}
                       className="group border-border/70 transition-colors hover:bg-accent/35"
                     >
-                      <TableCell className="py-3 pl-5 whitespace-normal">
+                      <TableCell className="py-3 pl-5 pr-0 align-top">
+                        <input
+                          type="checkbox"
+                          name="runIds"
+                          value={run.id}
+                          data-run-checkbox="true"
+                          className="mt-1 size-4 rounded border-border accent-primary"
+                          aria-label={`${text.runs.selectRun}: ${run.name}`}
+                        />
+                      </TableCell>
+                      <TableCell className="py-3 whitespace-normal">
                         <div className="flex min-w-0 items-center gap-3">
                           <StatusDot status={run.status} />
                           <div className="min-w-0">
@@ -288,7 +326,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                   ))}
                 </TableBody>
               </Table>
-            </div>
+            </form>
           ) : null}
         </Card>
       </section>

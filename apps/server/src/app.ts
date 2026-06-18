@@ -7,6 +7,7 @@ import {
   createEvent,
   createRun,
   deleteRun,
+  deleteRuns,
   listEventsByRunId,
   listEventsPageByRunId,
   listRuns,
@@ -85,6 +86,18 @@ export function createApp() {
     const runs = await listRuns({ includeUntracked });
 
     return c.json(runs);
+  });
+
+  app.delete("/runs", async (c) => {
+    const ids = parseRunIds(await readJson(c.req));
+
+    if (!ids) {
+      return c.json({ error: "invalid_run_ids" }, 400);
+    }
+
+    const deleted = await deleteRuns(ids);
+
+    return c.json({ ok: true, deleted });
   });
 
   app.get("/runs/:id/events", async (c) => {
@@ -207,4 +220,23 @@ async function readJson(request: { json: () => Promise<unknown> }) {
   } catch {
     return undefined;
   }
+}
+
+function parseRunIds(value: unknown) {
+  const ids = asRecord(value).ids;
+
+  if (
+    !Array.isArray(ids) ||
+    ids.some((id) => typeof id !== "string" || id.trim().length === 0)
+  ) {
+    return undefined;
+  }
+
+  return [...new Set(ids.map((id) => id.trim()))];
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }

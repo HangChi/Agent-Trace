@@ -1,5 +1,5 @@
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { asc, desc, eq } from "drizzle-orm";
+import { asc, desc, eq, inArray } from "drizzle-orm";
 
 import type { CreateRun, CreateTraceEvent, Run, UpdateRun } from "@tooltrace/schema";
 
@@ -337,6 +337,19 @@ export async function deleteRun(id: string, database: Database = defaultDb): Pro
   const result = await database.delete(runs).where(eq(runs.id, id));
 
   return result.changes > 0;
+}
+
+export async function deleteRuns(ids: string[], database: Database = defaultDb): Promise<number> {
+  const uniqueIds = [...new Set(ids.map((id) => id.trim()).filter(Boolean))];
+
+  if (uniqueIds.length === 0) {
+    return 0;
+  }
+
+  await database.delete(events).where(inArray(events.runId, uniqueIds));
+  const result = await database.delete(runs).where(inArray(runs.id, uniqueIds));
+
+  return result.changes;
 }
 
 function ensureColumn(
