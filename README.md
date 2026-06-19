@@ -97,7 +97,9 @@ Instead of editing config files by hand, ToolTrace can install global tracing ho
 ```bash
 pnpm --filter @tooltrace/cli build
 
-node packages/cli/dist/index.js install codex --scope user --redaction metadata
+node packages/cli/dist/index.js install codex --scope user --redaction metadata --surface cli
+# If this shared Codex config is used by Codex Desktop, reinstall with:
+# node packages/cli/dist/index.js install codex --scope user --redaction metadata --surface desktop
 node packages/cli/dist/index.js install claude-code --scope user --redaction metadata
 ```
 
@@ -112,6 +114,7 @@ node packages/cli/dist/index.js uninstall claude-code
 - `install claude-code` writes a ToolTrace-managed block into `~/.claude/settings.json`.
 - A timestamped `.tooltrace-backup.<timestamp>` file is created before any change.
 - Re-running install is idempotent, and uninstall removes only ToolTrace-managed entries, leaving your own hooks untouched.
+- Codex Desktop and CLI share the same Codex config. Use `install codex --surface cli` or `install codex --surface desktop`; the last installed surface is the one ToolTrace reports until you reinstall with the other value.
 - `CODEX_HOME` and `CLAUDE_CONFIG_DIR` override the config directories; `TOOLTRACE_COLLECTOR_URL` (or `--collector-url`) overrides the collector base URL.
 - By default, hooks use metadata redaction. ToolTrace stores event names, tool names, executed shell commands, IDs, statuses, durations, models, official token usage when provided, local token estimates when official usage is missing, and payload sizes for non-command tool input/output. It does not store raw prompts, full non-command tool input/output, file contents, or hidden reasoning.
 - For the most accurate Codex token usage, configure the official Codex OTel JSON log exporter to `http://localhost:4319/integrations/codex/otel/v1/logs`; hook-only prompt/output token counts from Codex or Claude Code are estimated locally and marked as estimated.

@@ -34,12 +34,42 @@ try {
     throw new Error("Expected Windows Codex hook command to use curl.exe and NUL output.");
   }
 
+  if (!command.includes("surface=cli") || !command.includes("surface_source=tooltrace-cli")) {
+    throw new Error("Expected default Codex hook command to include CLI surface hints.");
+  }
+
   if (process.platform === "win32" && (!command.includes("curl.exe") || !command.includes("-o NUL"))) {
     throw new Error("Expected primary Codex hook command to be Windows-safe on Windows.");
   }
 
   if (!config.includes("surface=cli") || !config.includes("surface_source=tooltrace-cli")) {
     throw new Error("Expected Codex OTel endpoint to include CLI surface hints.");
+  }
+
+  installHooks("codex", {
+    collectorUrl: "http://localhost:4319",
+    redaction: "metadata",
+    surface: "desktop"
+  });
+
+  const desktopHooks = JSON.parse(readFileSync(join(codexHome, "hooks.json"), "utf8")) as {
+    hooks?: Record<string, Array<{ hooks?: Array<{ command?: string; commandWindows?: string }> }>>;
+  };
+  const desktopCommand = desktopHooks.hooks?.SessionStart?.[0]?.hooks?.[0]?.command;
+  const desktopConfig = readFileSync(join(codexHome, "config.toml"), "utf8");
+
+  if (
+    !desktopCommand?.includes("surface=desktop") ||
+    !desktopCommand.includes("surface_source=tooltrace-desktop")
+  ) {
+    throw new Error("Expected Codex desktop hook command to include desktop surface hints.");
+  }
+
+  if (
+    !desktopConfig.includes("surface=desktop") ||
+    !desktopConfig.includes("surface_source=tooltrace-desktop")
+  ) {
+    throw new Error("Expected Codex OTel endpoint to include desktop surface hints.");
   }
 
   console.log("ToolTrace CLI smoke test passed.");

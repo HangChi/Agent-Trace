@@ -483,8 +483,6 @@ function SummaryCell({ summary, locale }: { summary?: RunSummary; locale: Locale
   }
 
   const counts = [
-    countLabel(summary.promptCount, locale === "zh" ? "\u63d0\u793a" : "prompt"),
-    countLabel(summary.turnCount, locale === "zh" ? "\u56de\u5408" : "turn"),
     countLabel(summary.commandCount, locale === "zh" ? "命令" : "cmd"),
     countLabel(summary.toolCount, locale === "zh" ? "工具" : "tool"),
     countLabel(summary.mcpCount, "MCP"),
@@ -614,10 +612,7 @@ function getSummaryTotal(summary: RunSummary) {
     (summary.commandCount ?? 0) +
     (summary.toolCount ?? 0) +
     (summary.mcpCount ?? 0) +
-    (summary.skillCount ?? 0) +
-    (summary.promptCount ?? 0) +
-    (summary.turnCount ?? 0) +
-    (summary.tokenUsage?.total ?? 0)
+    (summary.skillCount ?? 0)
   );
 }
 

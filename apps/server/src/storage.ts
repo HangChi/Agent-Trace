@@ -541,7 +541,7 @@ function shouldIncludeRunInList({
     return true;
   }
 
-  if (isStale && (!summary || getSummaryVisibleTotal(summary) === 0)) {
+  if (isStale && (!summary || getSummaryActionTotal(summary) === 0)) {
     return false;
   }
 
@@ -549,7 +549,7 @@ function shouldIncludeRunInList({
     return status === "error";
   }
 
-  return getSummaryVisibleTotal(summary) > 0 || summary.hasErrorEvent;
+  return getSummaryActionTotal(summary) > 0 || summary.hasErrorEvent;
 }
 
 function isStaleClosedRun(run: typeof runs.$inferSelect) {
@@ -573,10 +573,6 @@ function getSummaryActionTotal(summary: EventSummary) {
     summary.mcpCount +
     summary.skillCount
   );
-}
-
-function getSummaryVisibleTotal(summary: EventSummary) {
-  return getSummaryActionTotal(summary) + summary.promptCount + summary.turnCount;
 }
 
 function isPromptEvent(hookEvent: string | undefined, name: string) {

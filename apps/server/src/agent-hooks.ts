@@ -145,7 +145,7 @@ export function normalizeAgentHook(
   const cwd = getString(body, "cwd");
   const command = getCommand(body, toolName);
   const mcpTool = parseMcpTool(toolName);
-  const skillName = getSkillName(body, toolName);
+  const skillName = getSkillName(body, toolName, hookEvent);
   const toolKind = getToolKind(toolName);
   const tokenUsage =
     extractTokenUsage(source, body, { model, provider }) ??
@@ -645,7 +645,7 @@ function getTrackingCategory(input: {
     return "mcp";
   }
 
-  if (input.skillName !== undefined || input.hookEvent === "UserPromptExpansion") {
+  if (input.skillName !== undefined) {
     return "skill";
   }
 
@@ -714,21 +714,43 @@ function parseMcpTool(toolName: string | undefined) {
   return { server, tool };
 }
 
-function getSkillName(body: Record<string, unknown>, toolName: string | undefined) {
+function getSkillName(
+  body: Record<string, unknown>,
+  toolName: string | undefined,
+  hookEvent: string | undefined
+) {
   const toolInput = asRecord(getValue(body, "tool_input", "toolInput"));
   const direct =
-    getString(body, "skill_name", "skillName", "command_name", "commandName") ??
-    getString(toolInput, "skill", "skill_name", "skillName", "command_name", "commandName");
+    getString(body, "skill_name", "skillName", "skill", "command_name", "commandName") ??
+    getString(
+      toolInput,
+      "skill",
+      "skill_name",
+      "skillName",
+      "command_name",
+      "commandName"
+    );
 
   if (direct !== undefined) {
     return direct;
   }
 
-  if (toolName === "Skill" || toolName === "SlashCommand") {
-    return getString(toolInput, "name", "command", "id");
+  if (isSkillTool(toolName)) {
+    return (
+      getString(toolInput, "name", "command", "id") ??
+      getString(body, "name", "command", "id")
+    );
+  }
+
+  if (hookEvent === "UserPromptExpansion") {
+    return getString(toolInput, "name", "id") ?? getString(body, "name", "id");
   }
 
   return undefined;
+}
+
+function isSkillTool(toolName: string | undefined) {
+  return toolName === "Skill" || toolName === "SlashCommand";
 }
 
 function getHookModel(

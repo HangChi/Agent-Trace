@@ -586,6 +586,78 @@ await expectAccepted(
     headers: { "content-type": "application/json" },
     body: JSON.stringify({
       session_id: codexSessionId,
+      hook_event_name: "PostToolUse",
+      turn_id: "codex_turn_1",
+      tool_name: "Read",
+      tool_use_id: "codex_tool_2",
+      tool_input: {
+        path: "/workspace/tooltrace/README.md"
+      },
+      tool_response: {
+        bytes: 128
+      },
+      cwd: "/workspace/tooltrace",
+      model: "gpt-5.4",
+      permission_mode: "default"
+    })
+  }),
+  "codex generic PostToolUse hook"
+);
+
+await expectAccepted(
+  app.request(codexCliHookPath, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      session_id: codexSessionId,
+      hook_event_name: "PostToolUse",
+      turn_id: "codex_turn_1",
+      tool_name: "mcp__node_repl__js",
+      tool_use_id: "codex_tool_3",
+      tool_input: {
+        code: "1 + 1"
+      },
+      tool_response: {
+        result: 2
+      },
+      cwd: "/workspace/tooltrace",
+      model: "gpt-5.4",
+      permission_mode: "default"
+    })
+  }),
+  "codex MCP PostToolUse hook"
+);
+
+await expectAccepted(
+  app.request(codexCliHookPath, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      session_id: codexSessionId,
+      hook_event_name: "PostToolUse",
+      turn_id: "codex_turn_1",
+      tool_name: "SlashCommand",
+      tool_use_id: "codex_tool_4",
+      tool_input: {
+        name: "openai-docs"
+      },
+      tool_response: {
+        ok: true
+      },
+      cwd: "/workspace/tooltrace",
+      model: "gpt-5.4",
+      permission_mode: "default"
+    })
+  }),
+  "codex skill PostToolUse hook"
+);
+
+await expectAccepted(
+  app.request(codexCliHookPath, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      session_id: codexSessionId,
       hook_event_name: "Stop",
       turn_id: "codex_turn_1",
       last_assistant_message: "Done.",
@@ -623,12 +695,23 @@ if (
   throw new Error("Expected Codex hook fallback token estimates to be summarized.");
 }
 
+if (
+  codexRun.metadata.summary.commandCount !== 1 ||
+  codexRun.metadata.summary.toolCount !== 1 ||
+  codexRun.metadata.summary.mcpCount !== 1 ||
+  codexRun.metadata.summary.skillCount !== 1 ||
+  !codexRun.metadata.summary.mcpTools?.includes("node_repl.js") ||
+  !codexRun.metadata.summary.skills?.includes("openai-docs")
+) {
+  throw new Error("Expected Codex hook ingestion to summarize commands, tools, MCP, and skills.");
+}
+
 const codexEventsResponse = await app.request(`/runs/${codexRunId}/events`);
 const codexEvents = await codexEventsResponse.json();
 const codexEventsJson = JSON.stringify(codexEvents);
 
-if (!Array.isArray(codexEvents) || codexEvents.length !== 4) {
-  throw new Error("Expected Codex hook ingestion to create four events.");
+if (!Array.isArray(codexEvents) || codexEvents.length !== 7) {
+  throw new Error("Expected Codex hook ingestion to create seven events.");
 }
 
 if (!codexEvents.some((event) => event.type === "run_started")) {
@@ -637,6 +720,14 @@ if (!codexEvents.some((event) => event.type === "run_started")) {
 
 if (!codexEvents.some((event) => event.name === "Bash command" && event.status === "success")) {
   throw new Error("Expected Codex PostToolUse to map to a successful tool event.");
+}
+
+if (!codexEvents.some((event) => event.name === "mcp:node_repl.js" && event.metadata?.category === "mcp")) {
+  throw new Error("Expected MCP tool names to map to MCP events.");
+}
+
+if (!codexEvents.some((event) => event.name === "skill:openai-docs" && event.metadata?.category === "skill")) {
+  throw new Error("Expected SlashCommand tool input names to map to skill events.");
 }
 
 if (codexEventsJson.includes(codexSecretPrompt)) {
@@ -731,12 +822,69 @@ const promptOnlyRun = Array.isArray(promptOnlyRuns)
   ? promptOnlyRuns.find((run) => run.id === codexPromptOnlyRunId)
   : undefined;
 
+if (promptOnlyRun !== undefined) {
+  throw new Error("Expected prompt-only Codex CLI runs to be hidden in the default runs list.");
+}
+
+const promptOnlyUntrackedRunsResponse = await app.request("/runs?includeUntracked=1");
+const promptOnlyUntrackedRuns = await promptOnlyUntrackedRunsResponse.json();
+const promptOnlyUntrackedRun = Array.isArray(promptOnlyUntrackedRuns)
+  ? promptOnlyUntrackedRuns.find((run) => run.id === codexPromptOnlyRunId)
+  : undefined;
+
 if (
-  promptOnlyRun?.metadata?.summary?.promptCount !== 1 ||
-  promptOnlyRun.metadata.summary.turnCount !== 1 ||
-  promptOnlyRun.metadata.summary.commandCount !== 0
+  promptOnlyUntrackedRun?.metadata?.summary?.promptCount !== 1 ||
+  promptOnlyUntrackedRun.metadata.summary.turnCount !== 1 ||
+  promptOnlyUntrackedRun.metadata.summary.commandCount !== 0 ||
+  (promptOnlyUntrackedRun.metadata.summary.tokenUsage?.total ?? 0) <= 0
 ) {
-  throw new Error("Expected prompt-only Codex CLI runs to be visible in the default runs list.");
+  throw new Error("Expected prompt-only Codex CLI runs to be available with includeUntracked=1.");
+}
+
+const codexExpansionSessionId = "codex_expansion_skill_smoke";
+const codexExpansionRunId = "run_codex_codex_expansion_skill_smoke";
+
+await expectAccepted(
+  app.request(codexCliHookPath, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      session_id: codexExpansionSessionId,
+      hook_event_name: "UserPromptExpansion",
+      turn_id: "codex_expansion_turn_1",
+      prompt: "expand without skill",
+      cwd: "/workspace/tooltrace"
+    })
+  }),
+  "codex unnamed UserPromptExpansion hook"
+);
+
+await expectAccepted(
+  app.request(codexCliHookPath, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      session_id: codexExpansionSessionId,
+      hook_event_name: "UserPromptExpansion",
+      turn_id: "codex_expansion_turn_1",
+      tool_input: {
+        name: "baoyu-translate"
+      },
+      cwd: "/workspace/tooltrace"
+    })
+  }),
+  "codex named UserPromptExpansion hook"
+);
+
+const codexExpansionEventsResponse = await app.request(`/runs/${codexExpansionRunId}/events`);
+const codexExpansionEvents = await codexExpansionEventsResponse.json();
+
+if (
+  !Array.isArray(codexExpansionEvents) ||
+  codexExpansionEvents.filter((event) => event.metadata?.category === "skill").length !== 1 ||
+  !codexExpansionEvents.some((event) => event.name === "skill:baoyu-translate")
+) {
+  throw new Error("Expected UserPromptExpansion to map to skill only when a skill name is present.");
 }
 
 await expectAccepted(
@@ -1404,7 +1552,7 @@ await expectAccepted(
   "Claude Code transcript-model Stop hook"
 );
 
-const claudeTranscriptRunsResponse = await app.request("/runs");
+const claudeTranscriptRunsResponse = await app.request("/runs?includeUntracked=1");
 const claudeTranscriptRuns = await claudeTranscriptRunsResponse.json();
 const claudeTranscriptRun = Array.isArray(claudeTranscriptRuns)
   ? claudeTranscriptRuns.find((run) => run.id === claudeTranscriptRunId)

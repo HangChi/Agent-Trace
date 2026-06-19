@@ -5,6 +5,7 @@ import { spawn, type ChildProcess } from "node:child_process";
 import {
   installHooks,
   uninstallHooks,
+  type CodexSurface,
   type HookScope,
   type HookTarget,
   type RedactionLevel
@@ -51,14 +52,18 @@ function runInstall(argv: string[]) {
   const target = parseTarget(positionals[0]);
   const scope = parseScope(flags.scope);
   const redaction = parseRedaction(flags.redaction);
+  const surface = parseSurface(target, flags.surface);
   const collectorUrl = flags["collector-url"];
 
-  const result = installHooks(target, { scope, redaction, collectorUrl });
+  const result = installHooks(target, { scope, redaction, collectorUrl, surface });
 
   console.log(`Installed ToolTrace tracing hooks for ${result.target} (${scope} scope).`);
   console.log(`Config: ${result.path}`);
   console.log(`Collector: ${result.collectorUrl}`);
   console.log(`Redaction: ${result.redaction}`);
+  if (result.surface) {
+    console.log(`Surface: ${result.surface}`);
+  }
   console.log(`Events: ${result.events.join(", ")}`);
 
   if (result.backupPath) {
@@ -128,6 +133,24 @@ function parseRedaction(value: string | undefined): RedactionLevel {
   }
 
   console.error(`Unsupported redaction level: ${value}. Only "metadata" is supported.`);
+  process.exit(1);
+}
+
+function parseSurface(target: HookTarget, value: string | undefined): CodexSurface | undefined {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  if (target !== "codex") {
+    console.error("--surface is only supported for the codex target.");
+    process.exit(1);
+  }
+
+  if (value === "cli" || value === "desktop") {
+    return value;
+  }
+
+  console.error(`Unsupported surface: ${value}. Use "cli" or "desktop".`);
   process.exit(1);
 }
 
@@ -295,7 +318,7 @@ Commands:
   uninstall  Remove ToolTrace-managed tracing hooks
 
 Targets:
-  codex      Codex CLI (~/.codex/hooks.json)
+  codex      Codex (~/.codex/hooks.json)
   claude-code  Claude Code (~/.claude/settings.json)
 `);
 }
@@ -304,12 +327,13 @@ function printInstallHelp() {
   console.log(`tooltrace install <target> [options]
 
 Targets:
-  codex                  Codex CLI (~/.codex/hooks.json)
+  codex                  Codex (~/.codex/hooks.json)
   claude-code            Claude Code (~/.claude/settings.json)
 
 Options:
   --scope <scope>        Config scope, default user (only user is supported)
   --redaction <level>    Redaction level, default metadata
+  --surface <surface>    Codex surface hint: cli or desktop, default cli
   --collector-url <url>  Collector base URL, default http://localhost:4319
 
 Environment:
@@ -320,7 +344,9 @@ Environment:
 A timestamped .tooltrace-backup file is created before the config is changed.
 Re-running install is safe; it replaces only the ToolTrace-managed entries.
 For Codex, install also configures JSON OTel logs for token usage; restart Codex
-after install so the new telemetry setting is loaded.
+after install so the new telemetry setting is loaded. Codex Desktop and CLI share
+the same Codex config, so the last codex install surface is the one that will be
+reported until you reinstall with another --surface value.
 `);
 }
 
@@ -328,7 +354,7 @@ function printUninstallHelp() {
   console.log(`tooltrace uninstall <target>
 
 Targets:
-  codex                  Codex CLI (~/.codex/hooks.json)
+  codex                  Codex (~/.codex/hooks.json)
   claude-code            Claude Code (~/.claude/settings.json)
 
 Removes only the ToolTrace-managed hook entries. User-defined hooks and other

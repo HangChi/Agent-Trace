@@ -15,9 +15,13 @@ node packages/cli/dist/index.js dev
 Install global hooks in another terminal:
 
 ```bash
-node packages/cli/dist/index.js install codex --scope user --redaction metadata
+node packages/cli/dist/index.js install codex --scope user --redaction metadata --surface cli
 node packages/cli/dist/index.js install claude-code --scope user --redaction metadata
 ```
+
+Codex Desktop and CLI share the same Codex config. Use
+`install codex --surface desktop` when the shared config is currently used by
+Codex Desktop; the last installed surface is the one ToolTrace reports.
 
 Run Codex or Claude Code normally, then open:
 

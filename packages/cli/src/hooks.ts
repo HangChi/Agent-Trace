@@ -8,10 +8,13 @@ export type RedactionLevel = "metadata";
 
 export type HookScope = "user";
 
+export type CodexSurface = "cli" | "desktop";
+
 export interface InstallOptions {
   collectorUrl?: string;
   redaction?: RedactionLevel;
   scope?: HookScope;
+  surface?: CodexSurface;
 }
 
 export interface InstallResult {
@@ -20,6 +23,7 @@ export interface InstallResult {
   backupPath?: string;
   collectorUrl: string;
   redaction: RedactionLevel;
+  surface?: CodexSurface;
   events: string[];
   codexOtel?: {
     path: string;
@@ -142,6 +146,7 @@ export function installHooks(target: HookTarget, options: InstallOptions = {}): 
     options.collectorUrl ?? process.env.TOOLTRACE_COLLECTOR_URL ?? DEFAULT_COLLECTOR_URL
   );
   const redaction = options.redaction ?? "metadata";
+  const surface = target === "codex" ? normalizeCodexSurface(options.surface) : undefined;
   const path = resolveSettingsPath(target);
   const config = readJsonObject(path);
   const hooks = asObject(config.hooks) ?? {};
@@ -151,7 +156,7 @@ export function installHooks(target: HookTarget, options: InstallOptions = {}): 
   removeManagedEntries(hooks);
   dropEmptyEventArrays(hooks);
 
-  const handler = buildHandler(target, collectorUrl, INTEGRATION_PATHS[target], redaction);
+  const handler = buildHandler(target, collectorUrl, INTEGRATION_PATHS[target], redaction, surface);
 
   for (const { event, matcher } of HOOK_EVENTS) {
     const group = asArray(hooks[event]) ?? [];
@@ -163,7 +168,7 @@ export function installHooks(target: HookTarget, options: InstallOptions = {}): 
 
   const backupPath = backupIfExists(path);
   writeJsonObject(path, config);
-  const codexOtel = target === "codex" ? installCodexOtelConfig(collectorUrl) : undefined;
+  const codexOtel = target === "codex" ? installCodexOtelConfig(collectorUrl, surface ?? "cli") : undefined;
 
   return {
     target,
@@ -171,17 +176,18 @@ export function installHooks(target: HookTarget, options: InstallOptions = {}): 
     backupPath,
     collectorUrl,
     redaction,
+    surface,
     events: HOOK_EVENTS.map((entry) => entry.event),
     codexOtel
   };
 }
 
-function installCodexOtelConfig(collectorUrl: string) {
+function installCodexOtelConfig(collectorUrl: string, surface: CodexSurface) {
   const path = resolveCodexConfigPath();
   const current = existsSync(path) ? readFileSync(path, "utf8") : "";
   const endpoint = appendQuery(`${collectorUrl}/integrations/codex/otel/v1/logs`, {
-    surface: "cli",
-    surface_source: "tooltrace-cli"
+    surface,
+    surface_source: `tooltrace-${surface}`
   });
   const next = upsertCodexOtelBlock(current, endpoint);
 
@@ -288,12 +294,22 @@ function buildHandler(
   target: HookTarget,
   collectorUrl: string,
   integrationPath: string,
-  redaction: RedactionLevel
+  redaction: RedactionLevel,
+  surface: CodexSurface | undefined
 ) {
+  const surfaceParams =
+    target === "codex"
+      ? {
+          surface: surface ?? "cli",
+          surface_source: `tooltrace-${surface ?? "cli"}`
+        }
+      : {
+          surface: "cli",
+          surface_source: `tooltrace-${target}`
+        };
   const url = appendQuery(`${collectorUrl}${integrationPath}`, {
     redaction,
-    surface: "cli",
-    surface_source: `tooltrace-${target}`
+    ...surfaceParams
   });
 
   if (target === "claude-code") {
@@ -383,6 +399,10 @@ function backupIfExists(path: string): string | undefined {
 
 function normalizeCollectorUrl(value: string): string {
   return value.endsWith("/") ? value.slice(0, -1) : value;
+}
+
+function normalizeCodexSurface(value: CodexSurface | undefined): CodexSurface {
+  return value ?? "cli";
 }
 
 function readJsonObject(path: string): Record<string, unknown> {
