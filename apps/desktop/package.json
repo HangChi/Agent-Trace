@@ -1,0 +1,70 @@
+{
+  "name": "@agent-trace/desktop",
+  "version": "0.0.0",
+  "description": "Local-first AI agent debugging dashboard.",
+  "author": "Agent-Trace",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "build": "node scripts/check.mjs",
+    "dev": "electron .",
+    "dist:win": "node scripts/package-win.mjs nsis",
+    "pack:win": "node scripts/package-win.mjs dir",
+    "prepare:icon": "node scripts/generate-icon.mjs",
+    "prepare:resources": "node scripts/prepare-dist.mjs"
+  },
+  "devDependencies": {
+    "@agent-trace/server": "workspace:*",
+    "@agent-trace/web": "workspace:*",
+    "electron": "^42.4.1",
+    "electron-builder": "^26.15.3",
+    "sharp": "^0.35.2"
+  },
+  "build": {
+    "appId": "dev.agent-trace.desktop",
+    "productName": "Agent-Trace",
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "assets/icon.ico",
+      "main.cjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/node",
+        "to": "node"
+      },
+      {
+        "from": "resources/server",
+        "to": "server"
+      },
+      {
+        "from": "resources/web",
+        "to": "web"
+      }
+    ],
+    "npmRebuild": false,
+    "asarUnpack": [
+      "node_modules/**/*.node"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true
+    }
+  }
+}

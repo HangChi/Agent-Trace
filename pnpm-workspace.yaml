@@ -2,7 +2,9 @@ packages:
   - "apps/*"
   - "packages/*"
   - "examples/*"
+verifyDepsBeforeRun: false
 allowBuilds:
   better-sqlite3: true
+  electron-winstaller: true
   esbuild: true
   sharp: true

@@ -4,6 +4,8 @@ dist/
 .turbo/
 .cache/
 coverage/
+apps/desktop/resources/
+apps/desktop/release/
 *.tsbuildinfo
 *.db
 *.db-shm

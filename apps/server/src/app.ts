@@ -20,7 +20,7 @@ export function createApp() {
   app.use("*", cors());
 
   app.get("/health", (c) => {
-    return c.json({ ok: true });
+    return c.json({ ok: true, service: "agent-trace" });
   });
 
   app.post("/runs", async (c) => {
