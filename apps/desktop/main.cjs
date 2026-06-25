@@ -3,7 +3,7 @@ const fs = require("node:fs");
 const net = require("node:net");
 const path = require("node:path");
 
-const { app, BrowserWindow, dialog, shell } = require("electron");
+const { app, BrowserWindow, dialog, Menu, shell, Tray } = require("electron");
 const tar = require("tar");
 
 const productName = "Agent-Trace";
@@ -11,18 +11,14 @@ const host = "127.0.0.1";
 const defaultCollectorPort = 4319;
 const defaultDashboardPort = 3000;
 const startupTimeoutMs = 60_000;
-const desktopSettingsFileName = "desktop-settings.json";
-const closeButtonBehaviorKey = "closeButtonBehavior";
 const closeBehaviorExit = "exit";
 const closeBehaviorMinimize = "minimize";
-const closeBehaviors = new Set([closeBehaviorExit, closeBehaviorMinimize]);
 
 let mainWindow;
+let tray;
 let dashboardUrl;
 let isQuitting = false;
 let isCloseDialogOpen = false;
-let closeBehaviorPreference;
-let hasLoadedCloseBehaviorPreference = false;
 const childProcesses = new Set();
 
 app.setName(productName);
@@ -31,22 +27,18 @@ if (!app.requestSingleInstanceLock()) {
   app.quit();
 } else {
   app.on("second-instance", () => {
-    if (!mainWindow) {
-      return;
-    }
+    showMainWindow();
 
-    if (mainWindow.isMinimized()) {
-      mainWindow.restore();
-    }
-
-    mainWindow.focus();
-
-    if (dashboardUrl) {
+    if (mainWindow && dashboardUrl) {
       mainWindow.loadURL(`${dashboardUrl}/runs`);
     }
   });
 
   app.whenReady().then(startDesktopApp);
+
+  app.on("activate", () => {
+    showMainWindow();
+  });
 
   app.on("window-all-closed", () => {
     app.quit();
@@ -102,6 +94,15 @@ function createWindow() {
     return { action: "deny" };
   });
 
+  window.on("minimize", (event) => {
+    if (isQuitting) {
+      return;
+    }
+
+    event.preventDefault();
+    hideWindowToTray(window);
+  });
+
   window.on("close", (event) => {
     handleWindowClose(event, window).catch((error) => {
       const message = error instanceof Error ? error.message : String(error);
@@ -120,13 +121,6 @@ async function handleWindowClose(event, window) {
 
   event.preventDefault();
 
-  const rememberedBehavior = getCloseBehaviorPreference();
-
-  if (rememberedBehavior) {
-    applyCloseBehavior(rememberedBehavior, window);
-    return;
-  }
-
   if (isCloseDialogOpen) {
     return;
   }
@@ -136,21 +130,15 @@ async function handleWindowClose(event, window) {
   try {
     const result = await dialog.showMessageBox(window, {
       type: "question",
-      buttons: ["退出程序", "最小化"],
-      defaultId: 1,
+      buttons: ["退出程序", "最小化到托盘"],
+      defaultId: 0,
       cancelId: 1,
       noLink: true,
-      checkboxLabel: "记住我的选择",
-      checkboxChecked: false,
       message: "关闭 Agent-Trace？",
-      detail: "退出会停止本次由桌面端启动的本地服务；最小化会让服务继续运行。"
+      detail: "退出会停止本次由桌面端启动的本地服务；最小化到托盘会让服务继续运行。"
     });
 
     const behavior = result.response === 0 ? closeBehaviorExit : closeBehaviorMinimize;
-
-    if (result.checkboxChecked) {
-      saveCloseBehaviorPreference(behavior);
-    }
 
     applyCloseBehavior(behavior, window);
   } finally {
@@ -164,60 +152,59 @@ function applyCloseBehavior(behavior, window) {
     return;
   }
 
-  window.minimize();
+  hideWindowToTray(window);
 }
 
 function quitDesktopApp() {
   isQuitting = true;
+
+  if (tray) {
+    tray.destroy();
+    tray = undefined;
+  }
+
   app.quit();
 }
 
-function getCloseBehaviorPreference() {
-  if (!hasLoadedCloseBehaviorPreference) {
-    const settings = readDesktopSettings();
-    const behavior = settings[closeButtonBehaviorKey];
+function hideWindowToTray(window) {
+  ensureTray();
+  window.hide();
+}
 
-    closeBehaviorPreference = closeBehaviors.has(behavior) ? behavior : undefined;
-    hasLoadedCloseBehaviorPreference = true;
+function showMainWindow() {
+  if (!mainWindow || mainWindow.isDestroyed()) {
+    return;
   }
 
-  return closeBehaviorPreference;
-}
-
-function saveCloseBehaviorPreference(behavior) {
-  const settings = readDesktopSettings();
-
-  settings[closeButtonBehaviorKey] = behavior;
-  writeDesktopSettings(settings);
-  closeBehaviorPreference = behavior;
-  hasLoadedCloseBehaviorPreference = true;
-}
-
-function readDesktopSettings() {
-  const settingsPath = getDesktopSettingsPath();
-
-  if (!fs.existsSync(settingsPath)) {
-    return {};
+  if (!mainWindow.isVisible()) {
+    mainWindow.show();
   }
 
-  try {
-    const settings = JSON.parse(fs.readFileSync(settingsPath, "utf8"));
-
-    return settings && typeof settings === "object" && !Array.isArray(settings) ? settings : {};
-  } catch {
-    return {};
+  if (mainWindow.isMinimized()) {
+    mainWindow.restore();
   }
+
+  mainWindow.focus();
 }
 
-function writeDesktopSettings(settings) {
-  const settingsPath = getDesktopSettingsPath();
+function ensureTray() {
+  if (tray) {
+    return tray;
+  }
 
-  fs.mkdirSync(path.dirname(settingsPath), { recursive: true });
-  fs.writeFileSync(settingsPath, `${JSON.stringify(settings, null, 2)}\n`);
-}
+  tray = new Tray(getWindowIconPath());
+  tray.setToolTip(productName);
+  tray.setContextMenu(
+    Menu.buildFromTemplate([
+      { label: "打开 Agent-Trace", click: showMainWindow },
+      { type: "separator" },
+      { label: "退出 Agent-Trace", click: quitDesktopApp }
+    ])
+  );
+  tray.on("click", showMainWindow);
+  tray.on("double-click", showMainWindow);
 
-function getDesktopSettingsPath() {
-  return path.join(app.getPath("userData"), desktopSettingsFileName);
+  return tray;
 }
 
 function getWindowIconPath() {
