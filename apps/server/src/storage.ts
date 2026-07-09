@@ -185,6 +185,36 @@ export async function createEvent(
   });
 }
 
+export async function upsertEvent(
+  event: CreateTraceEvent,
+  database: Database = defaultDb
+) {
+  const existing = await database.select().from(events).where(eq(events.id, event.id)).limit(1).get();
+  const values = {
+    runId: event.runId,
+    parentId: event.parentId,
+    type: event.type,
+    name: event.name,
+    status: event.status,
+    timestamp: event.timestamp ?? new Date().toISOString(),
+    durationMs: event.durationMs,
+    inputJson: stringifyJson(event.input),
+    outputJson: stringifyJson(event.output),
+    errorJson: stringifyJson(event.error),
+    metadataJson: stringifyJson(event.metadata)
+  };
+
+  if (!existing) {
+    await database.insert(events).values({
+      id: event.id,
+      ...values
+    });
+    return;
+  }
+
+  await database.update(events).set(values).where(eq(events.id, event.id));
+}
+
 export async function listRuns(
   options: ListRunsOptions = {},
   database: Database = defaultDb
@@ -385,6 +415,7 @@ function normalizeMetadataForDisplay(metadata: unknown): DashboardTraceMetadata 
 
 function summarizeEventsByRun(eventRows: Array<typeof events.$inferSelect>) {
   const summaries = new Map<string, EventSummary>();
+  const runIdsWithSessionScan = getRunIdsWithSessionScan(eventRows);
 
   for (const row of eventRows) {
     const metadata = asRecord(parseJson(row.metadataJson));
@@ -400,6 +431,7 @@ function summarizeEventsByRun(eventRows: Array<typeof events.$inferSelect>) {
         output: 0,
         total: 0
       },
+      costUsd: 0,
       unmodeledTokenUsage: {
         input: 0,
         output: 0,
@@ -429,6 +461,10 @@ function summarizeEventsByRun(eventRows: Array<typeof events.$inferSelect>) {
     const model = getString(metadata.model);
     const provider = getString(metadata.provider);
     const tokenUsage = asRecord(metadata.tokenUsage);
+    const hasSessionScan = runIdsWithSessionScan.has(row.runId);
+    const isSessionScan = isScanSessionUsage(tokenUsage);
+    const shouldAddTokenUsage = !hasSessionScan || isSessionScan;
+    const costUsd = shouldAddTokenUsage ? getNumber(metadata.costUsd) : 0;
 
     if (category === "command" || command !== undefined || toolKind === "command") {
       summary.commandCount += 1;
@@ -452,11 +488,15 @@ function summarizeEventsByRun(eventRows: Array<typeof events.$inferSelect>) {
       pushUnique(summary.tools, toolName ?? row.name);
     }
 
-    addTokenUsage(summary.tokenUsage, tokenUsage);
-    if (model !== undefined) {
+    if (shouldAddTokenUsage) {
+      addTokenUsage(summary.tokenUsage, tokenUsage);
+      summary.costUsd = (summary.costUsd ?? 0) + costUsd;
+    }
+
+    if (model !== undefined && shouldAddTokenUsage) {
       pushUnique(summary.models, model);
-      addModelUsage(summary.modelUsage, model, provider, tokenUsage);
-    } else {
+      addModelUsage(summary.modelUsage, model, provider, tokenUsage, costUsd);
+    } else if (shouldAddTokenUsage) {
       addTokenUsage(summary.unmodeledTokenUsage, tokenUsage);
     }
     summaries.set(row.runId, summary);
@@ -531,6 +571,24 @@ function shouldIncludeRunInList({
   }
 
   return visibleTotal > 0 || summary.hasErrorEvent;
+}
+
+function getRunIdsWithSessionScan(eventRows: Array<typeof events.$inferSelect>) {
+  const runIds = new Set<string>();
+
+  for (const row of eventRows) {
+    const tokenUsage = asRecord(asRecord(parseJson(row.metadataJson)).tokenUsage);
+
+    if (isScanSessionUsage(tokenUsage)) {
+      runIds.add(row.runId);
+    }
+  }
+
+  return runIds;
+}
+
+function isScanSessionUsage(tokenUsage: Record<string, unknown>) {
+  return tokenUsage.sourceKind === "scan" && tokenUsage.scope === "session";
 }
 
 function isStaleClosedRun(run: typeof runs.$inferSelect) {
@@ -692,13 +750,22 @@ function addTokenUsage(target: TokenUsage, source: Record<string, unknown>) {
   if (source.estimated === true) {
     target.estimated = true;
   }
+
+  if (source.sourceKind === "scan" || source.sourceKind === "official" || source.sourceKind === "estimate") {
+    target.sourceKind = source.sourceKind;
+  }
+
+  if (source.scope === "session" || source.scope === "event") {
+    target.scope = source.scope;
+  }
 }
 
 function addModelUsage(
   modelUsage: DashboardModelUsage[],
   model: string,
   provider: string | undefined,
-  source: Record<string, unknown>
+  source: Record<string, unknown>,
+  costUsd = 0
 ) {
   if (getNumber(source.total) === 0) {
     return;
@@ -722,6 +789,7 @@ function addModelUsage(
   }
 
   addTokenUsage(entry.tokenUsage, source);
+  entry.costUsd = addOptional(entry.costUsd, costUsd);
 }
 
 function attachUnmodeledTokenUsageToSingleModel(summary: EventSummary) {

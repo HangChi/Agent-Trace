@@ -2,7 +2,12 @@ import { createRunSchema, createTraceEventSchema, updateRunSchema } from "@agent
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 
-import { ingestAgentHook, ingestCodexOtelLogs, type AgentHookSource } from "./agent-hooks.js";
+import {
+  ingestAgentHook,
+  ingestCodexOtelLogs,
+  ingestUsageScan,
+  type AgentHookSource
+} from "./agent-hooks.js";
 import {
   createEvent,
   createRun,
@@ -79,6 +84,10 @@ export function createApp() {
 
   app.post("/integrations/claude-code/hook", async (c) => {
     return ingestHook(c, "claude-code");
+  });
+
+  app.post("/integrations/usage-scan", async (c) => {
+    return ingestUsageScanRequest(c);
   });
 
   app.get("/runs", async (c) => {
@@ -189,6 +198,30 @@ async function ingestCodexOtel(
 
   try {
     const result = await ingestCodexOtelLogs(body, getIngestHints(c.req, defaultHints));
+
+    return c.json({ ok: true, ...result }, 202);
+  } catch (error) {
+    return c.json(
+      {
+        ok: true,
+        stored: 0,
+        error: error instanceof Error ? error.message : String(error)
+      },
+      202
+    );
+  }
+}
+
+async function ingestUsageScanRequest(
+  c: {
+    req: { json: () => Promise<unknown> };
+    json: (value: unknown, status?: number) => Response;
+  }
+) {
+  const body = await readJson(c.req);
+
+  try {
+    const result = await ingestUsageScan(body);
 
     return c.json({ ok: true, ...result }, 202);
   } catch (error) {

@@ -33,6 +33,13 @@ pnpm --filter @agent-trace/cli build
 node packages/cli/dist/index.js dev
 ```
 
+To also scan local agent token/cost usage with `tokscale` while the dashboard
+runs:
+
+```bash
+node packages/cli/dist/index.js dev --usage-scan --usage-clients codex,claude,opencode,cursor,antigravity,kimi,qwen,copilot
+```
+
 During local development, you can also run the CLI from source:
 
 ```bash
@@ -124,6 +131,8 @@ node packages/cli/dist/index.js uninstall claude-code
 - `CODEX_HOME` and `CLAUDE_CONFIG_DIR` override the config directories; `AGENT_TRACE_COLLECTOR_URL` (or `--collector-url`) overrides the collector base URL.
 - By default, hooks use metadata redaction. Agent-Trace stores event names, tool names, executed shell commands, IDs, statuses, durations, models, official token usage when provided, local token estimates when official usage is missing, and payload sizes for non-command tool input/output. It does not store raw prompts, full non-command tool input/output, file contents, or hidden reasoning.
 - For the most accurate Codex token usage, configure the official Codex OTel JSON log exporter to `http://localhost:4319/integrations/codex/otel/v1/logs`; hook-only prompt/output token counts from Codex or Claude Code are estimated locally and marked as estimated.
+- For accurate cross-agent session totals, run `agent-trace usage --once` or `agent-trace usage --watch --interval-ms 15000`. This posts `tokscale` summary rows for Codex, Claude Code, OpenCode, Cursor, Antigravity, Kimi, Qwen, and GitHub Copilot CLI to `POST /integrations/usage-scan` without sending raw prompts, responses, files, or source logs.
+- Cost display prefers scanner-provided `costUsd`. Without scan cost, Agent-Trace only calculates cost for exact `AGENT_TRACE_MODEL_PRICES_JSON` entries; other models are shown as unpriced instead of guessed from stale built-in rates.
 
 To verify hook ingestion without running Codex or Claude Code, start the local collector and run:
 
@@ -158,6 +167,7 @@ pnpm --filter @agent-trace/schema build
 pnpm --filter @agent-trace/server db:init
 pnpm --filter @agent-trace/server dev
 pnpm --filter @agent-trace/web dev
+pnpm --filter @agent-trace/cli exec tsx src/index.ts usage --once
 pnpm --filter @agent-trace/sdk smoke
 pnpm --filter simple-agent dev
 node examples/agent-hook-smoke.mjs
@@ -183,7 +193,9 @@ pnpm --filter simple-agent dev
 - `PATCH /runs/:id`
 - `POST /events`
 - `POST /integrations/codex/hook`
+- `POST /integrations/codex/otel/v1/logs`
 - `POST /integrations/claude-code/hook`
+- `POST /integrations/usage-scan`
 - `GET /runs`
 - `GET /runs/:id/events`
 - `DELETE /runs/:id`

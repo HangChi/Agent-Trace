@@ -137,6 +137,10 @@ importers:
         version: 4.22.4
 
   packages/cli:
+    dependencies:
+      tokscale:
+        specifier: ^4.3.0
+        version: 4.3.0
     devDependencies:
       '@types/node':
         specifier: ^24.10.2
@@ -1600,6 +1604,54 @@ packages:
   '@tailwindcss/postcss@4.3.1':
     resolution: {integrity: sha512-dNJuNbdEJT/SWRuXTYP1WSamelsz3ztkUsdtWQPjrexysrTpaEPM40P/71knXiXLYEojqPOEGitVLLpPMS5T6A==}
 
+  '@tokscale/cli-darwin-arm64@4.3.0':
+    resolution: {integrity: sha512-uI94j2oIFB5khWnFXH8e40EI1b5BDYMgnx8Be1n85ItRvMlom6z59i8QnUQuywSqbe1ieizD+R5SZuW8tuP2eA==}
+    cpu: [arm64]
+    os: [darwin]
+
+  '@tokscale/cli-darwin-x64@4.3.0':
+    resolution: {integrity: sha512-kCrkg23KSpGz0sJgvC2Jqy/1tPVbhJ63Vh490No22TsIbBE8tXwz3bAXJLufYolpQ9JMfAjpZfB3INDK2Xrpcw==}
+    cpu: [x64]
+    os: [darwin]
+
+  '@tokscale/cli-linux-arm64-gnu@4.3.0':
+    resolution: {integrity: sha512-/srOJBb52KDeL9Xic0ZKSmpyc9YYMHqTmsFZxWs+dmekitK8wl25ONkVYnOWdQp4blLvkj74mISqJPKD8u1NoQ==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [glibc]
+
+  '@tokscale/cli-linux-arm64-musl@4.3.0':
+    resolution: {integrity: sha512-2mEgOWGleaneEKEYHiadd0e4avW6BfpVjHXCI5Q9EZnDCf4c45dBTatKWqdOwlHAP0/8cix+eDDgu5RpFcQbUg==}
+    cpu: [arm64]
+    os: [linux]
+    libc: [musl]
+
+  '@tokscale/cli-linux-x64-gnu@4.3.0':
+    resolution: {integrity: sha512-5yQbosUNJ50AzLX/80lf5ValPTMUdTPRISWT0N5Zkik0wYpfgJfa8avK3ACMC5dsFl1COuJ53Jz0moXt0033Nw==}
+    cpu: [x64]
+    os: [linux]
+    libc: [glibc]
+
+  '@tokscale/cli-linux-x64-musl@4.3.0':
+    resolution: {integrity: sha512-DhiAaZeQavXUFHgl7YUVSURKBLdYZVx3x2PTeBbaEoBVfLoX48pqBG+vzxRoOaFltee+4IynHGvOm7o+mqdcew==}
+    cpu: [x64]
+    os: [linux]
+    libc: [musl]
+
+  '@tokscale/cli-win32-arm64-msvc@4.3.0':
+    resolution: {integrity: sha512-28w/OrRVgJ6y5dY8HVq+iUIDorYbkBKoe4gUAcPG4Dd6Wils41fW3yJxrkwtiFdUaNVxA6ZJlmpNPQY5GBjmDg==}
+    cpu: [arm64]
+    os: [win32]
+
+  '@tokscale/cli-win32-x64-msvc@4.3.0':
+    resolution: {integrity: sha512-689Z5GX4iuhGiVzZGvR1zoE8bddzoVfzdeYXH/YDJBdmXnT4q250G6PsksmBQbMg3w/usBBLwIMAu/tu/8Tplw==}
+    cpu: [x64]
+    os: [win32]
+
+  '@tokscale/cli@4.3.0':
+    resolution: {integrity: sha512-RST3YrSIDz3WPBKA2K6+NdbM0xUCuW2TepjQbGvIxG1TzjWBb7lDolQYHpXXvA9lgkK8PhOoggCKUYs2FZwcoQ==}
+    hasBin: true
+
   '@types/better-sqlite3@7.6.13':
     resolution: {integrity: sha512-NMv9ASNARoKksWtsq/SHakpYAYnhBrQgGD8zkLYk/jaK8jUGn08CfEdTRgYhMypUQAfzSP8W6gNLe0q19/t4VA==}
 
@@ -2904,6 +2956,10 @@ packages:
   tmp@0.2.7:
     resolution: {integrity: sha512-e0votIpp4Uo2AJYSzVHV6xCcawuiez3DzqDAbrTc3YxBkplN6e+dM13ZeIcZnDg/QpSuU2zfZ3rzwY8ukEnaXw==}
     engines: {node: '>=14.14'}
+
+  tokscale@4.3.0:
+    resolution: {integrity: sha512-DQdDhHA9585q+Lhc11uboUVxLbNQbqGkIB+G6byg9MCnwR7fVrEf7y7AyC+LBNmj7fdK0Cv3dyDJmRPqIhg2Lg==}
+    hasBin: true
 
   truncate-utf8-bytes@1.0.2:
     resolution: {integrity: sha512-95Pu1QXQvruGEhv62XCMO3Mm90GscOCClvrIUwCM0PYOXK3kaF3l3sIHxx71ThJfcbM2O5Au6SO3AWCSEfW4mQ==}
@@ -4344,6 +4400,41 @@ snapshots:
       postcss: 8.5.15
       tailwindcss: 4.3.1
 
+  '@tokscale/cli-darwin-arm64@4.3.0':
+    optional: true
+
+  '@tokscale/cli-darwin-x64@4.3.0':
+    optional: true
+
+  '@tokscale/cli-linux-arm64-gnu@4.3.0':
+    optional: true
+
+  '@tokscale/cli-linux-arm64-musl@4.3.0':
+    optional: true
+
+  '@tokscale/cli-linux-x64-gnu@4.3.0':
+    optional: true
+
+  '@tokscale/cli-linux-x64-musl@4.3.0':
+    optional: true
+
+  '@tokscale/cli-win32-arm64-msvc@4.3.0':
+    optional: true
+
+  '@tokscale/cli-win32-x64-msvc@4.3.0':
+    optional: true
+
+  '@tokscale/cli@4.3.0':
+    optionalDependencies:
+      '@tokscale/cli-darwin-arm64': 4.3.0
+      '@tokscale/cli-darwin-x64': 4.3.0
+      '@tokscale/cli-linux-arm64-gnu': 4.3.0
+      '@tokscale/cli-linux-arm64-musl': 4.3.0
+      '@tokscale/cli-linux-x64-gnu': 4.3.0
+      '@tokscale/cli-linux-x64-musl': 4.3.0
+      '@tokscale/cli-win32-arm64-msvc': 4.3.0
+      '@tokscale/cli-win32-x64-msvc': 4.3.0
+
   '@types/better-sqlite3@7.6.13':
     dependencies:
       '@types/node': 24.13.2
@@ -5748,6 +5839,10 @@ snapshots:
       tmp: 0.2.7
 
   tmp@0.2.7: {}
+
+  tokscale@4.3.0:
+    dependencies:
+      '@tokscale/cli': 4.3.0
 
   truncate-utf8-bytes@1.0.2:
     dependencies:

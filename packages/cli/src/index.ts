@@ -12,6 +12,7 @@ import {
   type HookTarget,
   type RedactionLevel
 } from "./hooks.js";
+import { collectUsageOnce, watchUsage } from "./usage.js";
 
 const command = process.argv[2];
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -27,7 +28,17 @@ if (command === "dev") {
     process.exit(0);
   }
 
-  await runDev();
+  await runDev(process.argv.slice(3));
+  process.exit(0);
+}
+
+if (command === "usage") {
+  if (process.argv.includes("--help") || process.argv.includes("-h")) {
+    printUsageHelp();
+    process.exit(0);
+  }
+
+  await runUsage(process.argv.slice(3));
   process.exit(0);
 }
 
@@ -194,11 +205,15 @@ function parseFlags(argv: string[]) {
   return { flags, positionals };
 }
 
-async function runDev() {
+async function runDev(argv: string[] = []) {
+  const { flags } = parseFlags(argv);
   const serverPort = getEnv("AGENT_TRACE_SERVER_PORT", "TOOLTRACE_SERVER_PORT") ?? "4319";
   const webPort = getEnv("AGENT_TRACE_WEB_PORT", "TOOLTRACE_WEB_PORT") ?? "3000";
   const databasePath = getEnv("AGENT_TRACE_DB_PATH", "TOOLTRACE_DB_PATH");
   const serverUrl = `http://localhost:${serverPort}`;
+  const usageScan = flags["usage-scan"] === "true";
+  const usageClients = flags["usage-clients"] ?? process.env.AGENT_TRACE_USAGE_CLIENTS;
+  const usageIntervalMs = parsePositiveNumber(flags["usage-interval-ms"]) ?? 15_000;
   const children: ChildProcess[] = [];
 
   console.log("Starting Agent-Trace local dashboard...");
@@ -224,7 +239,20 @@ async function runDev() {
     })
   );
 
+  const usageAbortController = new AbortController();
+
+  if (usageScan) {
+    console.log(`Usage scan: enabled (${usageClients ?? "default clients"}, every ${usageIntervalMs}ms)`);
+    void watchUsage({
+      collectorUrl: serverUrl,
+      clients: usageClients,
+      intervalMs: usageIntervalMs,
+      signal: usageAbortController.signal
+    });
+  }
+
   const stop = () => {
+    usageAbortController.abort();
     for (const child of children) {
       child.kill();
     }
@@ -254,6 +282,48 @@ async function runDev() {
         })
     )
   );
+}
+
+async function runUsage(argv: string[]) {
+  const { flags } = parseFlags(argv);
+  const collectorUrl =
+    flags["collector-url"] ??
+    process.env.AGENT_TRACE_COLLECTOR_URL ??
+    process.env.AGENT_TRACE_ENDPOINT ??
+    process.env.TOOLTRACE_COLLECTOR_URL ??
+    process.env.TOOLTRACE_ENDPOINT;
+  const clients = flags.clients ?? flags["usage-clients"] ?? process.env.AGENT_TRACE_USAGE_CLIENTS;
+  const intervalMs = parsePositiveNumber(flags["interval-ms"]) ?? 15_000;
+  const commandTimeoutMs = parsePositiveNumber(flags["timeout-ms"]);
+
+  if (flags.watch === "true") {
+    const abortController = new AbortController();
+    process.once("SIGINT", () => {
+      abortController.abort();
+      process.exit(130);
+    });
+    process.once("SIGTERM", () => {
+      abortController.abort();
+      process.exit(143);
+    });
+
+    await watchUsage({
+      collectorUrl,
+      clients,
+      intervalMs,
+      commandTimeoutMs,
+      signal: abortController.signal
+    });
+    return;
+  }
+
+  const result = await collectUsageOnce({
+    collectorUrl,
+    clients,
+    commandTimeoutMs
+  });
+
+  console.log(`Posted ${result.rows} usage rows to Agent-Trace.`);
 }
 
 function runPnpm(args: string[], env: NodeJS.ProcessEnv = {}) {
@@ -313,16 +383,28 @@ function getEnv(primary: string, legacy: string) {
   return process.env[primary] ?? process.env[legacy];
 }
 
+function parsePositiveNumber(value: string | undefined) {
+  if (value === undefined) {
+    return undefined;
+  }
+
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
+}
+
 function printHelp() {
   console.log(`Agent-Trace CLI
 
 Usage:
   agent-trace dev
+  agent-trace usage [--once|--watch] [options]
   agent-trace install <target> [options]
   agent-trace uninstall <target>
 
 Commands:
   dev        Start the local collector and dashboard
+  usage      Scan local agent usage with tokscale and post summary rows
   install    Install global agent tracing hooks
   uninstall  Remove Agent-Trace-managed tracing hooks
 
@@ -384,6 +466,32 @@ Environment:
   AGENT_TRACE_DB_PATH       SQLite database path
   AGENT_TRACE_SERVER_PORT   Collector port, default 4319
   AGENT_TRACE_WEB_PORT      Dashboard port, default 3000
+  AGENT_TRACE_USAGE_CLIENTS Usage scanner clients
   TOOLTRACE_*               Legacy environment variable names are still accepted
+
+Options:
+  --usage-scan                 Enable local tokscale usage scanner
+  --usage-clients <clients>    Clients to scan, default codex,claude,opencode,cursor,antigravity,kimi,qwen,copilot
+  --usage-interval-ms <ms>     Scanner interval, default 15000
+`);
+}
+
+function printUsageHelp() {
+  console.log(`agent-trace usage [options]
+
+Scans local AI coding agent usage with tokscale and posts token/cost summaries to
+the local collector. Raw prompts, responses, and files are not sent.
+
+Options:
+  --once                    Run one scan, default behavior
+  --watch                   Keep scanning on an interval
+  --interval-ms <ms>        Watch interval, default 15000
+  --clients <clients>       Client list, default codex,claude,opencode,cursor,antigravity,kimi,qwen,copilot
+  --collector-url <url>     Collector base URL, default http://localhost:4319
+  --timeout-ms <ms>         tokscale command timeout, default 60000
+
+Environment:
+  AGENT_TRACE_TOKSCALE_BIN    tokscale executable override
+  AGENT_TRACE_USAGE_CLIENTS   Default client list
 `);
 }

@@ -12,6 +12,12 @@ pnpm --filter @agent-trace/cli build
 node packages/cli/dist/index.js dev
 ```
 
+To also scan local agent usage snapshots while the dashboard runs:
+
+```bash
+node packages/cli/dist/index.js dev --usage-scan --usage-clients codex,claude,opencode,cursor,antigravity,kimi,qwen,copilot
+```
+
 Install global hooks in another terminal:
 
 ```bash
@@ -64,6 +70,21 @@ Agent-Trace stores official usage numbers when the agent source provides them.
 When official usage is missing, it estimates exposed Codex and Claude Code hook
 prompt/output text locally with a tiktoken-compatible tokenizer and marks those
 values as `estimated`.
+
+For the most accurate local session totals, Agent-Trace can also run a
+`tokscale` usage scan and ingest the summary rows at
+`POST /integrations/usage-scan`. This path supports Codex, Claude Code,
+OpenCode, Cursor, Antigravity, Kimi, Qwen, and GitHub Copilot CLI in v1.
+
+```bash
+node packages/cli/dist/index.js usage --once
+node packages/cli/dist/index.js usage --watch --interval-ms 15000
+```
+
+Usage scan snapshots are stored as session-scoped token events with
+`metadata.tokenUsage.sourceKind = "scan"` and `scope = "session"`. When a scan
+snapshot exists for a run, the dashboard summary prefers that session total over
+hook-only text estimates to avoid double counting.
 
 The official usage parser recognizes the common response shapes from mainstream
 providers:
@@ -128,26 +149,23 @@ official token-counting endpoint or SDK where available.
 
 ## Cost Estimates
 
-The dashboard estimates API-equivalent cost from source-provided token usage.
-For OpenAI models, the built-in table uses the current Standard API rates per
-1M tokens. Cached input tokens use the cached-input rate, and generated tokens
-use the output rate.
+The dashboard prefers costs supplied by usage scans, because `tokscale` can keep
+its pricing data current outside the Agent-Trace release cycle. If a scan row
+contains `costUsd`, that stored cost is shown directly and converted to CNY when
+an exchange rate is available.
 
-Reasoning tokens are treated as billable output tokens. Some OpenAI responses
-report `output_tokens` with reasoning already included; some Codex telemetry
-streams expose visible output and `reasoningOutput` separately. Agent-Trace uses
-`total - input` when an official or derived total is available, so it includes
-separate reasoning tokens without double-counting responses where output already
-contains reasoning.
+When no stored cost is available, Agent-Trace only calculates cost for models
+that have an exact `AGENT_TRACE_MODEL_PRICES_JSON` or
+`TOOLTRACE_MODEL_PRICES_JSON` entry. Unconfigured models are shown as unpriced
+instead of being guessed from stale built-in rates.
 
-Anthropic cache usage is priced with the provider's cache multipliers: 5-minute
-cache writes at 1.25x input and cache reads at 0.1x input. You can override or
-add model rates with `AGENT_TRACE_MODEL_PRICES_JSON`. Model labels without a
-public rate, such as workflow-specific Codex labels, remain shown as unpriced.
-DeepSeek V4 pricing is also included: cache-hit input tokens use the lower
-cache-hit rate, cache-miss input tokens use the regular input rate, and output
-tokens use the output rate. The legacy `deepseek-chat` and `deepseek-reasoner`
-names are mapped to the DeepSeek V4 Flash compatibility pricing.
+```bash
+AGENT_TRACE_MODEL_PRICES_JSON='{"my-model":{"provider":"openai","input":1,"cachedInput":0.1,"output":5}}'
+```
+
+Reasoning tokens from scan rows are displayed separately but are not added on
+top of the scanner-provided `totalTokens`; the scanner/provider total remains
+authoritative.
 
 Set `AGENT_TRACE_ENDPOINT` to target a non-default collector:
 
@@ -166,6 +184,8 @@ The first tracing mode is `metadata`. In this mode Agent-Trace stores:
 - executed command text for command tools
 - official token usage when the source event provides it, or local estimates
   when exposed hook prompt/output text is the only available source
+- usage-scan summary rows from `tokscale`, including client, session, model,
+  aggregate token counts, aggregate USD cost, message count, and timestamps
 - payload sizes or text lengths for prompts and non-command tool input/output
 
 Agent-Trace does not store these fields by default:
@@ -174,6 +194,7 @@ Agent-Trace does not store these fields by default:
 - raw tool input or output
 - file contents
 - hidden model reasoning
+- raw `tokscale` source logs or transcript contents
 
 Future debug modes may opt in to richer content capture, but that should remain
 explicit and separate from the default metadata mode.
@@ -189,3 +210,6 @@ explicit and separate from the default metadata mode.
 - Token usage prefers source-provided official fields or Codex OTel. Hook-only
   prompt/output payloads from Codex or Claude Code use local estimates and are
   marked as estimated.
+- Usage scanning depends on local `tokscale` support for each agent. If
+  `tokscale` cannot read a client database or log directory, Agent-Trace keeps
+  showing hook and SDK data without failing the dashboard.

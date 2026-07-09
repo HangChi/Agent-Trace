@@ -3,6 +3,7 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { installHooks } from "./hooks.js";
+import { collectUsageOnce } from "./usage.js";
 
 const previousCodexHome = process.env.CODEX_HOME;
 const previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
@@ -104,6 +105,74 @@ try {
 
   if (process.platform === "win32" && (!claudeCommand.includes("curl.exe") || !claudeCommand.includes("-o NUL"))) {
     throw new Error("Expected Claude Code hook command to be Windows-safe on Windows.");
+  }
+
+  const postedUsageScans: Array<{ path: string; body: Record<string, unknown> }> = [];
+
+  await collectUsageOnce({
+    collectorUrl: "http://localhost:4319",
+    clients: "codex,claude",
+    runTokscale: async () => ({
+      rows: [
+        {
+          client: "codex",
+          sessionId: "codex_usage_smoke",
+          model: "gpt-5.4",
+          provider: "openai",
+          input: 100,
+          output: 20,
+          cacheRead: 10,
+          cacheWrite: 5,
+          reasoning: 7,
+          totalTokens: 135,
+          costUsd: 0.0025,
+          messageCount: 2,
+          prompt: "must not be forwarded"
+        },
+        {
+          client: "claude",
+          session_id: "claude_usage_smoke",
+          model: "claude-sonnet-4-6",
+          provider: "anthropic",
+          input_tokens: 300,
+          output_tokens: 40,
+          cache_read_tokens: 50,
+          cache_write_tokens: 10,
+          reasoning_tokens: 3,
+          total_tokens: 400,
+          cost_usd: 0.01
+        }
+      ]
+    }),
+    postJson: async (path, body) => {
+      postedUsageScans.push({ path, body: body as Record<string, unknown> });
+    }
+  });
+
+  const usageScan = postedUsageScans[0];
+  const usageRows = usageScan?.body.rows;
+  const serializedUsageScan = JSON.stringify(usageScan);
+
+  if (usageScan?.path !== "/integrations/usage-scan") {
+    throw new Error("Expected usage scanner to post to the usage-scan integration.");
+  }
+
+  if (!Array.isArray(usageRows) || usageRows.length !== 2) {
+    throw new Error("Expected usage scanner to post normalized usage rows.");
+  }
+
+  if (
+    usageRows[0]?.totalTokens !== 135 ||
+    usageRows[0]?.cacheReadTokens !== 10 ||
+    usageRows[0]?.cacheWriteTokens !== 5 ||
+    usageRows[0]?.reasoningTokens !== 7 ||
+    usageRows[0]?.costUsd !== 0.0025
+  ) {
+    throw new Error("Expected usage scanner to preserve token and cost summary fields.");
+  }
+
+  if (serializedUsageScan.includes("must not be forwarded")) {
+    throw new Error("Expected usage scanner to omit raw prompt-like fields.");
   }
 
   console.log("Agent-Trace CLI smoke test passed.");

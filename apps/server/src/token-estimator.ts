@@ -34,7 +34,9 @@ export function estimateTextTokenUsage(input: {
     total: count,
     estimated: true,
     method: `tiktoken:${encodingName}`,
-    source: `${input.source}-estimate`
+    source: `${input.source}-estimate`,
+    sourceKind: "estimate",
+    scope: "event"
   };
 }
 

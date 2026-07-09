@@ -30,7 +30,9 @@ export const tokenUsageSchema = z.object({
   reasoningOutput: z.number().int().nonnegative().optional(),
   estimated: z.boolean().optional(),
   method: z.string().optional(),
-  source: z.string().optional()
+  source: z.string().optional(),
+  sourceKind: z.enum(["official", "scan", "estimate"]).optional(),
+  scope: z.enum(["event", "session"]).optional()
 });
 
 export const traceMetadataSchema = z
@@ -47,7 +49,9 @@ export const traceMetadataSchema = z
     redactionLevel: z.string().optional(),
     provider: z.string().optional(),
     model: z.string().optional(),
-    tokenUsage: tokenUsageSchema.optional()
+    tokenUsage: tokenUsageSchema.optional(),
+    costUsd: z.number().nonnegative().optional(),
+    messageCount: z.number().int().nonnegative().optional()
   })
   .catchall(z.unknown());
 
@@ -109,6 +113,7 @@ export type DashboardModelUsage = {
   model: string;
   provider?: string;
   tokenUsage: TokenUsage;
+  costUsd?: number;
 };
 
 export type DashboardRunSummary = {
@@ -119,6 +124,7 @@ export type DashboardRunSummary = {
   promptCount: number;
   turnCount: number;
   tokenUsage: TokenUsage;
+  costUsd?: number;
   models: string[];
   modelUsage: DashboardModelUsage[];
   commands: string[];

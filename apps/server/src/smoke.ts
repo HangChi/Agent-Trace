@@ -1590,6 +1590,178 @@ if (
   throw new Error("Expected Claude Code transcript model usage to include transcript tokens.");
 }
 
+const usageScanRows = [
+  { client: "codex", agent: "codex", sessionId: "usage_scan_codex", model: "gpt-5.4" },
+  { client: "claude", agent: "claude-code", sessionId: "usage_scan_claude", model: "claude-sonnet-4-6" },
+  { client: "opencode", agent: "opencode", sessionId: "usage_scan_opencode", model: "opencode-model" },
+  { client: "cursor", agent: "cursor", sessionId: "usage_scan_cursor", model: "cursor-auto" },
+  {
+    client: "antigravity",
+    agent: "antigravity",
+    sessionId: "usage_scan_antigravity",
+    model: "gemini-2.5-pro"
+  },
+  { client: "kimi", agent: "kimi", sessionId: "usage_scan_kimi", model: "kimi-k2" },
+  { client: "qwen", agent: "qwen", sessionId: "usage_scan_qwen", model: "qwen3-coder" },
+  {
+    client: "copilot",
+    agent: "github-copilot",
+    sessionId: "usage_scan_copilot",
+    model: "gpt-5-mini"
+  }
+].map((row, index) => ({
+  ...row,
+  provider: index % 2 === 0 ? "openai" : "anthropic",
+  inputTokens: 100 + index,
+  outputTokens: 20 + index,
+  cacheReadTokens: 10,
+  cacheWriteTokens: 5,
+  reasoningTokens: 7,
+  totalTokens: 135 + index * 2,
+  costUsd: 0.001 + index / 1000,
+  messageCount: index + 1,
+  startedAt: new Date(Date.now() - 60_000 - index).toISOString(),
+  lastUsedAt: new Date(Date.now() - index).toISOString()
+}));
+
+await expectAccepted(
+  app.request("/integrations/usage-scan", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      source: "tokscale",
+      scannedAt: new Date().toISOString(),
+      rows: usageScanRows
+    })
+  }),
+  "usage scan ingestion"
+);
+
+await expectAccepted(
+  app.request("/integrations/usage-scan", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      source: "tokscale",
+      scannedAt: new Date().toISOString(),
+      rows: usageScanRows
+    })
+  }),
+  "duplicate usage scan ingestion"
+);
+
+const usageScanRunsResponse = await app.request("/runs?includeUntracked=1");
+const usageScanRuns = await usageScanRunsResponse.json();
+
+for (const row of usageScanRows) {
+  const runIdForRow = `run_${row.agent}_${row.sessionId}`;
+  const run = Array.isArray(usageScanRuns)
+    ? usageScanRuns.find((candidate: { id?: string }) => candidate.id === runIdForRow)
+    : undefined;
+  const summary = run?.metadata?.summary;
+  const modelUsage = summary?.modelUsage?.find((usage: { model?: string }) => usage.model === row.model);
+
+  if (run?.metadata?.agent !== row.agent) {
+    throw new Error(`Expected usage scan client ${row.client} to map to agent ${row.agent}.`);
+  }
+
+  if (
+    summary?.tokenUsage?.total !== row.totalTokens ||
+    summary.costUsd !== row.costUsd ||
+    modelUsage?.costUsd !== row.costUsd ||
+    modelUsage.tokenUsage.total !== row.totalTokens
+  ) {
+    throw new Error(`Expected usage scan summary for ${row.client} to use one upserted snapshot.`);
+  }
+}
+
+const scanPrecedenceSessionId = "usage_scan_precedence";
+const scanPrecedenceRunId = "run_codex_usage_scan_precedence";
+
+await expectAccepted(
+  app.request("/integrations/codex/hook", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      session_id: scanPrecedenceSessionId,
+      hook_event_name: "UserPromptSubmit",
+      prompt: "estimate-only prompt that should be replaced by scan totals",
+      model: "gpt-5.4"
+    })
+  }),
+  "usage scan precedence Codex prompt hook"
+);
+
+await expectAccepted(
+  app.request("/integrations/codex/hook", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      session_id: scanPrecedenceSessionId,
+      hook_event_name: "Stop",
+      last_assistant_message: "estimate-only output that should be replaced by scan totals",
+      model: "gpt-5.4"
+    })
+  }),
+  "usage scan precedence Codex stop hook"
+);
+
+await expectAccepted(
+  app.request("/integrations/usage-scan", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      source: "tokscale",
+      scannedAt: new Date().toISOString(),
+      rows: [
+        {
+          client: "codex",
+          sessionId: scanPrecedenceSessionId,
+          model: "gpt-5.4",
+          provider: "openai",
+          inputTokens: 100,
+          outputTokens: 20,
+          cacheReadTokens: 10,
+          cacheWriteTokens: 5,
+          reasoningTokens: 7,
+          totalTokens: 135,
+          costUsd: 0.0025,
+          messageCount: 2
+        }
+      ]
+    })
+  }),
+  "usage scan precedence scan"
+);
+
+const scanPrecedenceRunsResponse = await app.request("/runs?includeUntracked=1");
+const scanPrecedenceRuns = await scanPrecedenceRunsResponse.json();
+const scanPrecedenceRun = Array.isArray(scanPrecedenceRuns)
+  ? scanPrecedenceRuns.find((run) => run.id === scanPrecedenceRunId)
+  : undefined;
+const scanPrecedenceSummary = scanPrecedenceRun?.metadata?.summary;
+const scanPrecedenceUsage = scanPrecedenceSummary?.modelUsage?.[0];
+
+if (
+  scanPrecedenceSummary?.tokenUsage.total !== 135 ||
+  scanPrecedenceSummary.tokenUsage.reasoningOutput !== 7 ||
+  scanPrecedenceSummary.costUsd !== 0.0025 ||
+  scanPrecedenceUsage?.tokenUsage.sourceKind !== "scan" ||
+  scanPrecedenceUsage.tokenUsage.scope !== "session"
+) {
+  throw new Error("Expected usage scan snapshots to replace same-session hook estimates.");
+}
+
+const scanPrecedenceEventsResponse = await app.request(`/runs/${scanPrecedenceRunId}/events`);
+const scanPrecedenceEvents = await scanPrecedenceEventsResponse.json();
+const scanSnapshotEvents = Array.isArray(scanPrecedenceEvents)
+  ? scanPrecedenceEvents.filter((event) => event.name === "token_usage")
+  : [];
+
+if (scanSnapshotEvents.length !== 1) {
+  throw new Error("Expected repeated usage scans to upsert one deterministic token snapshot event.");
+}
+
 console.log("Agent-Trace API smoke test passed.");
 
 async function expectAccepted(responseResult: Response | Promise<Response>, label: string) {

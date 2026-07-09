@@ -39,7 +39,7 @@ export const copy = {
     runs: {
       title: "Agent \u8ffd\u8e2a\u53f0",
       subtitle:
-        "\u8ffd\u8e2a Codex\u3001Claude Code \u548c\u672c\u5730 Agent \u7684\u547d\u4ee4\u3001\u5de5\u5177\u3001skill\u3001MCP \u548c token\u3002",
+        "\u8ffd\u8e2a Codex\u3001Claude Code\u3001OpenCode\u3001Cursor\u3001Antigravity\u3001Kimi\u3001Qwen\u3001GitHub Copilot CLI \u548c\u672c\u5730 Agent \u7684\u547d\u4ee4\u3001\u5de5\u5177\u3001skill\u3001MCP \u548c token\u3002",
       allRuns: "\u5168\u90e8\u8fd0\u884c",
       agentSource: "Agent \u6765\u6e90",
       running: "\u8fdb\u884c\u4e2d",
@@ -148,7 +148,8 @@ export const copy = {
     },
     runs: {
       title: "Agent Trace Console",
-      subtitle: "Track Codex, Claude Code, and local agent commands, tools, skills, MCP calls, and tokens.",
+      subtitle:
+        "Track Codex, Claude Code, OpenCode, Cursor, Antigravity, Kimi, Qwen, GitHub Copilot CLI, and local agent commands, tools, skills, MCP calls, and tokens.",
       allRuns: "All runs",
       agentSource: "Agent source",
       running: "Running",
@@ -241,15 +242,19 @@ export const copy = {
 } as const;
 
 export function formatAgent(agent: string, locale: Locale) {
-  if (agent === "codex") {
-    return "Codex";
-  }
+  const labels: Record<string, string> = {
+    codex: "Codex",
+    "claude-code": "Claude Code",
+    opencode: "OpenCode",
+    cursor: "Cursor",
+    antigravity: "Antigravity",
+    kimi: "Kimi",
+    qwen: "Qwen",
+    "github-copilot": "GitHub Copilot CLI",
+    manual: locale === "zh" ? "\u624b\u52a8" : "Manual"
+  };
 
-  if (agent === "claude-code") {
-    return "Claude Code";
-  }
-
-  return locale === "zh" ? "\u624b\u52a8" : "Manual";
+  return labels[agent] ?? agent;
 }
 
 export function formatStatus(status: string, locale: Locale) {
@@ -279,12 +284,14 @@ export function formatSurface(surface: string | undefined, locale: Locale) {
       cli: "\u7ec8\u7aef/CLI",
       desktop: "\u684c\u9762\u7aef",
       web: "\u7f51\u9875\u7aef",
+      local: "\u672c\u5730\u626b\u63cf",
       unknown: "\u672a\u6807\u8bb0\u7aef"
     },
     en: {
       cli: "CLI",
       desktop: "Desktop",
       web: "Web",
+      local: "Local scan",
       unknown: "Unmarked"
     }
   };

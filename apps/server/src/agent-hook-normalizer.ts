@@ -1329,7 +1329,11 @@ function parseBedrockUsage(usage: Record<string, unknown>, source: string): Toke
 
 function compactTokenUsage(usage: TokenUsage): TokenUsage {
   return Object.fromEntries(
-    Object.entries(usage).filter(([, entry]) => entry !== undefined)
+    Object.entries({
+      sourceKind: "official",
+      scope: "event",
+      ...usage
+    }).filter(([, entry]) => entry !== undefined)
   ) as TokenUsage;
 }
 

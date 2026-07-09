@@ -1,4 +1,4 @@
-import { createEvent, createRun, getRunById, updateRun } from "./storage.js";
+import { createEvent, createRun, getRunById, updateRun, upsertEvent } from "./storage.js";
 import {
   knownHookEvents,
   normalizeAgentHook,
@@ -7,6 +7,7 @@ import {
   type IngestHints,
   type NormalizedTrace
 } from "./agent-hook-normalizer.js";
+import { normalizeUsageScan } from "./usage-scan.js";
 
 export type { AgentHookSource } from "./agent-hook-normalizer.js";
 export { knownHookEvents, normalizeAgentHook, normalizeCodexOtelLogs };
@@ -30,6 +31,30 @@ export async function ingestCodexOtelLogs(payload: unknown, hints: IngestHints =
 
   for (const trace of normalized) {
     await persistTrace(trace);
+  }
+
+  return {
+    stored: normalized.length,
+    eventIds: normalized.map((trace) => trace.event.id),
+    runIds: [...new Set(normalized.map((trace) => trace.run.id))]
+  };
+}
+
+export async function ingestUsageScan(payload: unknown) {
+  const normalized = normalizeUsageScan(payload);
+
+  for (const trace of normalized) {
+    const existingRun = await getRunById(trace.run.id);
+
+    if (!existingRun) {
+      await createRun(trace.run);
+      await updateRun(trace.run.id, {
+        status: "success",
+        endedAt: trace.event.timestamp
+      });
+    }
+
+    await upsertEvent(trace.event);
   }
 
   return {
