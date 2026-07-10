@@ -1,12 +1,12 @@
-import { mkdtempSync, readFileSync, rmSync } from "node:fs";
+import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
-import { join } from "node:path";
+import { dirname, join } from "node:path";
 
+import { findUncoveredCodexHistories } from "./codex-history.js";
 import { installHooks } from "./hooks.js";
 import {
   collectUsageClientDiagnostics,
   collectUsageOnce,
-  DEFAULT_USAGE_CLIENTS,
   syncUsageClients
 } from "./usage.js";
 
@@ -192,6 +192,7 @@ try {
 
   await collectUsageOnce({
     collectorUrl: "http://localhost:4319",
+    home: join(codexHome, "empty-usage-home"),
     runTokscale: async (clients) => {
       observedDefaultClients = clients;
       return { entries: [] };
@@ -199,14 +200,95 @@ try {
     postJson: async () => {}
   });
 
-  for (const client of ["hermes", "openclaw", "cline", "zed", "kiro", "codebuddy", "workbuddy"]) {
-    if (!DEFAULT_USAGE_CLIENTS.split(",").includes(client)) {
-      throw new Error(`Expected default usage clients to include Token Monitor client ${client}.`);
-    }
+  if (observedDefaultClients !== undefined) {
+    throw new Error("Expected the default usage scan to include every tokscale client without a filter.");
   }
 
-  if (observedDefaultClients !== DEFAULT_USAGE_CLIENTS) {
-    throw new Error("Expected usage scanner to use the expanded default client list.");
+  const activeDuplicate = join(
+    usageHome,
+    ".codex",
+    "sessions",
+    "2026",
+    "07",
+    "10",
+    "rollout-2026-07-10T10-00-00-active-duplicate.jsonl"
+  );
+  const archivedDuplicate = join(
+    usageHome,
+    ".codex",
+    "archived_sessions",
+    "rollout-2026-07-10T10-01-00-archived-duplicate.jsonl"
+  );
+  const uniqueArchive = join(
+    usageHome,
+    ".codex",
+    "archived_sessions",
+    "rollout-2026-07-10T11-00-00-unique-archive.jsonl"
+  );
+
+  writeCodexUsageFixture(activeDuplicate, "active-duplicate", "2026-07-10T02:00:00.000Z", 135);
+  writeCodexUsageFixture(archivedDuplicate, "archived-duplicate", "2026-07-10T02:00:00.000Z", 135);
+  writeCodexUsageFixture(uniqueArchive, "unique-archive", "2026-07-10T03:00:00.000Z", 246);
+
+  const reconciliation = await findUncoveredCodexHistories(usageHome, [
+    "rollout-2026-07-10T10-00-00-active-duplicate"
+  ]);
+
+  if (reconciliation.files.length !== 1 || reconciliation.files[0] !== uniqueArchive) {
+    throw new Error("Expected Codex history reconciliation to deduplicate active/archive copies and keep unique archives.");
+  }
+
+  const supplementHome = join(codexHome, "supplement-home");
+  const supplementArchive = join(
+    supplementHome,
+    ".codex",
+    "archived_sessions",
+    "rollout-2026-07-10T12-00-00-supplement-only.jsonl"
+  );
+  const supplementPosts: Array<Record<string, unknown>> = [];
+  const supplementScanHomes: Array<string | undefined> = [];
+  writeCodexUsageFixture(supplementArchive, "supplement-only", "2026-07-10T04:00:00.000Z", 357);
+
+  await collectUsageOnce({
+    clients: "codex",
+    home: supplementHome,
+    runTokscale: async (_clients, _timeoutMs, scanHome) => {
+      supplementScanHomes.push(scanHome);
+
+      return scanHome === supplementHome
+        ? { entries: [] }
+        : {
+            entries: [
+              {
+                client: "codex",
+                sessionId: "rollout-2026-07-10T12-00-00-supplement-only",
+                model: "gpt-5.5",
+                provider: "openai",
+                input: 300,
+                output: 35,
+                cacheRead: 22,
+                reasoning: 7,
+                cost: 0.001
+              }
+            ]
+          };
+    },
+    postJson: async (_path, body) => {
+      supplementPosts.push(body as Record<string, unknown>);
+    }
+  });
+
+  const supplementedRows = supplementPosts[0]?.rows;
+
+  if (
+    supplementScanHomes.length !== 2 ||
+    supplementScanHomes[0] !== supplementHome ||
+    supplementScanHomes[1] === supplementHome ||
+    !Array.isArray(supplementedRows) ||
+    supplementedRows.length !== 1 ||
+    supplementedRows[0]?.totalTokens !== 357
+  ) {
+    throw new Error("Expected unique archived Codex history to be rescanned through an isolated tokscale home.");
   }
 
   const diagnostics = await collectUsageClientDiagnostics({
@@ -278,4 +360,51 @@ try {
 
   rmSync(codexHome, { recursive: true, force: true });
   rmSync(claudeConfigDir, { recursive: true, force: true });
+}
+
+function writeCodexUsageFixture(
+  path: string,
+  sessionId: string,
+  timestamp: string,
+  totalTokens: number
+) {
+  mkdirSync(dirname(path), { recursive: true });
+  const inputTokens = totalTokens - 35;
+  const events = [
+    {
+      timestamp,
+      type: "session_meta",
+      payload: { id: sessionId }
+    },
+    {
+      timestamp,
+      type: "turn_context",
+      payload: { model: "gpt-5.5" }
+    },
+    {
+      timestamp,
+      type: "event_msg",
+      payload: {
+        type: "token_count",
+        info: {
+          total_token_usage: {
+            input_tokens: inputTokens,
+            cached_input_tokens: 10,
+            output_tokens: 35,
+            reasoning_output_tokens: 7,
+            total_tokens: totalTokens
+          },
+          last_token_usage: {
+            input_tokens: inputTokens,
+            cached_input_tokens: 10,
+            output_tokens: 35,
+            reasoning_output_tokens: 7,
+            total_tokens: totalTokens
+          }
+        }
+      }
+    }
+  ];
+
+  writeFileSync(path, `${events.map((event) => JSON.stringify(event)).join("\n")}\n`, "utf8");
 }

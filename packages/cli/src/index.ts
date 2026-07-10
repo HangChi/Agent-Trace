@@ -15,7 +15,6 @@ import {
 import {
   collectUsageClientDiagnostics,
   collectUsageOnce,
-  DEFAULT_USAGE_CLIENTS,
   syncUsageClients,
   watchUsage
 } from "./usage.js";
@@ -251,7 +250,7 @@ async function runDev(argv: string[] = []) {
 
   if (usageScan) {
     console.log(
-      `Usage scan: enabled (${usageClients ?? "default clients"}, every ${usageIntervalMs}ms${usageSync ? ", sync first" : ""})`
+      `Usage scan: enabled (${usageClients ?? "all tokscale clients"}, every ${usageIntervalMs}ms${usageSync ? ", sync first" : ""})`
     );
     void watchUsage({
       collectorUrl: serverUrl,
@@ -561,7 +560,7 @@ Environment:
 Options:
   --usage-scan                 Enable local tokscale usage scanner
   --usage-sync                 Run supported tokscale sync commands before scanner cycles
-  --usage-clients <clients>    Clients to scan, default ${DEFAULT_USAGE_CLIENTS}
+  --usage-clients <clients>    Clients to scan, default all tokscale clients
   --usage-home <path>          Local home directory passed to tokscale
   --usage-interval-ms <ms>     Scanner interval, default 15000
 `);
@@ -581,7 +580,7 @@ Options:
   --sync                    Run supported tokscale sync commands before scanning
   --json                    Print JSON for clients/sync subcommands
   --interval-ms <ms>        Watch interval, default 15000
-  --clients <clients>       Client list, default ${DEFAULT_USAGE_CLIENTS}
+  --clients <clients>       Client list, default all tokscale clients
   --home <path>             Local home directory passed to tokscale
   --collector-url <url>     Collector base URL, default http://localhost:4319
   --timeout-ms <ms>         tokscale command timeout, default 60000

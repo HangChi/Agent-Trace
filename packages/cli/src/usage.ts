@@ -1,8 +1,11 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
-import { homedir } from "node:os";
-import { dirname, resolve } from "node:path";
+import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
+import { homedir, tmpdir } from "node:os";
+import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
+
+import { findUncoveredCodexHistories } from "./codex-history.js";
 
 export type UsageScanOptions = {
   collectorUrl?: string;
@@ -11,7 +14,7 @@ export type UsageScanOptions = {
   home?: string;
   sync?: boolean;
   tokscaleCommand?: string;
-  runTokscale?: (clients: string, commandTimeoutMs: number, home: string | undefined) => Promise<unknown>;
+  runTokscale?: (clients: string | undefined, commandTimeoutMs: number, home: string | undefined) => Promise<unknown>;
   runTokscaleClients?: (home: string | undefined, commandTimeoutMs: number) => Promise<unknown>;
   runTokscaleCommand?: (args: string[], commandTimeoutMs: number) => Promise<TokscaleCommandResult>;
   postJson?: (path: string, body: unknown) => Promise<void>;
@@ -60,32 +63,6 @@ type UsageRow = {
 };
 
 const defaultCollectorUrl = "http://localhost:4319";
-export const DEFAULT_USAGE_CLIENTS = [
-  "codex",
-  "claude",
-  "opencode",
-  "cursor",
-  "antigravity",
-  "kimi",
-  "qwen",
-  "copilot",
-  "trae",
-  "warp",
-  "cline",
-  "zed",
-  "kiro",
-  "grok",
-  "codebuddy",
-  "workbuddy",
-  "openclaw",
-  "hermes",
-  "kilo",
-  "kilocode",
-  "roocode",
-  "goose",
-  "gemini"
-].join(",");
-
 const autoSyncClients = "cursor,antigravity,trae,warp";
 const defaultCommandTimeoutMs = 60_000;
 
@@ -130,11 +107,12 @@ export async function collectUsageOnce(options: UsageScanOptions = {}) {
       process.env.TOOLTRACE_ENDPOINT ??
       defaultCollectorUrl
   );
-  const clients = normalizeClients(options.clients ?? process.env.AGENT_TRACE_USAGE_CLIENTS ?? DEFAULT_USAGE_CLIENTS);
+  const configuredClients = options.clients ?? process.env.AGENT_TRACE_USAGE_CLIENTS;
+  const clients = configuredClients === undefined ? undefined : normalizeClients(configuredClients);
   const commandTimeoutMs = options.commandTimeoutMs ?? defaultCommandTimeoutMs;
   const home = normalizeHome(options.home ?? process.env.AGENT_TRACE_USAGE_HOME ?? process.env.TOKSCALE_HOME ?? homedir());
-  const runTokscale = options.runTokscale ?? ((clientCsv, timeoutMs) =>
-    runTokscaleJson(clientCsv, timeoutMs, home, options.tokscaleCommand));
+  const runTokscale = options.runTokscale ?? ((clientCsv, timeoutMs, scanHome) =>
+    runTokscaleJson(clientCsv, timeoutMs, scanHome, options.tokscaleCommand));
   const postJson = options.postJson ?? ((path, body) => postCollectorJson(collectorUrl, path, body));
 
   if (options.sync) {
@@ -148,7 +126,23 @@ export async function collectUsageOnce(options: UsageScanOptions = {}) {
   }
 
   const raw = await runTokscale(clients, commandTimeoutMs, home);
-  const rows = normalizeTokscaleUsage(raw);
+  const primaryRows = normalizeTokscaleUsage(raw);
+  const reconciliation = shouldReconcileCodex(clients) && home
+    ? await findUncoveredCodexHistories(
+        home,
+        primaryRows
+          .filter((row) => row.client === "codex" && row.sessionId)
+          .map((row) => row.sessionId!)
+      )
+    : { files: [], diagnostics: [] };
+  const supplementalRows = reconciliation.files.length > 0
+    ? await scanSupplementalCodexHistories(
+        reconciliation.files,
+        commandTimeoutMs,
+        runTokscale
+      )
+    : [];
+  const rows = mergeUsageRows(primaryRows, supplementalRows);
   const diagnostics = [
     ...(await collectDiagnosticsForScan({
       commandTimeoutMs,
@@ -157,11 +151,13 @@ export async function collectUsageOnce(options: UsageScanOptions = {}) {
       runTokscaleClients: options.runTokscaleClients,
       skipClientDiagnostics: options.runTokscale !== undefined && options.runTokscaleClients === undefined
     })),
-    ...getUsageWarningDiagnostics(raw)
+    ...getUsageWarningDiagnostics(raw),
+    ...reconciliation.diagnostics
   ];
 
   await postJson("/integrations/usage-scan", {
     source: "tokscale",
+    complete: true,
     scannedAt: new Date().toISOString(),
     rows,
     diagnostics: diagnostics.length > 0 ? mergeDiagnostics(diagnostics) : undefined
@@ -209,7 +205,7 @@ export async function syncUsageClients(
     "clients" | "commandTimeoutMs" | "home" | "tokscaleCommand" | "runTokscaleCommand"
   > = {}
 ): Promise<UsageDiagnostic[]> {
-  const clients = normalizeClients(options.clients ?? autoSyncClients).split(",").filter(Boolean);
+  const clients = (normalizeClients(options.clients ?? autoSyncClients) ?? "").split(",").filter(Boolean);
   const commandTimeoutMs = options.commandTimeoutMs ?? defaultCommandTimeoutMs;
   const home = normalizeHome(options.home ?? process.env.AGENT_TRACE_USAGE_HOME ?? process.env.TOKSCALE_HOME ?? homedir());
   const runCommand =
@@ -261,6 +257,48 @@ export function normalizeTokscaleUsage(value: unknown): UsageRow[] {
   collectUsageRows(value, rows);
 
   return rows.map(normalizeUsageRow).filter((row): row is UsageRow => row !== undefined);
+}
+
+async function scanSupplementalCodexHistories(
+  files: string[],
+  commandTimeoutMs: number,
+  runTokscale: NonNullable<UsageScanOptions["runTokscale"]>
+) {
+  const temporaryHome = await mkdtemp(join(tmpdir(), "agent-trace-codex-history-"));
+
+  try {
+    const sessionsRoot = join(temporaryHome, ".codex", "sessions");
+
+    for (const [index, source] of files.entries()) {
+      const targetDir = join(sessionsRoot, String(index));
+      await mkdir(targetDir, { recursive: true });
+      await copyFile(source, join(targetDir, basename(source)));
+    }
+
+    const raw = await runTokscale("codex", commandTimeoutMs, temporaryHome);
+
+    return normalizeTokscaleUsage(raw);
+  } finally {
+    await rm(temporaryHome, { recursive: true, force: true });
+  }
+}
+
+function mergeUsageRows(primary: UsageRow[], supplemental: UsageRow[]) {
+  const rows = new Map<string, UsageRow>();
+
+  for (const row of [...primary, ...supplemental]) {
+    const key = [row.client, row.sessionId ?? "", row.model ?? "", row.provider ?? ""].join("\0");
+
+    if (!rows.has(key)) {
+      rows.set(key, row);
+    }
+  }
+
+  return [...rows.values()];
+}
+
+function shouldReconcileCodex(clients: string | undefined) {
+  return clients === undefined || clients.split(",").includes("codex");
 }
 
 function normalizeTokscaleClientDiagnostics(value: unknown): UsageDiagnostic[] {
@@ -369,12 +407,16 @@ function mergeDiagnostics(diagnostics: UsageDiagnostic[]) {
 }
 
 function runTokscaleJson(
-  clients: string,
+  clients: string | undefined,
   commandTimeoutMs: number,
   home: string | undefined,
   command?: string
 ) {
-  const args = ["--json", "--client", clients, "--group-by", "client,session,model"];
+  const args = ["--json", "--group-by", "client,session,model"];
+
+  if (clients) {
+    args.splice(1, 0, "--client", clients);
+  }
 
   if (home) {
     args.push("--home", home);
@@ -723,11 +765,13 @@ function normalizeProvider(value: string | undefined) {
 }
 
 function normalizeClients(value: string) {
-  return value
+  const clients = value
     .split(",")
     .map((client) => normalizeClient(client))
     .filter((client): client is string => Boolean(client))
     .join(",");
+
+  return clients || undefined;
 }
 
 function normalizeIso(value: string | undefined) {
