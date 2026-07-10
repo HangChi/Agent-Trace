@@ -3,6 +3,7 @@ dist/
 .next/
 .turbo/
 .cache/
+.worktrees/
 coverage/
 apps/desktop/resources/
 apps/desktop/release/
