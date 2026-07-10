@@ -158,6 +158,7 @@ export async function collectUsageOnce(options: UsageScanOptions = {}) {
   await postJson("/integrations/usage-scan", {
     source: "tokscale",
     complete: true,
+    scanClients: clients?.split(","),
     scannedAt: new Date().toISOString(),
     rows,
     diagnostics: diagnostics.length > 0 ? mergeDiagnostics(diagnostics) : undefined

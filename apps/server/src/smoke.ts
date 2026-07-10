@@ -1892,7 +1892,112 @@ if (
   throw new Error("Expected Codex rollout usage scans to merge into the existing UUID run with scanner totals.");
 }
 
+const replacementKeepSessionId = "usage_snapshot_keep";
+const replacementStaleSessionId = "usage_snapshot_stale";
+const replacementKeepRunId = `run_codex_${replacementKeepSessionId}`;
+const replacementStaleRunId = `run_codex_${replacementStaleSessionId}`;
+
+await expectAccepted(
+  app.request("/integrations/codex/hook", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      session_id: replacementKeepSessionId,
+      hook_event_name: "UserPromptSubmit",
+      prompt: "hook event must survive complete scan replacement",
+      model: "gpt-5.5"
+    })
+  }),
+  "usage replacement hook"
+);
+
+await expectAccepted(
+  app.request("/integrations/usage-scan", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      source: "tokscale",
+      complete: true,
+      scannedAt: new Date().toISOString(),
+      rows: [
+        usageReplacementRow(replacementKeepSessionId, 100),
+        usageReplacementRow(replacementStaleSessionId, 200)
+      ]
+    })
+  }),
+  "initial complete usage replacement"
+);
+
+await expectAccepted(
+  app.request("/integrations/usage-scan", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      source: "tokscale",
+      complete: true,
+      scannedAt: new Date().toISOString(),
+      rows: [usageReplacementRow(replacementKeepSessionId, 150)]
+    })
+  }),
+  "updated complete usage replacement"
+);
+
+const replacementRunsResponse = await app.request("/runs?includeUntracked=1");
+const replacementRuns = await replacementRunsResponse.json();
+const replacementKeepEventsResponse = await app.request(`/runs/${replacementKeepRunId}/events`);
+const replacementKeepEvents = await replacementKeepEventsResponse.json();
+
+if (
+  !Array.isArray(replacementRuns) ||
+  replacementRuns.some((run) => run.id === replacementStaleRunId) ||
+  !Array.isArray(replacementKeepEvents) ||
+  !replacementKeepEvents.some((event) => event.name === "user_prompt") ||
+  !replacementKeepEvents.some((event) => event.name === "token_usage")
+) {
+  throw new Error("Expected complete usage replacement to prune stale scans without deleting hook events.");
+}
+
+await expectAccepted(
+  app.request("/integrations/usage-scan", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      source: "tokscale",
+      complete: false,
+      scannedAt: new Date().toISOString(),
+      rows: []
+    })
+  }),
+  "incomplete usage replacement"
+);
+
+const afterIncompleteEventsResponse = await app.request(`/runs/${replacementKeepRunId}/events`);
+const afterIncompleteEvents = await afterIncompleteEventsResponse.json();
+
+if (
+  !Array.isArray(afterIncompleteEvents) ||
+  !afterIncompleteEvents.some((event) => event.name === "token_usage")
+) {
+  throw new Error("Expected incomplete usage scans to preserve the last successful snapshot.");
+}
+
 console.log("Agent-Trace API smoke test passed.");
+
+function usageReplacementRow(sessionId: string, totalTokens: number) {
+  return {
+    client: "codex",
+    sessionId,
+    model: "gpt-5.5",
+    provider: "openai",
+    inputTokens: totalTokens - 20,
+    outputTokens: 20,
+    cacheReadTokens: 0,
+    cacheWriteTokens: 0,
+    reasoningTokens: 5,
+    totalTokens,
+    costUsd: totalTokens / 1_000_000
+  };
+}
 
 async function expectAccepted(responseResult: Response | Promise<Response>, label: string) {
   const response = await responseResult;

@@ -20,6 +20,7 @@ import type {
 
 import { createSqliteDatabase, db as defaultDb } from "./db.js";
 import { events, runs } from "./schema.js";
+import { getStaleUsageScanEventIds, isUsageScanJson } from "./usage-snapshot.js";
 
 type Database = BetterSQLite3Database;
 
@@ -224,6 +225,121 @@ export async function upsertEvent(
   }
 
   await database.update(events).set(values).where(eq(events.id, event.id));
+}
+
+export function replaceUsageScanSnapshot(
+  traces: Array<{ run: CreateRun; event: CreateTraceEvent }>,
+  complete: boolean,
+  scanClients?: ReadonlySet<string>,
+  database: Database = defaultDb
+) {
+  return database.transaction((transaction) => {
+    const currentEventIds = new Set(traces.map((trace) => trace.event.id));
+
+    for (const trace of traces) {
+      const existingRun = transaction
+        .select()
+        .from(runs)
+        .where(eq(runs.id, trace.run.id))
+        .limit(1)
+        .get();
+
+      if (!existingRun) {
+        transaction
+          .insert(runs)
+          .values({
+            id: trace.run.id,
+            name: trace.run.name,
+            status: "success",
+            startedAt: trace.run.startedAt ?? new Date().toISOString(),
+            endedAt: trace.event.timestamp ?? new Date().toISOString(),
+            inputJson: stringifyJson(trace.run.input),
+            outputJson: stringifyJson(trace.run.output),
+            error: trace.run.error,
+            metadataJson: stringifyJson(trace.run.metadata)
+          })
+          .run();
+      } else {
+        transaction
+          .update(runs)
+          .set({
+            status: "success",
+            endedAt: trace.event.timestamp ?? new Date().toISOString(),
+            error: null,
+            ...(isUsageScanJson(existingRun.inputJson)
+              ? { metadataJson: stringifyJson(trace.run.metadata) }
+              : {})
+          })
+          .where(eq(runs.id, trace.run.id))
+          .run();
+      }
+
+      const eventValues = {
+        runId: trace.event.runId,
+        parentId: trace.event.parentId,
+        type: trace.event.type,
+        name: trace.event.name,
+        status: trace.event.status,
+        timestamp: trace.event.timestamp ?? new Date().toISOString(),
+        durationMs: trace.event.durationMs,
+        inputJson: stringifyJson(trace.event.input),
+        outputJson: stringifyJson(trace.event.output),
+        errorJson: stringifyJson(trace.event.error),
+        metadataJson: stringifyJson(trace.event.metadata)
+      };
+
+      transaction
+        .insert(events)
+        .values({ id: trace.event.id, ...eventValues })
+        .onConflictDoUpdate({ target: events.id, set: eventValues })
+        .run();
+    }
+
+    const existingEvents = transaction
+      .select({ id: events.id, runId: events.runId, metadataJson: events.metadataJson })
+      .from(events)
+      .all();
+    const staleEventIds = getStaleUsageScanEventIds(
+      existingEvents,
+      currentEventIds,
+      complete,
+      scanClients
+    );
+
+    if (staleEventIds.length > 0) {
+      const candidateRunIds = new Set(
+        existingEvents
+          .filter((event) => staleEventIds.includes(event.id))
+          .map((event) => event.runId)
+      );
+
+      transaction.delete(events).where(inArray(events.id, staleEventIds)).run();
+
+      for (const runId of candidateRunIds) {
+        const run = transaction
+          .select({ inputJson: runs.inputJson })
+          .from(runs)
+          .where(eq(runs.id, runId))
+          .limit(1)
+          .get();
+        const remainingEvent = transaction
+          .select({ id: events.id })
+          .from(events)
+          .where(eq(events.runId, runId))
+          .limit(1)
+          .get();
+
+        if (run && isUsageScanJson(run.inputJson) && !remainingEvent) {
+          transaction.delete(runs).where(eq(runs.id, runId)).run();
+        }
+      }
+    }
+
+    return {
+      stored: traces.length,
+      staleEventsRemoved: staleEventIds.length
+    };
+  });
 }
 
 export async function listRuns(

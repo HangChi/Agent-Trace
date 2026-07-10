@@ -1,4 +1,10 @@
-import { createEvent, createRun, getRunById, updateRun, updateRunMetadata, upsertEvent } from "./storage.js";
+import {
+  createEvent,
+  createRun,
+  getRunById,
+  replaceUsageScanSnapshot,
+  updateRun
+} from "./storage.js";
 import {
   knownHookEvents,
   normalizeAgentHook,
@@ -42,22 +48,9 @@ export async function ingestCodexOtelLogs(payload: unknown, hints: IngestHints =
 
 export async function ingestUsageScan(payload: unknown) {
   const normalized = normalizeUsageScan(payload);
-
-  for (const trace of normalized) {
-    const existingRun = await getRunById(trace.run.id);
-
-    if (!existingRun) {
-      await createRun(trace.run);
-    } else if (isUsageScanRun(existingRun.input)) {
-      await updateRunMetadata(trace.run.id, trace.run.metadata);
-    }
-
-    await updateRun(trace.run.id, {
-      status: "success",
-      endedAt: trace.event.timestamp
-    });
-    await upsertEvent(trace.event);
-  }
+  const complete = asRecord(payload).complete === true;
+  const scanClients = getScanClients(asRecord(payload).scanClients);
+  replaceUsageScanSnapshot(normalized, complete, scanClients);
 
   return {
     stored: normalized.length,
@@ -66,8 +59,12 @@ export async function ingestUsageScan(payload: unknown) {
   };
 }
 
-function isUsageScanRun(input: unknown) {
-  return asRecord(input).source === "usage-scan";
+function getScanClients(value: unknown) {
+  const clients = Array.isArray(value)
+    ? value.filter((client): client is string => typeof client === "string" && client.length > 0)
+    : [];
+
+  return clients.length > 0 ? new Set(clients) : undefined;
 }
 
 async function persistTrace(normalized: NormalizedTrace) {
