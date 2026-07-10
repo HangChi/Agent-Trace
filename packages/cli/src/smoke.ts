@@ -177,13 +177,13 @@ try {
   }
 
   if (
-    usageRows[0]?.totalTokens !== 142 ||
+    usageRows[0]?.totalTokens !== 135 ||
     usageRows[0]?.cacheReadTokens !== 10 ||
     usageRows[0]?.cacheWriteTokens !== 5 ||
     usageRows[0]?.reasoningTokens !== 7 ||
     usageRows[0]?.costUsd !== 0.0025
   ) {
-    throw new Error("Expected usage scanner to preserve token and cost summary fields.");
+    throw new Error("Expected scanner totals to exclude reasoning already contained in output.");
   }
 
   if (serializedUsageScan.includes("must not be forwarded")) {

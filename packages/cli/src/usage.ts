@@ -536,7 +536,7 @@ function normalizeUsageRow(row: Record<string, unknown>): UsageRow | undefined {
   const reasoningTokens = firstInteger(row, reasoningTokenKeys);
   const totalTokens =
     firstInteger(row, totalTokenKeys) ||
-    inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens + reasoningTokens;
+    inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens;
   const costUsd = firstNumber(row, costKeys);
   const messageCount = firstInteger(row, messageCountKeys);
 
@@ -571,8 +571,7 @@ function tokenValue(row: Record<string, unknown>) {
     firstInteger(row, inputTokenKeys) +
     firstInteger(row, outputTokenKeys) +
     firstInteger(row, cacheReadTokenKeys) +
-    firstInteger(row, cacheWriteTokenKeys) +
-    firstInteger(row, reasoningTokenKeys)
+    firstInteger(row, cacheWriteTokenKeys)
   );
 }
 

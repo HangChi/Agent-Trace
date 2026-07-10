@@ -177,10 +177,16 @@ function calculateUsageCost(usage: TokenUsage, pricing: ModelPricing) {
     );
   }
 
-  const output = getBillableOutputTokens(usage, input);
+  const isScanUsage = usage.sourceKind === "scan";
+  const uncachedInput = isScanUsage ? input : Math.max(0, input - cachedInput);
+  const regularInput = uncachedInput + (isScanUsage ? cacheCreationInput : 0);
+  const nonOutputTokens = isScanUsage
+    ? input + cachedInput + cacheCreationInput
+    : input;
+  const output = getBillableOutputTokens(usage, nonOutputTokens);
 
   return (
-    (Math.max(0, input - cachedInput) * pricing.input +
+    (regularInput * pricing.input +
       cachedInput * (pricing.cachedInput ?? pricing.input) +
       output * pricing.output) /
     1_000_000

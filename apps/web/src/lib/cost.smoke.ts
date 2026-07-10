@@ -47,6 +47,20 @@ const explicitOverrideCost = calculateRunCost({
 
 expectClose(explicitOverrideCost.usd, 0.00022, "explicit pricing override cost");
 
+const explicitScanOverrideCost = calculateRunCost({
+  models: ["explicit-model"],
+  tokenUsage: {
+    input: 100,
+    output: 20,
+    total: 180,
+    cachedInput: 60,
+    sourceKind: "scan",
+    scope: "session"
+  }
+});
+
+expectClose(explicitScanOverrideCost.usd, 0.00034, "scan pricing override cost");
+
 const unknownCost = calculateRunCost({
   models: ["gpt-5.4"],
   tokenUsage: {
