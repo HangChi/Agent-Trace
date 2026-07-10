@@ -7,6 +7,7 @@ import { installHooks } from "./hooks.js";
 import {
   collectUsageClientDiagnostics,
   collectUsageOnce,
+  resolveTokscaleCommand,
   syncUsageClients
 } from "./usage.js";
 
@@ -18,6 +19,15 @@ const claudeConfigDir = mkdtempSync(join(tmpdir(), "agent-trace-cli-smoke-claude
 try {
   process.env.CODEX_HOME = codexHome;
   process.env.CLAUDE_CONFIG_DIR = claudeConfigDir;
+
+  const tokscaleInvocation = resolveTokscaleCommand();
+
+  if (
+    tokscaleInvocation.executable !== process.execPath ||
+    !tokscaleInvocation.args.some((arg) => arg.endsWith("tokscale\\bin.js") || arg.endsWith("tokscale/bin.js"))
+  ) {
+    throw new Error("Expected bundled tokscale to run through the current Node runtime instead of a Windows CMD shim.");
+  }
 
   installHooks("codex", {
     collectorUrl: "http://localhost:4319",

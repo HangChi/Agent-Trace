@@ -457,10 +457,13 @@ function runTokscaleCommand(
   commandTimeoutMs: number,
   command?: string
 ): Promise<TokscaleCommandResult> {
-  const executable = command ?? process.env.AGENT_TRACE_TOKSCALE_BIN ?? resolveTokscaleCommand();
+  const override = command ?? process.env.AGENT_TRACE_TOKSCALE_BIN;
+  const invocation = override
+    ? { executable: override, args: [] }
+    : resolveTokscaleCommand();
 
   return new Promise<TokscaleCommandResult>((resolve, reject) => {
-    const child = spawn(executable, args, { windowsHide: true });
+    const child = spawn(invocation.executable, [...invocation.args, ...args], { windowsHide: true });
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => {
@@ -485,11 +488,18 @@ function runTokscaleCommand(
   });
 }
 
-function resolveTokscaleCommand() {
-  const binName = process.platform === "win32" ? "tokscale.CMD" : "tokscale";
-  const localBin = resolve(dirname(fileURLToPath(import.meta.url)), "..", "node_modules", ".bin", binName);
+export function resolveTokscaleCommand() {
+  const localBin = resolve(
+    dirname(fileURLToPath(import.meta.url)),
+    "..",
+    "node_modules",
+    "tokscale",
+    "bin.js"
+  );
 
-  return existsSync(localBin) ? localBin : "tokscale";
+  return existsSync(localBin)
+    ? { executable: process.execPath, args: [localBin] }
+    : { executable: "tokscale", args: [] };
 }
 
 async function postCollectorJson(collectorUrl: string, path: string, body: unknown) {

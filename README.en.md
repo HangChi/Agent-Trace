@@ -33,8 +33,11 @@ pnpm --filter @agent-trace/cli build
 node packages/cli/dist/index.js dev
 ```
 
-To also scan local agent token/cost usage with `tokscale` while the dashboard
-runs:
+The packaged desktop app automatically scans all local clients supported by
+`tokscale` after the collector starts, then refreshes every 15 seconds. Set
+`AGENT_TRACE_USAGE_SCAN=0` (`false` and `off` are also accepted) to disable it.
+
+When running through the CLI, enable the watcher explicitly:
 
 ```bash
 node packages/cli/dist/index.js dev --usage-scan
@@ -141,7 +144,9 @@ node packages/cli/dist/index.js uninstall claude-code
 - `CODEX_HOME` and `CLAUDE_CONFIG_DIR` override the config directories; `AGENT_TRACE_COLLECTOR_URL` (or `--collector-url`) overrides the collector base URL.
 - By default, hooks use metadata redaction. Agent-Trace stores event names, tool names, executed shell commands, IDs, statuses, durations, models, official token usage when provided, local token estimates when official usage is missing, and payload sizes for non-command tool input/output. It does not store raw prompts, full non-command tool input/output, file contents, or hidden reasoning.
 - For the most accurate Codex token usage, configure the official Codex OTel JSON log exporter to `http://localhost:4319/integrations/codex/otel/v1/logs`; hook-only prompt/output token counts from Codex or Claude Code are estimated locally and marked as estimated.
-- For accurate cross-agent session totals, run `agent-trace usage --once` or `agent-trace usage --watch --interval-ms 15000`. Use `--home <path>` if local history lives under a different home directory. This posts `tokscale` summary rows for Codex, Claude Code, OpenCode, Cursor, Antigravity, Kimi, Qwen, GitHub Copilot CLI, Trae, Warp, Cline, Zed, Kiro, Grok, CodeBuddy, WorkBuddy, OpenClaw, Hermes, Kilo, KiloCode, RooCode, Goose, Gemini, and other supported local clients to `POST /integrations/usage-scan` without sending raw prompts, responses, files, or source logs.
+- For accurate cross-agent session totals, run `agent-trace usage --once` or `agent-trace usage --watch --interval-ms 15000`. Use `--home <path>` if local history lives under a different home directory. With no `--clients` option the scanner omits the tokscale client filter and therefore includes every client supported by the installed tokscale version. Explicit `--clients` values narrow the scan.
+- Codex reconciliation covers both `~/.codex/sessions` and `~/.codex/archived_sessions`. Restored or copied histories are deduplicated by their model/token event sequence, and unique histories missed by the primary scan are rescanned through an isolated tokscale home. Raw prompts, responses, files, and source logs are never posted.
+- Scanner reasoning tokens are output metadata and are not added on top of output when deriving totals.
 - Run `agent-trace usage clients --home <path>` to see which local sources exist, which have message counts, and which need login/sync. For Cursor cache misses, run `tokscale cursor login`, then `tokscale cursor sync --json --home <path>`, and scan again.
 - Cost display prefers scanner-provided `costUsd`. Without scan cost, Agent-Trace only calculates cost for exact `AGENT_TRACE_MODEL_PRICES_JSON` entries; other models are shown as unpriced instead of guessed from stale built-in rates.
 

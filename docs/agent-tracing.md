@@ -19,6 +19,11 @@ node packages/cli/dist/index.js dev --usage-scan
 node packages/cli/dist/index.js dev --usage-scan --usage-sync --usage-home C:\Users\alice
 ```
 
+The packaged desktop app starts this scanner automatically after its collector
+is ready. It performs an initial complete scan and then refreshes every 15
+seconds. Set `AGENT_TRACE_USAGE_SCAN=0` (`false` and `off` are also accepted) to
+disable automatic desktop scanning.
+
 The scanner passes the local user home directory to `tokscale` by default. If
 your shell or app runtime points `HOME` at a sandbox or another user, pass the
 real home explicitly:
@@ -99,11 +104,9 @@ values as `estimated`.
 
 For the most accurate local session totals, Agent-Trace can also run a
 `tokscale` usage scan and ingest the summary rows at
-`POST /integrations/usage-scan`. The default scan list follows the same local
-coverage target as Token Monitor/tokscale for mainstream clients, including
-Codex, Claude Code, OpenCode, Cursor, Antigravity, Kimi, Qwen, GitHub Copilot
-CLI, Trae, Warp, Cline, Zed, Kiro, Grok, CodeBuddy, WorkBuddy, OpenClaw,
-Hermes, Kilo, KiloCode, RooCode, Goose, and Gemini.
+`POST /integrations/usage-scan`. By default Agent-Trace does not pass a tokscale
+client filter, so the scan includes every client supported by the installed
+tokscale version. Pass `--clients` only when a narrower scan is intentional.
 
 ```bash
 node packages/cli/dist/index.js usage --once
@@ -119,6 +122,14 @@ hook-only text estimates to avoid double counting.
 For Codex, `tokscale` rollout session IDs are normalized back to the Codex UUID
 run ID, so historical scan rows merge into existing hook/OTel timelines instead
 of creating duplicate runs.
+
+Agent-Trace also reconciles JSONL under both `~/.codex/sessions` and
+`~/.codex/archived_sessions`. It fingerprints only timestamps, model context,
+and token-count metadata. Copies created by restore/archive workflows collapse
+into one logical history. A unique non-empty history omitted by the primary
+scan is copied to an isolated temporary home and parsed by tokscale, preserving
+the same token and pricing authority without parsing, retaining, or uploading
+conversation text.
 
 Usage scans may also send scanner diagnostics. The collector stores these on
 `run_usage_scan_status` as JSON metadata: client, status, message count, path
@@ -205,6 +216,11 @@ AGENT_TRACE_MODEL_PRICES_JSON='{"my-model":{"provider":"openai","input":1,"cache
 Reasoning tokens from scan rows are displayed separately but are not added on
 top of the scanner-provided `totalTokens`; the scanner/provider total remains
 authoritative.
+
+When a scan row has no cost and an exact configured price is available,
+Agent-Trace treats scanner `input` as uncached input and bills cached input
+separately. Official provider usage keeps its provider-native inclusive-input
+semantics. This prevents cache tokens from being subtracted or billed twice.
 
 Set `AGENT_TRACE_ENDPOINT` to target a non-default collector:
 
