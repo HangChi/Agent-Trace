@@ -1,4 +1,4 @@
-import { createEvent, createRun, getRunById, updateRun, upsertEvent } from "./storage.js";
+import { createEvent, createRun, getRunById, updateRun, updateRunMetadata, upsertEvent } from "./storage.js";
 import {
   knownHookEvents,
   normalizeAgentHook,
@@ -48,12 +48,14 @@ export async function ingestUsageScan(payload: unknown) {
 
     if (!existingRun) {
       await createRun(trace.run);
-      await updateRun(trace.run.id, {
-        status: "success",
-        endedAt: trace.event.timestamp
-      });
+    } else if (isUsageScanRun(existingRun.input)) {
+      await updateRunMetadata(trace.run.id, trace.run.metadata);
     }
 
+    await updateRun(trace.run.id, {
+      status: "success",
+      endedAt: trace.event.timestamp
+    });
     await upsertEvent(trace.event);
   }
 
@@ -62,6 +64,10 @@ export async function ingestUsageScan(payload: unknown) {
     eventIds: normalized.map((trace) => trace.event.id),
     runIds: [...new Set(normalized.map((trace) => trace.run.id))]
   };
+}
+
+function isUsageScanRun(input: unknown) {
+  return asRecord(input).source === "usage-scan";
 }
 
 async function persistTrace(normalized: NormalizedTrace) {
@@ -76,4 +82,10 @@ async function persistTrace(normalized: NormalizedTrace) {
   if (normalized.runUpdate) {
     await updateRun(normalized.run.id, normalized.runUpdate);
   }
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
 }

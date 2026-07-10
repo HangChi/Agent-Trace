@@ -1631,7 +1631,23 @@ await expectAccepted(
     body: JSON.stringify({
       source: "tokscale",
       scannedAt: new Date().toISOString(),
-      rows: usageScanRows
+      rows: usageScanRows,
+      diagnostics: [
+        {
+          client: "cursor",
+          status: "needs_sync",
+          messageCount: 0,
+          path: "C:\\Users\\song\\.config\\tokscale\\cursor-cache",
+          pathExists: false,
+          actionHint: "Run tokscale cursor login, then tokscale cursor sync --json --home C:\\Users\\song"
+        },
+        {
+          client: "codex",
+          status: "available",
+          messageCount: 9038,
+          pathExists: true
+        }
+      ]
     })
   }),
   "usage scan ingestion"
@@ -1652,6 +1668,18 @@ await expectAccepted(
 
 const usageScanRunsResponse = await app.request("/runs?includeUntracked=1");
 const usageScanRuns = await usageScanRunsResponse.json();
+const usageScanStatusRun = Array.isArray(usageScanRuns)
+  ? usageScanRuns.find((run) => run.id === "run_usage_scan_status")
+  : undefined;
+const scannerDiagnostics = usageScanStatusRun?.metadata?.diagnostics;
+
+if (
+  usageScanStatusRun?.metadata?.agent !== "usage-scan" ||
+  !Array.isArray(scannerDiagnostics) ||
+  scannerDiagnostics.find((diagnostic) => diagnostic.client === "cursor")?.status !== "needs_sync"
+) {
+  throw new Error("Expected usage scan diagnostics to be stored on a scanner status run.");
+}
 
 for (const row of usageScanRows) {
   const runIdForRow = `run_${row.agent}_${row.sessionId}`;
@@ -1760,6 +1788,108 @@ const scanSnapshotEvents = Array.isArray(scanPrecedenceEvents)
 
 if (scanSnapshotEvents.length !== 1) {
   throw new Error("Expected repeated usage scans to upsert one deterministic token snapshot event.");
+}
+
+await expectAccepted(
+  app.request("/integrations/usage-scan", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      source: "tokscale",
+      scannedAt: new Date().toISOString(),
+      rows: [
+        {
+          client: "claude",
+          sessionId: "zero_synthetic_usage",
+          model: "<synthetic>",
+          provider: "unknown",
+          inputTokens: 0,
+          outputTokens: 0,
+          cacheReadTokens: 0,
+          cacheWriteTokens: 0,
+          reasoningTokens: 0,
+          totalTokens: 0,
+          costUsd: 0,
+          messageCount: 3
+        }
+      ]
+    })
+  }),
+  "zero-token usage scan"
+);
+
+const zeroTokenRunsResponse = await app.request("/runs?includeUntracked=1");
+const zeroTokenRuns = await zeroTokenRunsResponse.json();
+
+if (
+  Array.isArray(zeroTokenRuns) &&
+  zeroTokenRuns.some((run) => run.id === "run_claude-code_zero_synthetic_usage")
+) {
+  throw new Error("Expected zero-token synthetic usage rows to be ignored.");
+}
+
+const codexRolloutScanSessionId = "019f469d-1fa2-71b0-aa24-51c5125dd7f8";
+const codexRolloutScanRunId = `run_codex_${codexRolloutScanSessionId}`;
+const codexRolloutRawSessionId = `rollout-2026-07-09T19-22-15-${codexRolloutScanSessionId}`;
+
+await expectAccepted(
+  app.request("/integrations/codex/hook", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      session_id: codexRolloutScanSessionId,
+      hook_event_name: "UserPromptSubmit",
+      prompt: "rollout-prefixed scan should land on this existing Codex run",
+      model: "gpt-5.5"
+    })
+  }),
+  "Codex rollout usage scan prompt hook"
+);
+
+await expectAccepted(
+  app.request("/integrations/usage-scan", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      source: "tokscale",
+      scannedAt: new Date().toISOString(),
+      rows: [
+        {
+          client: "codex",
+          sessionId: codexRolloutRawSessionId,
+          model: "gpt-5.5",
+          provider: "openai",
+          inputTokens: 1000,
+          outputTokens: 200,
+          cacheReadTokens: 3000,
+          cacheWriteTokens: 0,
+          reasoningTokens: 50,
+          costUsd: 0.42,
+          messageCount: 3
+        }
+      ]
+    })
+  }),
+  "Codex rollout usage scan"
+);
+
+const codexRolloutScanRunsResponse = await app.request("/runs?includeUntracked=1");
+const codexRolloutScanRuns = await codexRolloutScanRunsResponse.json();
+const codexRolloutScanRun = Array.isArray(codexRolloutScanRuns)
+  ? codexRolloutScanRuns.find((run) => run.id === codexRolloutScanRunId)
+  : undefined;
+const duplicateRolloutScanRun = Array.isArray(codexRolloutScanRuns)
+  ? codexRolloutScanRuns.find((run) => String(run.id).includes("rollout-2026-07-09"))
+  : undefined;
+const codexRolloutScanSummary = codexRolloutScanRun?.metadata?.summary;
+
+if (
+  codexRolloutScanSummary?.tokenUsage.total !== 4250 ||
+  codexRolloutScanSummary.tokenUsage.reasoningOutput !== 50 ||
+  codexRolloutScanSummary.costUsd !== 0.42 ||
+  duplicateRolloutScanRun !== undefined
+) {
+  throw new Error("Expected Codex rollout usage scans to merge into the existing UUID run with scanner totals.");
 }
 
 console.log("Agent-Trace API smoke test passed.");

@@ -1,5 +1,6 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { homedir } from "node:os";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -7,9 +8,38 @@ export type UsageScanOptions = {
   collectorUrl?: string;
   clients?: string;
   commandTimeoutMs?: number;
+  home?: string;
+  sync?: boolean;
   tokscaleCommand?: string;
-  runTokscale?: (clients: string, commandTimeoutMs: number) => Promise<unknown>;
+  runTokscale?: (clients: string, commandTimeoutMs: number, home: string | undefined) => Promise<unknown>;
+  runTokscaleClients?: (home: string | undefined, commandTimeoutMs: number) => Promise<unknown>;
+  runTokscaleCommand?: (args: string[], commandTimeoutMs: number) => Promise<TokscaleCommandResult>;
   postJson?: (path: string, body: unknown) => Promise<void>;
+};
+
+export type UsageDiagnosticStatus =
+  | "available"
+  | "waiting"
+  | "missing"
+  | "needs_sync"
+  | "needs_login"
+  | "synced"
+  | "error";
+
+export type UsageDiagnostic = {
+  client: string;
+  status: UsageDiagnosticStatus;
+  messageCount?: number;
+  path?: string;
+  pathExists?: boolean;
+  warning?: string;
+  actionHint?: string;
+};
+
+type TokscaleCommandResult = {
+  code: number;
+  stdout?: string;
+  stderr?: string;
 };
 
 type UsageRow = {
@@ -30,7 +60,33 @@ type UsageRow = {
 };
 
 const defaultCollectorUrl = "http://localhost:4319";
-const defaultClients = "codex,claude,opencode,cursor,antigravity,kimi,qwen,copilot";
+export const DEFAULT_USAGE_CLIENTS = [
+  "codex",
+  "claude",
+  "opencode",
+  "cursor",
+  "antigravity",
+  "kimi",
+  "qwen",
+  "copilot",
+  "trae",
+  "warp",
+  "cline",
+  "zed",
+  "kiro",
+  "grok",
+  "codebuddy",
+  "workbuddy",
+  "openclaw",
+  "hermes",
+  "kilo",
+  "kilocode",
+  "roocode",
+  "goose",
+  "gemini"
+].join(",");
+
+const autoSyncClients = "cursor,antigravity,trae,warp";
 const defaultCommandTimeoutMs = 60_000;
 
 const totalTokenKeys = [
@@ -74,22 +130,46 @@ export async function collectUsageOnce(options: UsageScanOptions = {}) {
       process.env.TOOLTRACE_ENDPOINT ??
       defaultCollectorUrl
   );
-  const clients = normalizeClients(options.clients ?? process.env.AGENT_TRACE_USAGE_CLIENTS ?? defaultClients);
+  const clients = normalizeClients(options.clients ?? process.env.AGENT_TRACE_USAGE_CLIENTS ?? DEFAULT_USAGE_CLIENTS);
   const commandTimeoutMs = options.commandTimeoutMs ?? defaultCommandTimeoutMs;
+  const home = normalizeHome(options.home ?? process.env.AGENT_TRACE_USAGE_HOME ?? process.env.TOKSCALE_HOME ?? homedir());
   const runTokscale = options.runTokscale ?? ((clientCsv, timeoutMs) =>
-    runTokscaleJson(clientCsv, timeoutMs, options.tokscaleCommand));
+    runTokscaleJson(clientCsv, timeoutMs, home, options.tokscaleCommand));
   const postJson = options.postJson ?? ((path, body) => postCollectorJson(collectorUrl, path, body));
-  const raw = await runTokscale(clients, commandTimeoutMs);
+
+  if (options.sync) {
+    await syncUsageClients({
+      clients: options.clients,
+      commandTimeoutMs,
+      home,
+      tokscaleCommand: options.tokscaleCommand,
+      runTokscaleCommand: options.runTokscaleCommand
+    });
+  }
+
+  const raw = await runTokscale(clients, commandTimeoutMs, home);
   const rows = normalizeTokscaleUsage(raw);
+  const diagnostics = [
+    ...(await collectDiagnosticsForScan({
+      commandTimeoutMs,
+      home,
+      tokscaleCommand: options.tokscaleCommand,
+      runTokscaleClients: options.runTokscaleClients,
+      skipClientDiagnostics: options.runTokscale !== undefined && options.runTokscaleClients === undefined
+    })),
+    ...getUsageWarningDiagnostics(raw)
+  ];
 
   await postJson("/integrations/usage-scan", {
     source: "tokscale",
     scannedAt: new Date().toISOString(),
-    rows
+    rows,
+    diagnostics: diagnostics.length > 0 ? mergeDiagnostics(diagnostics) : undefined
   });
 
   return {
-    rows: rows.length
+    rows: rows.length,
+    diagnostics: diagnostics.length
   };
 }
 
@@ -107,6 +187,74 @@ export async function watchUsage(options: UsageScanOptions & { intervalMs?: numb
   }
 }
 
+export async function collectUsageClientDiagnostics(
+  options: Pick<
+    UsageScanOptions,
+    "commandTimeoutMs" | "home" | "tokscaleCommand" | "runTokscaleClients"
+  > = {}
+): Promise<UsageDiagnostic[]> {
+  const commandTimeoutMs = options.commandTimeoutMs ?? defaultCommandTimeoutMs;
+  const home = normalizeHome(options.home ?? process.env.AGENT_TRACE_USAGE_HOME ?? process.env.TOKSCALE_HOME ?? homedir());
+  const runTokscaleClients =
+    options.runTokscaleClients ?? ((clientHome, timeoutMs) =>
+      runTokscaleClientsJson(clientHome, timeoutMs, options.tokscaleCommand));
+  const raw = await runTokscaleClients(home, commandTimeoutMs);
+
+  return normalizeTokscaleClientDiagnostics(raw);
+}
+
+export async function syncUsageClients(
+  options: Pick<
+    UsageScanOptions,
+    "clients" | "commandTimeoutMs" | "home" | "tokscaleCommand" | "runTokscaleCommand"
+  > = {}
+): Promise<UsageDiagnostic[]> {
+  const clients = normalizeClients(options.clients ?? autoSyncClients).split(",").filter(Boolean);
+  const commandTimeoutMs = options.commandTimeoutMs ?? defaultCommandTimeoutMs;
+  const home = normalizeHome(options.home ?? process.env.AGENT_TRACE_USAGE_HOME ?? process.env.TOKSCALE_HOME ?? homedir());
+  const runCommand =
+    options.runTokscaleCommand ?? ((args, timeoutMs) =>
+      runTokscaleCommand(args, timeoutMs, options.tokscaleCommand));
+  const diagnostics: UsageDiagnostic[] = [];
+
+  for (const client of clients) {
+    if (!isSyncBackedClient(client)) {
+      diagnostics.push({
+        client,
+        status: "waiting",
+        warning: "tokscale sync is not available for this client; it will be scanned from local files if supported."
+      });
+      continue;
+    }
+
+    const statusArgs = getStatusArgs(client, home);
+
+    if (statusArgs !== undefined) {
+      const status = await runCommand(statusArgs, commandTimeoutMs);
+
+      if (status.code !== 0) {
+        diagnostics.push({
+          client,
+          status: "needs_login",
+          warning: (status.stderr || status.stdout || "tokscale status failed").trim(),
+          actionHint: getSyncActionHint(client, home)
+        });
+        continue;
+      }
+    }
+
+    const result = await runCommand(getSyncArgs(client, home), commandTimeoutMs);
+    diagnostics.push({
+      client,
+      status: result.code === 0 ? "synced" : "error",
+      warning: result.code === 0 ? undefined : (result.stderr || result.stdout || "tokscale sync failed").trim(),
+      actionHint: result.code === 0 ? undefined : getSyncActionHint(client, home)
+    });
+  }
+
+  return diagnostics;
+}
+
 export function normalizeTokscaleUsage(value: unknown): UsageRow[] {
   const rows: Record<string, unknown>[] = [];
 
@@ -115,17 +263,161 @@ export function normalizeTokscaleUsage(value: unknown): UsageRow[] {
   return rows.map(normalizeUsageRow).filter((row): row is UsageRow => row !== undefined);
 }
 
-function runTokscaleJson(clients: string, commandTimeoutMs: number, command?: string) {
+function normalizeTokscaleClientDiagnostics(value: unknown): UsageDiagnostic[] {
+  const body = asRecord(value);
+  const clients = asArray(body.clients) ?? asArray(value) ?? [];
+
+  return clients
+    .map((item) => normalizeClientDiagnostic(asRecord(item)))
+    .filter((diagnostic): diagnostic is UsageDiagnostic => diagnostic !== undefined);
+}
+
+async function collectDiagnosticsForScan(
+  options: Pick<UsageScanOptions, "commandTimeoutMs" | "home" | "tokscaleCommand" | "runTokscaleClients"> & {
+    skipClientDiagnostics?: boolean;
+  }
+) {
+  if (options.skipClientDiagnostics) {
+    return [];
+  }
+
+  try {
+    return await collectUsageClientDiagnostics(options);
+  } catch (error) {
+    const warning = error instanceof Error ? error.message : String(error);
+
+    return [
+      {
+        client: "tokscale",
+        status: "error",
+        warning
+      } satisfies UsageDiagnostic
+    ];
+  }
+}
+
+function normalizeClientDiagnostic(record: Record<string, unknown>): UsageDiagnostic | undefined {
+  const client = normalizeClient(getString(record, "client", "name", "id"));
+
+  if (!client) {
+    return undefined;
+  }
+
+  const messageCount = firstInteger(record, [
+    "messageCount",
+    "message_count",
+    "messages",
+    "totalMessages",
+    "total_messages",
+    "headlessMessageCount",
+    "headless_message_count"
+  ]);
+  const path = getString(record, "sessionsPath", "sessions_path", "path", "cachePath", "cache_path");
+  const pathExists = getBoolean(record, "sessionsPathExists", "sessions_path_exists", "pathExists", "path_exists") ??
+    anyKnownPathExists(record);
+  const status = getDiagnosticStatus(client, messageCount, pathExists);
+
+  return {
+    client,
+    status,
+    messageCount: messageCount > 0 ? messageCount : undefined,
+    path,
+    pathExists,
+    actionHint: status === "needs_sync" || status === "needs_login" ? getSyncActionHint(client) : undefined
+  };
+}
+
+function getUsageWarningDiagnostics(value: unknown): UsageDiagnostic[] {
+  const warnings = getWarnings(value);
+
+  return warnings.map((warning) => {
+    const client = getClientFromWarning(warning);
+    const status: UsageDiagnosticStatus = client === "cursor" ||
+      client === "antigravity" ||
+      client === "trae" ||
+      client === "warp"
+      ? "needs_sync"
+      : "error";
+
+    return {
+      client,
+      status,
+      warning,
+      actionHint: status === "needs_sync" ? getSyncActionHint(client) : undefined
+    };
+  });
+}
+
+function mergeDiagnostics(diagnostics: UsageDiagnostic[]) {
+  const merged = new Map<string, UsageDiagnostic>();
+
+  for (const diagnostic of diagnostics) {
+    const existing = merged.get(diagnostic.client);
+
+    merged.set(diagnostic.client, {
+      ...existing,
+      ...diagnostic,
+      warning: diagnostic.warning ?? existing?.warning,
+      actionHint: diagnostic.actionHint ?? existing?.actionHint,
+      messageCount: diagnostic.messageCount ?? existing?.messageCount,
+      path: diagnostic.path ?? existing?.path,
+      pathExists: diagnostic.pathExists ?? existing?.pathExists
+    });
+  }
+
+  return [...merged.values()];
+}
+
+function runTokscaleJson(
+  clients: string,
+  commandTimeoutMs: number,
+  home: string | undefined,
+  command?: string
+) {
+  const args = ["--json", "--client", clients, "--group-by", "client,session,model"];
+
+  if (home) {
+    args.push("--home", home);
+  }
+
+  return runTokscaleCommand(args, commandTimeoutMs, command).then((result) => {
+    if (result.code !== 0) {
+      throw new Error(`tokscale exited with code ${result.code}: ${(result.stderr || result.stdout || "").trim()}`);
+    }
+
+    return parseJsonOutput(result.stdout ?? "");
+  });
+}
+
+function runTokscaleClientsJson(
+  home: string | undefined,
+  commandTimeoutMs: number,
+  command?: string
+) {
+  const args = ["clients", "--json"];
+
+  if (home) {
+    args.push("--home", home);
+  }
+
+  return runTokscaleCommand(args, commandTimeoutMs, command).then((result) => {
+    if (result.code !== 0) {
+      throw new Error(`tokscale clients exited with code ${result.code}: ${(result.stderr || result.stdout || "").trim()}`);
+    }
+
+    return parseJsonOutput(result.stdout ?? "");
+  });
+}
+
+function runTokscaleCommand(
+  args: string[],
+  commandTimeoutMs: number,
+  command?: string
+): Promise<TokscaleCommandResult> {
   const executable = command ?? process.env.AGENT_TRACE_TOKSCALE_BIN ?? resolveTokscaleCommand();
 
-  return new Promise<unknown>((resolve, reject) => {
-    const child = spawn(
-      executable,
-      ["--json", "--client", clients, "--group-by", "client,session,model"],
-      {
-        windowsHide: true
-      }
-    );
+  return new Promise<TokscaleCommandResult>((resolve, reject) => {
+    const child = spawn(executable, args, { windowsHide: true });
     let stdout = "";
     let stderr = "";
     const timer = setTimeout(() => {
@@ -145,17 +437,7 @@ function runTokscaleJson(clients: string, commandTimeoutMs: number, command?: st
     });
     child.once("close", (code) => {
       clearTimeout(timer);
-
-      if (code !== 0) {
-        reject(new Error(`tokscale exited with code ${code}: ${stderr.trim() || stdout.trim()}`));
-        return;
-      }
-
-      try {
-        resolve(parseJsonOutput(stdout));
-      } catch (error) {
-        reject(error);
-      }
+      resolve({ code: code ?? 0, stdout, stderr });
     });
   });
 }
@@ -252,7 +534,9 @@ function normalizeUsageRow(row: Record<string, unknown>): UsageRow | undefined {
   const cacheReadTokens = firstInteger(row, cacheReadTokenKeys);
   const cacheWriteTokens = firstInteger(row, cacheWriteTokenKeys);
   const reasoningTokens = firstInteger(row, reasoningTokenKeys);
-  const totalTokens = firstInteger(row, totalTokenKeys) || inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens;
+  const totalTokens =
+    firstInteger(row, totalTokenKeys) ||
+    inputTokens + outputTokens + cacheReadTokens + cacheWriteTokens + reasoningTokens;
   const costUsd = firstNumber(row, costKeys);
   const messageCount = firstInteger(row, messageCountKeys);
 
@@ -287,8 +571,96 @@ function tokenValue(row: Record<string, unknown>) {
     firstInteger(row, inputTokenKeys) +
     firstInteger(row, outputTokenKeys) +
     firstInteger(row, cacheReadTokenKeys) +
-    firstInteger(row, cacheWriteTokenKeys)
+    firstInteger(row, cacheWriteTokenKeys) +
+    firstInteger(row, reasoningTokenKeys)
   );
+}
+
+function getDiagnosticStatus(
+  client: string,
+  messageCount: number,
+  pathExists: boolean | undefined
+): UsageDiagnosticStatus {
+  if (messageCount > 0) {
+    return "available";
+  }
+
+  if (isSyncBackedClient(client)) {
+    return "needs_sync";
+  }
+
+  return pathExists ? "waiting" : "missing";
+}
+
+function isSyncBackedClient(client: string) {
+  return client === "cursor" || client === "antigravity" || client === "trae" || client === "warp";
+}
+
+function getStatusArgs(client: string, home: string | undefined) {
+  if (client !== "cursor" && client !== "trae") {
+    return undefined;
+  }
+
+  return withHome([client, "status"], home);
+}
+
+function getSyncArgs(client: string, home: string | undefined) {
+  const args = client === "cursor" || client === "trae"
+    ? [client, "sync", "--json"]
+    : [client, "sync"];
+
+  return withHome(args, home);
+}
+
+function withHome(args: string[], home: string | undefined) {
+  return home ? [...args, "--home", home] : args;
+}
+
+function getSyncActionHint(client: string, home?: string) {
+  const homeArg = home ? ` --home ${home}` : "";
+
+  if (client === "cursor" || client === "trae") {
+    return `Run tokscale ${client} login, then tokscale ${client} sync --json${homeArg}`;
+  }
+
+  if (client === "antigravity" || client === "warp") {
+    return `Run tokscale ${client} sync${homeArg}`;
+  }
+
+  return `Run tokscale ${client} status${homeArg}`;
+}
+
+function getWarnings(value: unknown): string[] {
+  const body = asRecord(value);
+  const warnings = asArray(body.warnings) ?? asArray(body.warning) ?? [];
+
+  return warnings
+    .map((warning) => (typeof warning === "string" ? warning.trim() : undefined))
+    .filter((warning): warning is string => Boolean(warning));
+}
+
+function getClientFromWarning(warning: string) {
+  const lower = warning.toLowerCase();
+
+  for (const client of ["cursor", "antigravity", "trae", "warp"]) {
+    if (lower.includes(client)) {
+      return client;
+    }
+  }
+
+  return "tokscale";
+}
+
+function anyKnownPathExists(record: Record<string, unknown>) {
+  for (const key of ["additionalPaths", "additional_paths", "headlessPaths", "headless_paths", "legacyPaths", "legacy_paths"]) {
+    const paths = asArray(record[key]);
+
+    if (paths?.some((item) => getBoolean(asRecord(item), "exists") === true)) {
+      return true;
+    }
+  }
+
+  return undefined;
 }
 
 function firstInteger(row: Record<string, unknown>, keys: string[]) {
@@ -375,6 +747,24 @@ function normalizeIntervalMs(value: number | undefined) {
     : 15_000;
 }
 
+function getBoolean(record: Record<string, unknown>, ...keys: string[]) {
+  for (const key of keys) {
+    const value = record[key];
+
+    if (typeof value === "boolean") {
+      return value;
+    }
+  }
+
+  return undefined;
+}
+
+function normalizeHome(value: string | undefined) {
+  const trimmed = value?.trim();
+
+  return trimmed ? trimmed : undefined;
+}
+
 function sleep(ms: number, signal: AbortSignal | undefined) {
   return new Promise<void>((resolve) => {
     if (signal?.aborted) {
@@ -402,4 +792,8 @@ function asRecord(value: unknown): Record<string, unknown> {
   return value !== null && typeof value === "object" && !Array.isArray(value)
     ? (value as Record<string, unknown>)
     : {};
+}
+
+function asArray(value: unknown) {
+  return Array.isArray(value) ? value : undefined;
 }

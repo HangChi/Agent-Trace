@@ -165,6 +165,17 @@ export async function updateRun(
     .where(eq(runs.id, id));
 }
 
+export async function updateRunMetadata(
+  id: string,
+  metadata: unknown,
+  database: Database = defaultDb
+) {
+  await database
+    .update(runs)
+    .set({ metadataJson: stringifyJson(metadata) })
+    .where(eq(runs.id, id));
+}
+
 export async function createEvent(
   event: CreateTraceEvent,
   database: Database = defaultDb

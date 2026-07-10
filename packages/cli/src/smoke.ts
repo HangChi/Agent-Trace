@@ -3,7 +3,12 @@ import { tmpdir } from "node:os";
 import { join } from "node:path";
 
 import { installHooks } from "./hooks.js";
-import { collectUsageOnce } from "./usage.js";
+import {
+  collectUsageClientDiagnostics,
+  collectUsageOnce,
+  DEFAULT_USAGE_CLIENTS,
+  syncUsageClients
+} from "./usage.js";
 
 const previousCodexHome = process.env.CODEX_HOME;
 const previousClaudeConfigDir = process.env.CLAUDE_CONFIG_DIR;
@@ -108,42 +113,48 @@ try {
   }
 
   const postedUsageScans: Array<{ path: string; body: Record<string, unknown> }> = [];
+  const usageHome = join(codexHome, "usage-home");
+  let observedUsageHome: string | undefined;
+  let observedDefaultClients: string | undefined;
 
   await collectUsageOnce({
     collectorUrl: "http://localhost:4319",
     clients: "codex,claude",
-    runTokscale: async () => ({
-      rows: [
-        {
-          client: "codex",
-          sessionId: "codex_usage_smoke",
-          model: "gpt-5.4",
-          provider: "openai",
-          input: 100,
-          output: 20,
-          cacheRead: 10,
-          cacheWrite: 5,
-          reasoning: 7,
-          totalTokens: 135,
-          costUsd: 0.0025,
-          messageCount: 2,
-          prompt: "must not be forwarded"
-        },
-        {
-          client: "claude",
-          session_id: "claude_usage_smoke",
-          model: "claude-sonnet-4-6",
-          provider: "anthropic",
-          input_tokens: 300,
-          output_tokens: 40,
-          cache_read_tokens: 50,
-          cache_write_tokens: 10,
-          reasoning_tokens: 3,
-          total_tokens: 400,
-          cost_usd: 0.01
-        }
-      ]
-    }),
+    home: usageHome,
+    runTokscale: async (_clients, _timeoutMs, home) => {
+      observedUsageHome = home;
+      return {
+        rows: [
+          {
+            client: "codex",
+            sessionId: "codex_usage_smoke",
+            model: "gpt-5.4",
+            provider: "openai",
+            input: 100,
+            output: 20,
+            cacheRead: 10,
+            cacheWrite: 5,
+            reasoning: 7,
+            costUsd: 0.0025,
+            messageCount: 2,
+            prompt: "must not be forwarded"
+          },
+          {
+            client: "claude",
+            session_id: "claude_usage_smoke",
+            model: "claude-sonnet-4-6",
+            provider: "anthropic",
+            input_tokens: 300,
+            output_tokens: 40,
+            cache_read_tokens: 50,
+            cache_write_tokens: 10,
+            reasoning_tokens: 3,
+            total_tokens: 400,
+            cost_usd: 0.01
+          }
+        ]
+      };
+    },
     postJson: async (path, body) => {
       postedUsageScans.push({ path, body: body as Record<string, unknown> });
     }
@@ -157,12 +168,16 @@ try {
     throw new Error("Expected usage scanner to post to the usage-scan integration.");
   }
 
+  if (observedUsageHome !== usageHome) {
+    throw new Error("Expected usage scanner to pass the configured home directory to tokscale.");
+  }
+
   if (!Array.isArray(usageRows) || usageRows.length !== 2) {
     throw new Error("Expected usage scanner to post normalized usage rows.");
   }
 
   if (
-    usageRows[0]?.totalTokens !== 135 ||
+    usageRows[0]?.totalTokens !== 142 ||
     usageRows[0]?.cacheReadTokens !== 10 ||
     usageRows[0]?.cacheWriteTokens !== 5 ||
     usageRows[0]?.reasoningTokens !== 7 ||
@@ -173,6 +188,78 @@ try {
 
   if (serializedUsageScan.includes("must not be forwarded")) {
     throw new Error("Expected usage scanner to omit raw prompt-like fields.");
+  }
+
+  await collectUsageOnce({
+    collectorUrl: "http://localhost:4319",
+    runTokscale: async (clients) => {
+      observedDefaultClients = clients;
+      return { entries: [] };
+    },
+    postJson: async () => {}
+  });
+
+  for (const client of ["hermes", "openclaw", "cline", "zed", "kiro", "codebuddy", "workbuddy"]) {
+    if (!DEFAULT_USAGE_CLIENTS.split(",").includes(client)) {
+      throw new Error(`Expected default usage clients to include Token Monitor client ${client}.`);
+    }
+  }
+
+  if (observedDefaultClients !== DEFAULT_USAGE_CLIENTS) {
+    throw new Error("Expected usage scanner to use the expanded default client list.");
+  }
+
+  const diagnostics = await collectUsageClientDiagnostics({
+    home: usageHome,
+    runTokscaleClients: async () => ({
+      clients: [
+        {
+          client: "codex",
+          sessionsPath: join(usageHome, ".codex", "sessions"),
+          sessionsPathExists: true,
+          messageCount: 4
+        },
+        {
+          client: "cursor",
+          sessionsPath: join(usageHome, ".config", "tokscale", "cursor-cache"),
+          sessionsPathExists: false,
+          messageCount: 0
+        }
+      ]
+    })
+  });
+  const cursorDiagnostic = diagnostics.find((diagnostic) => diagnostic.client === "cursor");
+
+  if (
+    cursorDiagnostic?.status !== "needs_sync" ||
+    cursorDiagnostic.pathExists !== false ||
+    !cursorDiagnostic.actionHint?.includes("tokscale cursor login") ||
+    !cursorDiagnostic.actionHint.includes("tokscale cursor sync")
+  ) {
+    throw new Error("Expected usage client diagnostics to explain missing Cursor sync cache.");
+  }
+
+  const syncCalls: string[][] = [];
+  const syncResults = await syncUsageClients({
+    clients: "cursor,antigravity,trae",
+    home: usageHome,
+    runTokscaleCommand: async (args) => {
+      syncCalls.push(args);
+      return args[0] === "antigravity" ? { code: 0, stdout: "synced" } : { code: 1, stderr: "not logged in" };
+    }
+  });
+
+  if (
+    !syncCalls.some((call) => call[0] === "cursor" && call[1] === "status") ||
+    !syncCalls.some((call) => call[0] === "antigravity" && call[1] === "sync") ||
+    !syncCalls.some((call) => call[0] === "trae" && call[1] === "status") ||
+    syncCalls.some((call) => call.includes("login"))
+  ) {
+    throw new Error("Expected usage sync to call status/sync commands without invoking login.");
+  }
+
+  if (!syncResults.some((result) => result.client === "cursor" && result.status === "needs_login")) {
+    throw new Error("Expected Cursor sync to report a login hint when status fails.");
   }
 
   console.log("Agent-Trace CLI smoke test passed.");

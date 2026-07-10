@@ -25,6 +25,16 @@ type UsageScanRow = {
   lastUsedAt?: string;
 };
 
+type UsageScanDiagnostic = {
+  client: string;
+  status: string;
+  messageCount?: number;
+  path?: string;
+  pathExists?: boolean;
+  warning?: string;
+  actionHint?: string;
+};
+
 const redactionLevel = "metadata";
 
 export function normalizeUsageScan(payload: unknown): UsageScanTrace[] {
@@ -37,9 +47,12 @@ export function normalizeUsageScan(payload: unknown): UsageScanTrace[] {
     throw new Error("Invalid usage scan payload.");
   }
 
-  return rows
+  const usageTraces = rows
     .map((row) => normalizeUsageScanRow(row, scannedAt))
     .filter((trace): trace is UsageScanTrace => trace !== undefined);
+  const diagnosticsTrace = normalizeUsageDiagnostics(asArray(body.diagnostics), scannedAt);
+
+  return diagnosticsTrace ? [...usageTraces, diagnosticsTrace] : usageTraces;
 }
 
 function normalizeUsageScanRow(value: unknown, scannedAt: string): UsageScanTrace | undefined {
@@ -51,13 +64,14 @@ function normalizeUsageScanRow(value: unknown, scannedAt: string): UsageScanTrac
   }
 
   const agent = clientToAgent(client);
-  const sessionId = getString(row, "sessionId", "session_id", "session", "conversationId", "threadId");
+  const rawSessionId = getString(row, "sessionId", "session_id", "session", "conversationId", "threadId");
+  const sessionId = normalizeSessionId(agent, rawSessionId);
   const sessionKey = sessionId ?? "usage";
   const model = getString(row, "model", "modelName", "model_name");
   const provider = normalizeProvider(getString(row, "provider"));
   const tokenUsage = getScanTokenUsage(row);
 
-  if (tokenUsage.total === 0 && getNumber(row, "costUsd", "cost_usd", "cost") === undefined) {
+  if (tokenUsage.total === 0 && !hasPositiveCost(row)) {
     return undefined;
   }
 
@@ -81,7 +95,8 @@ function normalizeUsageScanRow(value: unknown, scannedAt: string): UsageScanTrac
     messageCount,
     source: "usage-scan",
     usageSource: "tokscale",
-    usageClient: client
+    usageClient: client,
+    usageSessionId: rawSessionId && rawSessionId !== sessionKey ? rawSessionId : undefined
   });
 
   return {
@@ -113,18 +128,89 @@ function normalizeUsageScanRow(value: unknown, scannedAt: string): UsageScanTrac
   };
 }
 
+function normalizeUsageDiagnostics(
+  value: unknown[] | undefined,
+  scannedAt: string
+): UsageScanTrace | undefined {
+  const diagnostics = (value ?? [])
+    .map((item) => normalizeUsageDiagnostic(asRecord(item)))
+    .filter((diagnostic): diagnostic is UsageScanDiagnostic => diagnostic !== undefined);
+
+  if (diagnostics.length === 0) {
+    return undefined;
+  }
+
+  const metadata = compactMetadata({
+    agent: "usage-scan",
+    surface: "local",
+    redactionLevel,
+    category: "scanner",
+    source: "usage-scan",
+    usageSource: "tokscale",
+    diagnostics
+  });
+
+  return {
+    run: {
+      id: "run_usage_scan_status",
+      name: "usage-scan:status",
+      status: "success",
+      startedAt: scannedAt,
+      input: {
+        source: "usage-scan",
+        usageSource: "tokscale",
+        redactionLevel
+      },
+      metadata
+    },
+    event: {
+      id: "evt_usage_scan_status",
+      runId: "run_usage_scan_status",
+      type: "step_ended",
+      name: "usage_scan_status",
+      status: "success",
+      timestamp: scannedAt,
+      output: {
+        diagnostics
+      },
+      metadata
+    }
+  };
+}
+
+function normalizeUsageDiagnostic(record: Record<string, unknown>): UsageScanDiagnostic | undefined {
+  const client = normalizeClient(getString(record, "client", "source", "agent", "tool"));
+  const status = getString(record, "status");
+
+  if (!client || !status) {
+    return undefined;
+  }
+
+  return compactObject({
+    client,
+    status,
+    messageCount: getInteger(record, "messageCount", "message_count", "messages"),
+    path: getString(record, "path"),
+    pathExists: getBoolean(record, "pathExists", "path_exists"),
+    warning: getString(record, "warning"),
+    actionHint: getString(record, "actionHint", "action_hint")
+  }) as UsageScanDiagnostic;
+}
+
 function getScanTokenUsage(row: Record<string, unknown>): TokenUsage {
   const input = getInteger(row, "inputTokens", "input_tokens", "input") ?? 0;
   const output = getInteger(row, "outputTokens", "output_tokens", "output") ?? 0;
   const cacheReadInput =
-    getInteger(row, "cacheReadTokens", "cache_read_tokens", "cacheReadInputTokens") ?? 0;
+    getInteger(row, "cacheReadTokens", "cache_read_tokens", "cacheReadInputTokens", "cacheRead") ??
+    0;
   const cacheCreationInput =
-    getInteger(row, "cacheWriteTokens", "cache_write_tokens", "cacheCreationInputTokens") ?? 0;
+    getInteger(row, "cacheWriteTokens", "cache_write_tokens", "cacheCreationInputTokens", "cacheWrite") ??
+    0;
   const reasoningOutput =
-    getInteger(row, "reasoningTokens", "reasoning_tokens", "reasoningOutputTokens") ?? 0;
+    getInteger(row, "reasoningTokens", "reasoning_tokens", "reasoningOutputTokens", "reasoning") ?? 0;
   const total =
     getInteger(row, "totalTokens", "total_tokens", "total") ??
-    input + output + cacheReadInput + cacheCreationInput;
+    input + output + cacheReadInput + cacheCreationInput + reasoningOutput;
 
   return compactTokenUsage({
     input,
@@ -139,6 +225,10 @@ function getScanTokenUsage(row: Record<string, unknown>): TokenUsage {
     scope: "session",
     method: "tokscale"
   });
+}
+
+function hasPositiveCost(row: Record<string, unknown>) {
+  return (getNumber(row, "costUsd", "cost_usd", "cost") ?? 0) > 0;
 }
 
 function normalizeClient(value: string | undefined) {
@@ -159,6 +249,18 @@ function clientToAgent(client: string) {
   if (client === "copilot") return "github-copilot";
 
   return client;
+}
+
+function normalizeSessionId(agent: string, sessionId: string | undefined) {
+  if (agent !== "codex" || !sessionId?.startsWith("rollout-")) {
+    return sessionId;
+  }
+
+  const match = sessionId.match(
+    /([0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12})$/i
+  );
+
+  return match?.[1]?.toLowerCase() ?? sessionId;
 }
 
 function normalizeProvider(value: string | undefined) {
@@ -227,6 +329,12 @@ function getNumber(record: Record<string, unknown>, ...keys: string[]) {
   return undefined;
 }
 
+function getBoolean(record: Record<string, unknown>, ...keys: string[]) {
+  const value = getValue(record, ...keys);
+
+  return typeof value === "boolean" ? value : undefined;
+}
+
 function getValue(record: Record<string, unknown>, ...keys: string[]) {
   for (const key of keys) {
     const value = record[key];
@@ -249,6 +357,10 @@ function compactMetadata(value: TraceMetadata) {
   return Object.fromEntries(
     Object.entries(value).filter(([, entry]) => entry !== undefined)
   ) as TraceMetadata;
+}
+
+function compactObject(value: Record<string, unknown>) {
+  return Object.fromEntries(Object.entries(value).filter(([, entry]) => entry !== undefined));
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

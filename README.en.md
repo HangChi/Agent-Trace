@@ -37,7 +37,17 @@ To also scan local agent token/cost usage with `tokscale` while the dashboard
 runs:
 
 ```bash
-node packages/cli/dist/index.js dev --usage-scan --usage-clients codex,claude,opencode,cursor,antigravity,kimi,qwen,copilot
+node packages/cli/dist/index.js dev --usage-scan
+node packages/cli/dist/index.js dev --usage-scan --usage-sync --usage-home C:\Users\alice
+```
+
+If the runtime points `HOME` at a sandbox or a different user, pass the real
+home directory:
+
+```bash
+node packages/cli/dist/index.js dev --usage-scan --usage-home C:\Users\alice
+node packages/cli/dist/index.js usage clients --home C:\Users\alice
+node packages/cli/dist/index.js usage sync --clients cursor,antigravity,trae,warp --home C:\Users\alice
 ```
 
 During local development, you can also run the CLI from source:
@@ -131,7 +141,8 @@ node packages/cli/dist/index.js uninstall claude-code
 - `CODEX_HOME` and `CLAUDE_CONFIG_DIR` override the config directories; `AGENT_TRACE_COLLECTOR_URL` (or `--collector-url`) overrides the collector base URL.
 - By default, hooks use metadata redaction. Agent-Trace stores event names, tool names, executed shell commands, IDs, statuses, durations, models, official token usage when provided, local token estimates when official usage is missing, and payload sizes for non-command tool input/output. It does not store raw prompts, full non-command tool input/output, file contents, or hidden reasoning.
 - For the most accurate Codex token usage, configure the official Codex OTel JSON log exporter to `http://localhost:4319/integrations/codex/otel/v1/logs`; hook-only prompt/output token counts from Codex or Claude Code are estimated locally and marked as estimated.
-- For accurate cross-agent session totals, run `agent-trace usage --once` or `agent-trace usage --watch --interval-ms 15000`. This posts `tokscale` summary rows for Codex, Claude Code, OpenCode, Cursor, Antigravity, Kimi, Qwen, and GitHub Copilot CLI to `POST /integrations/usage-scan` without sending raw prompts, responses, files, or source logs.
+- For accurate cross-agent session totals, run `agent-trace usage --once` or `agent-trace usage --watch --interval-ms 15000`. Use `--home <path>` if local history lives under a different home directory. This posts `tokscale` summary rows for Codex, Claude Code, OpenCode, Cursor, Antigravity, Kimi, Qwen, GitHub Copilot CLI, Trae, Warp, Cline, Zed, Kiro, Grok, CodeBuddy, WorkBuddy, OpenClaw, Hermes, Kilo, KiloCode, RooCode, Goose, Gemini, and other supported local clients to `POST /integrations/usage-scan` without sending raw prompts, responses, files, or source logs.
+- Run `agent-trace usage clients --home <path>` to see which local sources exist, which have message counts, and which need login/sync. For Cursor cache misses, run `tokscale cursor login`, then `tokscale cursor sync --json --home <path>`, and scan again.
 - Cost display prefers scanner-provided `costUsd`. Without scan cost, Agent-Trace only calculates cost for exact `AGENT_TRACE_MODEL_PRICES_JSON` entries; other models are shown as unpriced instead of guessed from stale built-in rates.
 
 To verify hook ingestion without running Codex or Claude Code, start the local collector and run:
@@ -168,6 +179,8 @@ pnpm --filter @agent-trace/server db:init
 pnpm --filter @agent-trace/server dev
 pnpm --filter @agent-trace/web dev
 pnpm --filter @agent-trace/cli exec tsx src/index.ts usage --once
+pnpm --filter @agent-trace/cli exec tsx src/index.ts usage clients --home C:\Users\alice
+pnpm --filter @agent-trace/cli exec tsx src/index.ts usage sync --clients cursor,antigravity,trae,warp --home C:\Users\alice
 pnpm --filter @agent-trace/sdk smoke
 pnpm --filter simple-agent dev
 node examples/agent-hook-smoke.mjs

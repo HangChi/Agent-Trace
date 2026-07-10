@@ -33,6 +33,15 @@ pnpm --filter @agent-trace/cli build
 node packages/cli/dist/index.js dev
 ```
 
+```bash
+node packages/cli/dist/index.js dev --usage-scan --usage-home C:\Users\song
+node packages/cli/dist/index.js dev --usage-scan --usage-sync --usage-home C:\Users\song
+node packages/cli/dist/index.js usage --once --home C:\Users\song
+node packages/cli/dist/index.js usage --once --sync --home C:\Users\song
+node packages/cli/dist/index.js usage clients --home C:\Users\song
+node packages/cli/dist/index.js usage sync --clients cursor,antigravity,trae,warp --home C:\Users\song
+```
+
 开发时也可以直接从源码启动 CLI：
 
 ```bash
@@ -158,6 +167,9 @@ pnpm --filter @agent-trace/schema build
 pnpm --filter @agent-trace/server db:init
 pnpm --filter @agent-trace/server dev
 pnpm --filter @agent-trace/web dev
+pnpm --filter @agent-trace/cli exec tsx src/index.ts usage --once
+pnpm --filter @agent-trace/cli exec tsx src/index.ts usage clients --home C:\Users\song
+pnpm --filter @agent-trace/cli exec tsx src/index.ts usage sync --clients cursor,antigravity,trae,warp --home C:\Users\song
 pnpm --filter @agent-trace/sdk smoke
 pnpm --filter simple-agent dev
 node examples/agent-hook-smoke.mjs
@@ -183,7 +195,9 @@ pnpm --filter simple-agent dev
 - `PATCH /runs/:id`
 - `POST /events`
 - `POST /integrations/codex/hook`
+- `POST /integrations/codex/otel/v1/logs`
 - `POST /integrations/claude-code/hook`
+- `POST /integrations/usage-scan`
 - `GET /runs`
 - `GET /runs/:id/events`
 - `DELETE /runs/:id`

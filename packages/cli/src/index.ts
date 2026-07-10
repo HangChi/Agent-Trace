@@ -12,7 +12,13 @@ import {
   type HookTarget,
   type RedactionLevel
 } from "./hooks.js";
-import { collectUsageOnce, watchUsage } from "./usage.js";
+import {
+  collectUsageClientDiagnostics,
+  collectUsageOnce,
+  DEFAULT_USAGE_CLIENTS,
+  syncUsageClients,
+  watchUsage
+} from "./usage.js";
 
 const command = process.argv[2];
 const workspaceRoot = resolve(dirname(fileURLToPath(import.meta.url)), "../../..");
@@ -212,7 +218,9 @@ async function runDev(argv: string[] = []) {
   const databasePath = getEnv("AGENT_TRACE_DB_PATH", "TOOLTRACE_DB_PATH");
   const serverUrl = `http://localhost:${serverPort}`;
   const usageScan = flags["usage-scan"] === "true";
+  const usageSync = flags["usage-sync"] === "true" || flags.sync === "true";
   const usageClients = flags["usage-clients"] ?? process.env.AGENT_TRACE_USAGE_CLIENTS;
+  const usageHome = flags["usage-home"] ?? flags.home ?? process.env.AGENT_TRACE_USAGE_HOME;
   const usageIntervalMs = parsePositiveNumber(flags["usage-interval-ms"]) ?? 15_000;
   const children: ChildProcess[] = [];
 
@@ -242,10 +250,14 @@ async function runDev(argv: string[] = []) {
   const usageAbortController = new AbortController();
 
   if (usageScan) {
-    console.log(`Usage scan: enabled (${usageClients ?? "default clients"}, every ${usageIntervalMs}ms)`);
+    console.log(
+      `Usage scan: enabled (${usageClients ?? "default clients"}, every ${usageIntervalMs}ms${usageSync ? ", sync first" : ""})`
+    );
     void watchUsage({
       collectorUrl: serverUrl,
       clients: usageClients,
+      home: usageHome,
+      sync: usageSync,
       intervalMs: usageIntervalMs,
       signal: usageAbortController.signal
     });
@@ -285,7 +297,7 @@ async function runDev(argv: string[] = []) {
 }
 
 async function runUsage(argv: string[]) {
-  const { flags } = parseFlags(argv);
+  const { flags, positionals } = parseFlags(argv);
   const collectorUrl =
     flags["collector-url"] ??
     process.env.AGENT_TRACE_COLLECTOR_URL ??
@@ -293,8 +305,39 @@ async function runUsage(argv: string[]) {
     process.env.TOOLTRACE_COLLECTOR_URL ??
     process.env.TOOLTRACE_ENDPOINT;
   const clients = flags.clients ?? flags["usage-clients"] ?? process.env.AGENT_TRACE_USAGE_CLIENTS;
+  const home = flags.home ?? flags["usage-home"] ?? process.env.AGENT_TRACE_USAGE_HOME;
   const intervalMs = parsePositiveNumber(flags["interval-ms"]) ?? 15_000;
   const commandTimeoutMs = parsePositiveNumber(flags["timeout-ms"]);
+  const sync = flags.sync === "true" || flags["usage-sync"] === "true";
+
+  if (positionals[0] === "clients") {
+    const diagnostics = await collectUsageClientDiagnostics({
+      home,
+      commandTimeoutMs
+    });
+
+    if (flags.json === "true") {
+      console.log(JSON.stringify({ diagnostics }, null, 2));
+    } else {
+      printUsageDiagnostics(diagnostics);
+    }
+    return;
+  }
+
+  if (positionals[0] === "sync") {
+    const diagnostics = await syncUsageClients({
+      clients,
+      home,
+      commandTimeoutMs
+    });
+
+    if (flags.json === "true") {
+      console.log(JSON.stringify({ diagnostics }, null, 2));
+    } else {
+      printUsageDiagnostics(diagnostics);
+    }
+    return;
+  }
 
   if (flags.watch === "true") {
     const abortController = new AbortController();
@@ -310,6 +353,8 @@ async function runUsage(argv: string[]) {
     await watchUsage({
       collectorUrl,
       clients,
+      home,
+      sync,
       intervalMs,
       commandTimeoutMs,
       signal: abortController.signal
@@ -320,10 +365,15 @@ async function runUsage(argv: string[]) {
   const result = await collectUsageOnce({
     collectorUrl,
     clients,
+    home,
+    sync,
     commandTimeoutMs
   });
 
   console.log(`Posted ${result.rows} usage rows to Agent-Trace.`);
+  if (result.diagnostics > 0) {
+    console.log(`Included ${result.diagnostics} scanner diagnostics.`);
+  }
 }
 
 function runPnpm(args: string[], env: NodeJS.ProcessEnv = {}) {
@@ -393,12 +443,50 @@ function parsePositiveNumber(value: string | undefined) {
   return Number.isFinite(parsed) && parsed > 0 ? parsed : undefined;
 }
 
+function printUsageDiagnostics(
+  diagnostics: Array<{
+    client: string;
+    status: string;
+    messageCount?: number;
+    path?: string;
+    pathExists?: boolean;
+    warning?: string;
+    actionHint?: string;
+  }>
+) {
+  if (diagnostics.length === 0) {
+    console.log("No usage client diagnostics returned.");
+    return;
+  }
+
+  for (const diagnostic of diagnostics) {
+    const count = diagnostic.messageCount !== undefined
+      ? ` messages=${diagnostic.messageCount.toLocaleString()}`
+      : "";
+    const path = diagnostic.path
+      ? ` path=${diagnostic.path}${diagnostic.pathExists === false ? " (missing)" : ""}`
+      : "";
+
+    console.log(`${diagnostic.client}: ${diagnostic.status}${count}${path}`);
+
+    if (diagnostic.warning) {
+      console.log(`  warning: ${diagnostic.warning}`);
+    }
+
+    if (diagnostic.actionHint) {
+      console.log(`  action: ${diagnostic.actionHint}`);
+    }
+  }
+}
+
 function printHelp() {
   console.log(`Agent-Trace CLI
 
 Usage:
   agent-trace dev
   agent-trace usage [--once|--watch] [options]
+  agent-trace usage clients --home <path> [--json]
+  agent-trace usage sync --clients <clients> --home <path>
   agent-trace install <target> [options]
   agent-trace uninstall <target>
 
@@ -467,17 +555,22 @@ Environment:
   AGENT_TRACE_SERVER_PORT   Collector port, default 4319
   AGENT_TRACE_WEB_PORT      Dashboard port, default 3000
   AGENT_TRACE_USAGE_CLIENTS Usage scanner clients
+  AGENT_TRACE_USAGE_HOME    Local home directory for tokscale
   TOOLTRACE_*               Legacy environment variable names are still accepted
 
 Options:
   --usage-scan                 Enable local tokscale usage scanner
-  --usage-clients <clients>    Clients to scan, default codex,claude,opencode,cursor,antigravity,kimi,qwen,copilot
+  --usage-sync                 Run supported tokscale sync commands before scanner cycles
+  --usage-clients <clients>    Clients to scan, default ${DEFAULT_USAGE_CLIENTS}
+  --usage-home <path>          Local home directory passed to tokscale
   --usage-interval-ms <ms>     Scanner interval, default 15000
 `);
 }
 
 function printUsageHelp() {
   console.log(`agent-trace usage [options]
+agent-trace usage clients --home <path> [--json]
+agent-trace usage sync --clients <clients> --home <path>
 
 Scans local AI coding agent usage with tokscale and posts token/cost summaries to
 the local collector. Raw prompts, responses, and files are not sent.
@@ -485,13 +578,17 @@ the local collector. Raw prompts, responses, and files are not sent.
 Options:
   --once                    Run one scan, default behavior
   --watch                   Keep scanning on an interval
+  --sync                    Run supported tokscale sync commands before scanning
+  --json                    Print JSON for clients/sync subcommands
   --interval-ms <ms>        Watch interval, default 15000
-  --clients <clients>       Client list, default codex,claude,opencode,cursor,antigravity,kimi,qwen,copilot
+  --clients <clients>       Client list, default ${DEFAULT_USAGE_CLIENTS}
+  --home <path>             Local home directory passed to tokscale
   --collector-url <url>     Collector base URL, default http://localhost:4319
   --timeout-ms <ms>         tokscale command timeout, default 60000
 
 Environment:
   AGENT_TRACE_TOKSCALE_BIN    tokscale executable override
   AGENT_TRACE_USAGE_CLIENTS   Default client list
+  AGENT_TRACE_USAGE_HOME      Local home directory for tokscale
 `);
 }

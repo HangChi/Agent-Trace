@@ -116,6 +116,16 @@ const runsTableColumns = [
   }
 ];
 
+type ScannerDiagnostic = {
+  client: string;
+  status: string;
+  messageCount?: number;
+  path?: string;
+  pathExists?: boolean;
+  warning?: string;
+  actionHint?: string;
+};
+
 export default async function RunsPage({ searchParams }: { searchParams: RunsSearchParams }) {
   const locale = parseLocale((await searchParams).lang);
   const text = copy[locale];
@@ -124,6 +134,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
   const failedRuns = runs.filter((r) => r.status === "error").length;
   const runningRuns = runs.filter((r) => r.status === "running").length;
   const agentSources = getAgentSourceSummary(runs, locale);
+  const scannerDiagnostics = getScannerDiagnostics(runs);
 
   return (
     <main id="main-content" className="min-h-screen bg-background text-foreground">
@@ -182,6 +193,10 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
           <MetricCard label={text.runs.running} value={runningRuns} icon={Play} accent="amber" />
           <MetricCard label={text.runs.errors} value={failedRuns} icon={AlertCircle} accent="red" />
         </div>
+
+        {scannerDiagnostics.length > 0 ? (
+          <ScannerStatus diagnostics={scannerDiagnostics} locale={locale} />
+        ) : null}
 
         <Card className="mt-5 overflow-hidden py-0">
           <div className="flex flex-col gap-3 border-b border-border/80 bg-surface-raised px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
@@ -506,6 +521,94 @@ function MetricCard({
   );
 }
 
+function ScannerStatus({
+  diagnostics,
+  locale
+}: {
+  diagnostics: ScannerDiagnostic[];
+  locale: Locale;
+}) {
+  const text = copy[locale];
+
+  return (
+    <Card className="mt-5 overflow-hidden py-0">
+      <div className="flex items-start gap-3 border-b border-border/80 bg-surface-raised px-4 py-4 sm:px-5">
+        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-900 dark:bg-teal-950/35 dark:text-teal-300">
+          <Server className="h-4 w-4" aria-hidden />
+        </span>
+        <div className="min-w-0">
+          <h2 className="text-sm font-semibold text-foreground">{text.runs.scannerStatus}</h2>
+          <p className="mt-1 text-xs text-muted-foreground">{text.runs.scannerStatusHelp}</p>
+        </div>
+      </div>
+      <div className="overflow-x-auto">
+        <Table>
+          <TableHeader>
+            <TableRow className="bg-surface-muted/80 hover:bg-surface-muted/80">
+              <TableHead className="h-10 pl-4">{text.runs.scannerClient}</TableHead>
+              <TableHead className="h-10">{text.runs.scannerState}</TableHead>
+              <TableHead className="h-10">{text.runs.scannerMessages}</TableHead>
+              <TableHead className="h-10">{text.runs.scannerPath}</TableHead>
+              <TableHead className="h-10 pr-4">{text.runs.scannerAction}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {diagnostics.map((diagnostic) => (
+              <TableRow key={diagnostic.client}>
+                <TableCell className="py-3 pl-4 align-top">
+                  <SourceBadge agent={clientToAgent(diagnostic.client)} locale={locale} />
+                </TableCell>
+                <TableCell className="py-3 align-top">
+                  <span
+                    className={cn(
+                      "inline-flex rounded-md border px-1.5 py-0.5 text-[11px] font-medium",
+                      getScannerStatusClass(diagnostic.status)
+                    )}
+                  >
+                    {formatScannerStatus(diagnostic.status, locale)}
+                  </span>
+                </TableCell>
+                <TableCell className="py-3 align-top font-mono text-xs tabular-nums text-muted-foreground">
+                  {diagnostic.messageCount?.toLocaleString() ?? "-"}
+                </TableCell>
+                <TableCell className="max-w-[360px] py-3 align-top">
+                  <div
+                    className={cn(
+                      "break-all font-mono text-[11px] leading-4",
+                      diagnostic.pathExists === false ? "text-status-error" : "text-muted-foreground"
+                    )}
+                    title={diagnostic.path}
+                  >
+                    {diagnostic.path ?? text.runs.scannerNoPath}
+                  </div>
+                </TableCell>
+                <TableCell className="max-w-[520px] py-3 pr-4 align-top">
+                  {diagnostic.actionHint || diagnostic.warning ? (
+                    <div className="space-y-1">
+                      {diagnostic.actionHint ? (
+                        <div className="break-all font-mono text-[11px] leading-4 text-foreground">
+                          {diagnostic.actionHint}
+                        </div>
+                      ) : null}
+                      {diagnostic.warning ? (
+                        <div className="break-words text-[11px] leading-4 text-muted-foreground">
+                          {diagnostic.warning}
+                        </div>
+                      ) : null}
+                    </div>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">-</span>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      </div>
+    </Card>
+  );
+}
+
 function getAgentSourceSummary(runs: DashboardRun[], locale: Locale) {
   const counts = new Map<string, number>();
 
@@ -527,6 +630,100 @@ function getAgentSourceSummary(runs: DashboardRun[], locale: Locale) {
       .map(([agent, count]) => `${formatAgent(agent, locale)} ${count.toLocaleString()}`)
       .join(" / ")
   };
+}
+
+function getScannerDiagnostics(runs: DashboardRun[]) {
+  const statusRun = runs.find(
+    (run) => run.id === "run_usage_scan_status" || run.metadata?.agent === "usage-scan"
+  );
+  const diagnostics = asArray(asRecord(statusRun?.metadata).diagnostics)
+    .map((item) => normalizeScannerDiagnostic(asRecord(item)))
+    .filter((diagnostic): diagnostic is ScannerDiagnostic => diagnostic !== undefined);
+
+  return diagnostics.sort((a, b) => getScannerStatusRank(a.status) - getScannerStatusRank(b.status));
+}
+
+function normalizeScannerDiagnostic(record: Record<string, unknown>): ScannerDiagnostic | undefined {
+  const client = getString(record.client);
+  const status = getString(record.status);
+
+  if (!client || !status) {
+    return undefined;
+  }
+
+  const messageCount = getNumber(record.messageCount);
+
+  return {
+    client,
+    status,
+    messageCount: messageCount > 0 ? messageCount : undefined,
+    path: getString(record.path),
+    pathExists: typeof record.pathExists === "boolean" ? record.pathExists : undefined,
+    warning: getString(record.warning),
+    actionHint: getString(record.actionHint)
+  };
+}
+
+function getScannerStatusRank(status: string) {
+  const ranks: Record<string, number> = {
+    needs_sync: 0,
+    needs_login: 1,
+    error: 2,
+    missing: 3,
+    waiting: 4,
+    synced: 5,
+    available: 6
+  };
+
+  return ranks[status] ?? 7;
+}
+
+function formatScannerStatus(status: string, locale: Locale) {
+  const labels: Record<Locale, Record<string, string>> = {
+    zh: {
+      available: "\u6709\u6570\u636e",
+      waiting: "\u7b49\u5f85\u8bb0\u5f55",
+      missing: "\u672a\u68c0\u6d4b\u5230",
+      needs_sync: "\u9700\u8981 sync",
+      needs_login: "\u9700\u8981 login",
+      synced: "\u5df2\u540c\u6b65",
+      error: "\u5f02\u5e38"
+    },
+    en: {
+      available: "available",
+      waiting: "waiting",
+      missing: "missing",
+      needs_sync: "needs sync",
+      needs_login: "needs login",
+      synced: "synced",
+      error: "error"
+    }
+  };
+
+  return labels[locale][status] ?? status;
+}
+
+function getScannerStatusClass(status: string) {
+  if (status === "available" || status === "synced") {
+    return "border-status-success-border bg-status-success-subtle text-status-success";
+  }
+
+  if (status === "needs_sync" || status === "needs_login" || status === "waiting") {
+    return "border-status-warning-border bg-status-warning-subtle text-status-warning";
+  }
+
+  if (status === "error") {
+    return "border-status-error-border bg-status-error-subtle text-status-error";
+  }
+
+  return "border-border bg-surface-muted text-muted-foreground";
+}
+
+function clientToAgent(client: string) {
+  if (client === "claude") return "claude-code";
+  if (client === "copilot") return "github-copilot";
+
+  return client;
 }
 
 function SourceCell({ metadata, locale }: { metadata?: DashboardRunMetadata; locale: Locale }) {
@@ -721,6 +918,24 @@ function formatCny(value: number) {
 
 function formatMoney(value: number) {
   return value < 0.01 ? value.toFixed(4) : value.toFixed(2);
+}
+
+function getString(value: unknown) {
+  return typeof value === "string" && value.length > 0 ? value : undefined;
+}
+
+function getNumber(value: unknown) {
+  return typeof value === "number" && Number.isFinite(value) && value >= 0 ? value : 0;
+}
+
+function asRecord(value: unknown): Record<string, unknown> {
+  return value !== null && typeof value === "object" && !Array.isArray(value)
+    ? (value as Record<string, unknown>)
+    : {};
+}
+
+function asArray(value: unknown) {
+  return Array.isArray(value) ? value : [];
 }
 
 function formatDuration(startedAt: string, endedAt: string | undefined, locale: Locale) {

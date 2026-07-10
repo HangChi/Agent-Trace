@@ -15,7 +15,33 @@ node packages/cli/dist/index.js dev
 To also scan local agent usage snapshots while the dashboard runs:
 
 ```bash
-node packages/cli/dist/index.js dev --usage-scan --usage-clients codex,claude,opencode,cursor,antigravity,kimi,qwen,copilot
+node packages/cli/dist/index.js dev --usage-scan
+node packages/cli/dist/index.js dev --usage-scan --usage-sync --usage-home C:\Users\alice
+```
+
+The scanner passes the local user home directory to `tokscale` by default. If
+your shell or app runtime points `HOME` at a sandbox or another user, pass the
+real home explicitly:
+
+```bash
+node packages/cli/dist/index.js dev --usage-scan --usage-home /Users/alice
+node packages/cli/dist/index.js dev --usage-scan --usage-home C:\Users\alice
+```
+
+Before a scan, you can inspect which local data sources `tokscale` can see:
+
+```bash
+node packages/cli/dist/index.js usage clients --home C:\Users\alice
+node packages/cli/dist/index.js usage clients --home C:\Users\alice --json
+```
+
+For cache-backed clients, Agent-Trace can ask `tokscale` to sync before
+scanning. It does not run browser login flows automatically. If a client needs
+login, the CLI and dashboard show the command to run manually:
+
+```bash
+node packages/cli/dist/index.js usage sync --clients cursor,antigravity,trae,warp --home C:\Users\alice
+node packages/cli/dist/index.js usage --once --sync --home C:\Users\alice
 ```
 
 Install global hooks in another terminal:
@@ -73,18 +99,31 @@ values as `estimated`.
 
 For the most accurate local session totals, Agent-Trace can also run a
 `tokscale` usage scan and ingest the summary rows at
-`POST /integrations/usage-scan`. This path supports Codex, Claude Code,
-OpenCode, Cursor, Antigravity, Kimi, Qwen, and GitHub Copilot CLI in v1.
+`POST /integrations/usage-scan`. The default scan list follows the same local
+coverage target as Token Monitor/tokscale for mainstream clients, including
+Codex, Claude Code, OpenCode, Cursor, Antigravity, Kimi, Qwen, GitHub Copilot
+CLI, Trae, Warp, Cline, Zed, Kiro, Grok, CodeBuddy, WorkBuddy, OpenClaw,
+Hermes, Kilo, KiloCode, RooCode, Goose, and Gemini.
 
 ```bash
 node packages/cli/dist/index.js usage --once
 node packages/cli/dist/index.js usage --watch --interval-ms 15000
+node packages/cli/dist/index.js usage --once --home C:\Users\alice
+node packages/cli/dist/index.js usage --once --sync --home C:\Users\alice
 ```
 
 Usage scan snapshots are stored as session-scoped token events with
 `metadata.tokenUsage.sourceKind = "scan"` and `scope = "session"`. When a scan
 snapshot exists for a run, the dashboard summary prefers that session total over
 hook-only text estimates to avoid double counting.
+For Codex, `tokscale` rollout session IDs are normalized back to the Codex UUID
+run ID, so historical scan rows merge into existing hook/OTel timelines instead
+of creating duplicate runs.
+
+Usage scans may also send scanner diagnostics. The collector stores these on
+`run_usage_scan_status` as JSON metadata: client, status, message count, path
+existence, warning, and action hint. Prompt text, assistant responses, file
+contents, and raw source logs are not sent.
 
 The official usage parser recognizes the common response shapes from mainstream
 providers:
@@ -186,6 +225,8 @@ The first tracing mode is `metadata`. In this mode Agent-Trace stores:
   when exposed hook prompt/output text is the only available source
 - usage-scan summary rows from `tokscale`, including client, session, model,
   aggregate token counts, aggregate USD cost, message count, and timestamps
+- usage-scan diagnostics from `tokscale clients`, including client, status,
+  aggregate message count, local path existence, warning, and action hint
 - payload sizes or text lengths for prompts and non-command tool input/output
 
 Agent-Trace does not store these fields by default:
@@ -213,3 +254,12 @@ explicit and separate from the default metadata mode.
 - Usage scanning depends on local `tokscale` support for each agent. If
   `tokscale` cannot read a client database or log directory, Agent-Trace keeps
   showing hook and SDK data without failing the dashboard.
+- If usage scanning returns no rows but local history exists, check the home
+  directory used by the process and pass `--home` or `--usage-home` explicitly.
+- If Cursor has no rows, check `agent-trace usage clients --home <path>`.
+  Cursor usage needs Tokscale's cache files. Run `tokscale cursor login`, then
+  `tokscale cursor sync --json --home <path>`, and scan again.
+- "Not detected" usually means one of three things: this machine has no local
+  records for that agent, the agent requires login/sync before local caches are
+  available, or `tokscale` does not currently support local parsing for that
+  source.
