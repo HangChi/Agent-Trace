@@ -1,4 +1,5 @@
 import { spawnSync } from "node:child_process";
+import { readFileSync } from "node:fs";
 import { dirname, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
@@ -19,4 +20,24 @@ for (const file of files) {
   if (result.status !== 0) {
     process.exit(result.status ?? 1);
   }
+}
+
+const mainSource = readFileSync(resolve(desktopRoot, "main.cjs"), "utf8");
+const prepareSource = readFileSync(resolve(desktopRoot, "scripts/prepare-dist.mjs"), "utf8");
+
+for (const required of [
+  "startUsageScannerService",
+  "AGENT_TRACE_USAGE_SCAN",
+  'app.getPath("home")',
+  '"--watch"',
+  '"--interval-ms"',
+  '"15000"'
+]) {
+  if (!mainSource.includes(required)) {
+    throw new Error(`Desktop usage scanner is missing required source marker: ${required}`);
+  }
+}
+
+if (!prepareSource.includes('"cli.tgz"')) {
+  throw new Error("Desktop resources must package the CLI usage scanner as cli.tgz.");
 }

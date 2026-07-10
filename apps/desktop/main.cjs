@@ -61,6 +61,9 @@ async function startDesktopApp() {
 
   try {
     const collector = await startCollectorService();
+    startUsageScannerService(collector.url).catch((error) => {
+      console.error(`Agent-Trace usage scanner could not start: ${error instanceof Error ? error.message : String(error)}`);
+    });
     const dashboard = await startDashboardService(collector.url);
     dashboardUrl = dashboard.url;
 
@@ -69,6 +72,52 @@ async function startDesktopApp() {
     const message = error instanceof Error ? error.message : String(error);
     showErrorPage(message);
   }
+}
+
+async function startUsageScannerService(collectorUrl) {
+  if (!isUsageScannerEnabled()) {
+    return undefined;
+  }
+
+  const args = [
+    "usage",
+    "--watch",
+    "--collector-url",
+    collectorUrl,
+    "--home",
+    app.getPath("home"),
+    "--interval-ms",
+    "15000"
+  ];
+  const processOptions = {
+    label: "usage scanner",
+    reportFailure: false
+  };
+
+  if (app.isPackaged) {
+    await preparePackagedRuntime("cli");
+    const cliScript = getPackagedCliScript();
+
+    return spawnPackagedNode(
+      cliScript,
+      {},
+      path.dirname(path.dirname(cliScript)),
+      args,
+      processOptions
+    );
+  }
+
+  return spawnPnpm(
+    ["--filter", "@agent-trace/cli", "exec", "tsx", "src/index.ts", ...args],
+    {},
+    processOptions
+  );
+}
+
+function isUsageScannerEnabled() {
+  const configured = String(process.env.AGENT_TRACE_USAGE_SCAN ?? "").trim().toLowerCase();
+
+  return configured !== "0" && configured !== "false" && configured !== "off";
 }
 
 function createWindow() {
@@ -373,6 +422,16 @@ function getPackagedDashboardServerScript() {
   return serverScript;
 }
 
+function getPackagedCliScript() {
+  const cliScript = path.join(getRuntimePath("cli"), "app", "dist", "index.js");
+
+  if (!fs.existsSync(cliScript)) {
+    throw new Error(`Packaged usage scanner was not found at ${cliScript}.`);
+  }
+
+  return cliScript;
+}
+
 const runtimePathCache = new Map();
 
 function getRuntimePath(name) {
@@ -561,26 +620,28 @@ function delay(ms) {
   return new Promise((resolve) => setTimeout(resolve, ms));
 }
 
-function spawnPnpm(args, env) {
+function spawnPnpm(args, env, processOptions = {}) {
   const pnpm = resolvePnpmCommand();
 
   return spawnManaged(pnpm.command, [...pnpm.args, ...args], {
     cwd: resolveWorkspaceRoot(),
     env,
-    shell: process.platform === "win32" && pnpm.args.length === 0
+    shell: process.platform === "win32" && pnpm.args.length === 0,
+    ...processOptions
   });
 }
 
-function spawnPackagedNode(scriptPath, env, cwd) {
+function spawnPackagedNode(scriptPath, env, cwd, args = [], processOptions = {}) {
   // Reuse Electron's bundled Node.js runtime instead of shipping a separate
   // node.exe. ELECTRON_RUN_AS_NODE makes the Electron binary behave as plain Node.
-  return spawnManaged(process.execPath, [scriptPath], {
+  return spawnManaged(process.execPath, [scriptPath, ...args], {
     cwd,
     env: {
       ...env,
       NODE_ENV: "production",
       ELECTRON_RUN_AS_NODE: "1"
-    }
+    },
+    ...processOptions
   });
 }
 
@@ -601,16 +662,20 @@ function spawnManaged(command, args, options) {
   child.once("error", (error) => {
     childProcesses.delete(child);
 
-    if (!isQuitting) {
+    if (!isQuitting && options.reportFailure !== false) {
       showErrorPage(error.message);
+    } else if (!isQuitting) {
+      console.error(`${options.label || command} failed: ${error.message}`);
     }
   });
 
   child.once("exit", (code) => {
     childProcesses.delete(child);
 
-    if (!isQuitting && code !== 0 && code !== null) {
+    if (!isQuitting && code !== 0 && code !== null && options.reportFailure !== false) {
       showErrorPage(`${command} exited with code ${code}.`);
+    } else if (!isQuitting && code !== 0 && code !== null) {
+      console.error(`${options.label || command} exited with code ${code}.`);
     }
   });
 

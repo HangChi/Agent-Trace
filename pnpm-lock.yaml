@@ -18,6 +18,9 @@ importers:
         specifier: ^7.5.16
         version: 7.5.16
     devDependencies:
+      '@agent-trace/cli':
+        specifier: workspace:*
+        version: link:../../packages/cli
       '@agent-trace/server':
         specifier: workspace:*
         version: link:../server

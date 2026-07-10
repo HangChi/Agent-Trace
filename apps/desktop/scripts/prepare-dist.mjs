@@ -16,6 +16,8 @@ const resourcesArchivesDir = resolve(desktopRoot, "resources/archives");
 const resourcesServerRootDir = resolve(desktopRoot, "resources/server");
 const resourcesWebRootDir = resolve(desktopRoot, "resources/web");
 const stagingDir = resolve(desktopRoot, "resources/staging");
+const stagingCliRootDir = resolve(stagingDir, "cli");
+const stagingCliAppDir = resolve(stagingCliRootDir, "app");
 const stagingServerRootDir = resolve(stagingDir, "server");
 const stagingServerAppDir = resolve(stagingServerRootDir, "app");
 const stagingWebRootDir = resolve(stagingDir, "web");
@@ -24,6 +26,7 @@ const skipBuild = process.argv.includes("--skip-build");
 
 if (!skipBuild) {
   await runPnpm(["--filter", "@agent-trace/schema", "build"], workspaceRoot);
+  await runPnpm(["--filter", "@agent-trace/cli", "build"], workspaceRoot);
   await runPnpm(["--filter", "@agent-trace/server", "build"], workspaceRoot);
   await runPnpm(["--filter", "@agent-trace/web", "build"], workspaceRoot);
 }
@@ -46,6 +49,15 @@ rmSync(resourcesWebRootDir, { recursive: true, force: true });
 rmSync(stagingDir, { recursive: true, force: true });
 mkdirSync(resourcesArchivesDir, { recursive: true });
 mkdirSync(stagingWebAppDir, { recursive: true });
+
+await runPnpm(
+  ["--filter", "@agent-trace/cli", "deploy", "--prod", "--legacy", stagingCliAppDir],
+  workspaceRoot
+);
+copyPnpmHoistedDependencies(resolve(stagingCliAppDir, "node_modules"), {
+  skipEntries: new Set(["@agent-trace"]),
+  skipExisting: true
+});
 
 await runPnpm(
   ["--filter", "@agent-trace/server", "deploy", "--prod", "--legacy", stagingServerAppDir],
@@ -71,6 +83,7 @@ if (existsSync(publicDir)) {
 
 createRuntimeArchive(stagingServerRootDir, resolve(resourcesArchivesDir, "server.tgz"));
 createRuntimeArchive(stagingWebRootDir, resolve(resourcesArchivesDir, "web.tgz"));
+createRuntimeArchive(stagingCliRootDir, resolve(resourcesArchivesDir, "cli.tgz"));
 rmSync(stagingDir, { recursive: true, force: true });
 
 function copyPnpmHoistedDependencies(nodeModulesDir, options = {}) {
