@@ -770,6 +770,46 @@ if (
   throw new Error("Expected Codex Stop hooks to receive estimated output token usage.");
 }
 
+const codexTokenLikeToolSessionId = "codex_token_like_tool_output_smoke";
+const codexTokenLikeToolRunId = "run_codex_codex_token_like_tool_output_smoke";
+
+await expectAccepted(
+  app.request(codexCliHookPath, {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({
+      session_id: codexTokenLikeToolSessionId,
+      hook_event_name: "PostToolUse",
+      tool_name: "Bash",
+      tool_use_id: "codex_tool_usage_report",
+      tool_input: { command: "node local-scan-check.js" },
+      tool_response: {
+        result: {
+          totalTokens: 1_419_637_430,
+          costUsd: 1152.63
+        }
+      },
+      model: "gpt-5.6-sol",
+      cwd: "/workspace/agent-trace"
+    })
+  }),
+  "Codex tool output with token-like business data"
+);
+
+const codexTokenLikeToolEventsResponse = await app.request(
+  `/runs/${codexTokenLikeToolRunId}/events`
+);
+const codexTokenLikeToolEvents = await codexTokenLikeToolEventsResponse.json();
+const tokenLikeToolEvent = Array.isArray(codexTokenLikeToolEvents)
+  ? codexTokenLikeToolEvents.find(
+      (event) => event.metadata?.toolUseId === "codex_tool_usage_report"
+    )
+  : undefined;
+
+if (!tokenLikeToolEvent || tokenLikeToolEvent.metadata?.tokenUsage !== undefined) {
+  throw new Error("Expected ordinary tool output token-like fields to remain business data.");
+}
+
 const codexPromptOnlySessionId = "codex_prompt_only_session_smoke";
 const codexPromptOnlyRunId = "run_codex_codex_prompt_only_session_smoke";
 

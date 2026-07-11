@@ -109,7 +109,7 @@ export function normalizeAgentHook(
       ? claudeTranscript?.tokenUsage
       : undefined;
   const tokenUsage =
-    extractTokenUsage(source, body, { model, provider }) ??
+    extractHookTokenUsage(source, body, hookEvent, toolName, { model, provider }) ??
     transcriptTokenUsage ??
     estimateHookTokenUsage(source, body, hookEvent, model);
   const category = getTrackingCategory({
@@ -918,6 +918,57 @@ type UsageParseContext = {
   model?: string;
   provider?: string;
 };
+
+function extractHookTokenUsage(
+  source: AgentHookSource,
+  body: Record<string, unknown>,
+  hookEvent: string,
+  toolName: string | undefined,
+  context: UsageParseContext
+): TokenUsage | undefined {
+  for (const key of [
+    "usage",
+    "usage_metadata",
+    "usageMetadata",
+    "token_usage",
+    "tokenUsage",
+    "response_usage",
+    "responseUsage"
+  ]) {
+    const usage = asRecord(parseJsonString(body[key]));
+
+    if (Object.keys(usage).length === 0) {
+      continue;
+    }
+
+    const parsed = extractTokenUsage(source, usage, context);
+
+    if (parsed) {
+      return parsed;
+    }
+  }
+
+  if (source !== "claude-code" || hookEvent !== "PostToolUse" || toolName !== "Agent") {
+    return undefined;
+  }
+
+  const response = asRecord(getValue(body, "tool_response", "toolResponse"));
+  const structuredUsage = asRecord(getValue(response, "usage"));
+
+  if (Object.keys(structuredUsage).length === 0) {
+    return undefined;
+  }
+
+  const parsed = extractTokenUsage(source, structuredUsage, context);
+
+  if (!parsed) {
+    return undefined;
+  }
+
+  const aggregateTotal = getNonnegativeNumber(response, "totalTokens", "total_tokens");
+
+  return aggregateTotal === undefined ? parsed : { ...parsed, total: aggregateTotal };
+}
 
 function extractTokenUsage(
   source: AgentHookSource,
