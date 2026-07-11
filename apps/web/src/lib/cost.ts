@@ -77,7 +77,8 @@ export function calculateRunCost(summary: CostSummary | undefined, exchangeRate?
   const storedUsd = getStoredCostUsd(summary);
   const unpricedModels: string[] = [];
   let usd = 0;
-  let estimated = Boolean(summary?.tokenUsage?.estimated);
+  let estimated =
+    storedUsd !== undefined || usages.length > 0 || Boolean(summary?.tokenUsage?.estimated);
 
   if (storedUsd !== undefined) {
     return {

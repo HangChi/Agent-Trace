@@ -35,6 +35,27 @@ const storedScanCost = calculateRunCost(
 expectClose(storedScanCost.usd, 0.1234, "stored scan cost");
 expectClose(storedScanCost.cny, 0.88848, "stored scan CNY conversion");
 
+const scannerCost = calculateRunCost({
+  costUsd: 29.912249,
+  models: ["gpt-5.6-sol"],
+  tokenUsage: {
+    input: 749_641,
+    output: 106_336,
+    cachedInput: 43_577_088,
+    total: 44_433_065,
+    sourceKind: "scan",
+    scope: "session"
+  }
+});
+
+if (
+  scannerCost.usd !== 29.912249 ||
+  scannerCost.estimated !== true ||
+  scannerCost.unpricedModels.length !== 0
+) {
+  throw new Error("Expected scanner cost to be displayed as API-equivalent estimated cost.");
+}
+
 const explicitOverrideCost = calculateRunCost({
   models: ["explicit-model"],
   tokenUsage: {
