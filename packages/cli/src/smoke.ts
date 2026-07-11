@@ -214,15 +214,51 @@ try {
   await collectUsageOnce({
     collectorUrl: "http://localhost:4319",
     home: join(codexHome, "empty-usage-home"),
+    runTokscaleClients: async () => ({
+      clients: [
+        {
+          client: "codex",
+          messageCount: 4,
+          sessionsPathExists: true,
+          sessionsPath: join(codexHome, ".codex", "sessions")
+        },
+        {
+          client: "workbuddy",
+          messageCount: 3,
+          sessionsPathExists: true,
+          sessionsPath: join(codexHome, ".workbuddy", "sessions")
+        },
+        {
+          client: "kiro",
+          messageCount: 0,
+          sessionsPathExists: false,
+          sessionsPath: join(codexHome, ".kiro", "sessions")
+        },
+        {
+          client: "micode",
+          messageCount: 0,
+          sessionsPathExists: true,
+          sessionsPath: join(codexHome, ".mimocode", "sessions")
+        }
+      ]
+    }),
     runTokscale: async (clients) => {
       observedDefaultClients = clients;
       return { entries: [] };
     },
-    postJson: async () => {}
+    postJson: async (path, body) => {
+      postedUsageScans.push({ path, body: body as Record<string, unknown> });
+    }
   });
 
-  if (observedDefaultClients !== undefined) {
-    throw new Error("Expected the default usage scan to include every tokscale client without a filter.");
+  const defaultUsageScan = postedUsageScans.at(-1)?.body;
+
+  if (observedDefaultClients !== "codex,workbuddy,micode") {
+    throw new Error("Expected the default usage scan to only include clients with detectable local data.");
+  }
+
+  if (!Array.isArray(defaultUsageScan?.scanClients) || !defaultUsageScan.scanClients.includes("kiro")) {
+    throw new Error("Expected default usage scans to report all checked clients so stale Kiro rows can be pruned.");
   }
 
   const activeDuplicate = join(

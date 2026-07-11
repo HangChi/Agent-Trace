@@ -154,6 +154,22 @@ export type DashboardRun = Omit<Run, "metadata" | "status"> & {
   metadata?: DashboardRunMetadata;
 };
 
+export type DashboardRunPage = {
+  runs: DashboardRun[];
+  pagination: {
+    page: number;
+    pageSize: number;
+    total: number;
+    totalPages: number;
+  };
+  summary: {
+    totalRuns: number;
+    runningRuns: number;
+    failedRuns: number;
+    agents: Array<{ agent: string; count: number }>;
+  };
+};
+
 export type DashboardTraceEvent = Omit<TraceEvent, "metadata" | "status" | "type"> & {
   status: TraceStatus | string;
   type: TraceEventType | string;

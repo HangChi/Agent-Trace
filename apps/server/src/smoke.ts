@@ -1924,12 +1924,27 @@ const duplicateRolloutScanRun = Array.isArray(codexRolloutScanRuns)
 const codexRolloutScanSummary = codexRolloutScanRun?.metadata?.summary;
 
 if (
-  codexRolloutScanSummary?.tokenUsage.total !== 4250 ||
+  codexRolloutScanSummary?.tokenUsage.total !== 4200 ||
   codexRolloutScanSummary.tokenUsage.reasoningOutput !== 50 ||
   codexRolloutScanSummary.costUsd !== 0.42 ||
   duplicateRolloutScanRun !== undefined
 ) {
-  throw new Error("Expected Codex rollout usage scans to merge into the existing UUID run with scanner totals.");
+  throw new Error("Expected Codex rollout usage scans to merge into the existing UUID run without double-counting reasoning tokens.");
+}
+
+const paginatedRunsResponse = await app.request("/runs?includeUntracked=1&page=1&pageSize=2");
+const paginatedRuns = await paginatedRunsResponse.json();
+
+if (
+  !paginatedRuns ||
+  !Array.isArray(paginatedRuns.runs) ||
+  paginatedRuns.runs.length > 2 ||
+  paginatedRuns.pagination?.page !== 1 ||
+  paginatedRuns.pagination?.pageSize !== 2 ||
+  typeof paginatedRuns.pagination?.total !== "number" ||
+  paginatedRuns.pagination.total < paginatedRuns.runs.length
+) {
+  throw new Error("Expected /runs pagination queries to return a bounded run page.");
 }
 
 const replacementKeepSessionId = "usage_snapshot_keep";

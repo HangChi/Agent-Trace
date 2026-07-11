@@ -1,6 +1,11 @@
 import Link from "next/link";
-import type { DashboardRun, DashboardRunMetadata, DashboardRunSummary } from "@agent-trace/schema";
-import { Activity, AlertCircle, Cpu, Play, Server } from "lucide-react";
+import type {
+  DashboardRun,
+  DashboardRunMetadata,
+  DashboardRunPage,
+  DashboardRunSummary
+} from "@agent-trace/schema";
+import { Activity, AlertCircle, ChevronLeft, ChevronRight, Cpu, ListFilter, Play, Server } from "lucide-react";
 
 import {
   EmptyState,
@@ -11,6 +16,7 @@ import {
   ThemeToggle
 } from "~/components";
 import { Card, CardContent } from "~/components/ui/card";
+import { Button } from "~/components/ui/button";
 import {
   Table,
   TableBody,
@@ -44,11 +50,16 @@ import { ResizableTableColumns } from "./resizable-table-columns";
 
 export const dynamic = "force-dynamic";
 
-type RunsSearchParams = Promise<{ lang?: string | string[] }>;
+type RunsSearchParams = Promise<{
+  lang?: string | string[];
+  page?: string | string[];
+  scanner?: string | string[];
+}>;
 
 const collectorUrl = process.env.AGENT_TRACE_API_URL ?? process.env.TOOLTRACE_API_URL ?? "http://localhost:4319";
 const runsBulkDeleteFormId = "runs-bulk-delete-form";
 const runsTableColumnStorageKey = "agent-trace:runs-table-columns:v2";
+const runsPageSize = 50;
 const runsTableFixedColumnWidth = 44 + 42;
 const runsTableColumns = [
   {
@@ -127,14 +138,27 @@ type ScannerDiagnostic = {
 };
 
 export default async function RunsPage({ searchParams }: { searchParams: RunsSearchParams }) {
-  const locale = parseLocale((await searchParams).lang);
+  const params = await searchParams;
+  const locale = parseLocale(params.lang);
   const text = copy[locale];
-  const [{ runs, error }, exchangeRate] = await Promise.all([getRuns(locale), getUsdCnyRate()]);
-  const totalRuns = runs.length;
-  const failedRuns = runs.filter((r) => r.status === "error").length;
-  const runningRuns = runs.filter((r) => r.status === "running").length;
-  const agentSources = getAgentSourceSummary(runs, locale);
-  const scannerDiagnostics = getScannerDiagnostics(runs);
+  const requestedPage = parsePageParam(params.page);
+  const scannerMode = parseScannerMode(params.scanner);
+  const [{ page: runPage, error }, { runs: scannerRuns }, exchangeRate] = await Promise.all([
+    getRunPage(locale, requestedPage),
+    getScannerRuns(),
+    getUsdCnyRate()
+  ]);
+  const runs = runPage.runs;
+  const pagination = runPage.pagination;
+  const totalRuns = runPage.summary.totalRuns;
+  const failedRuns = runPage.summary.failedRuns;
+  const runningRuns = runPage.summary.runningRuns;
+  const agentSources = getAgentSourceSummary(runPage.summary.agents, locale);
+  const allScannerDiagnostics = getScannerDiagnostics(scannerRuns.length > 0 ? scannerRuns : runs);
+  const scannerDiagnostics = scannerMode === "all"
+    ? allScannerDiagnostics
+    : allScannerDiagnostics.filter(isDetectedScannerDiagnostic);
+  const hiddenScannerCount = allScannerDiagnostics.length - scannerDiagnostics.length;
 
   return (
     <main id="main-content" className="min-h-screen bg-background text-foreground">
@@ -194,8 +218,14 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
           <MetricCard label={text.runs.errors} value={failedRuns} icon={AlertCircle} accent="red" />
         </div>
 
-        {scannerDiagnostics.length > 0 ? (
-          <ScannerStatus diagnostics={scannerDiagnostics} locale={locale} />
+        {allScannerDiagnostics.length > 0 ? (
+          <ScannerStatus
+            currentPage={pagination.page}
+            diagnostics={scannerDiagnostics}
+            hiddenCount={hiddenScannerCount}
+            locale={locale}
+            showAll={scannerMode === "all"}
+          />
         ) : null}
 
         <Card className="mt-5 overflow-hidden py-0">
@@ -204,7 +234,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-semibold text-foreground">{text.runs.recent}</h2>
                 <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-border/80 bg-surface-muted px-1.5 text-xs text-muted-foreground tabular-nums">
-                  {totalRuns}
+                  {totalRuns.toLocaleString()}
                 </span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">{text.runs.latest}</p>
@@ -231,85 +261,86 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
             <EmptyState locale={locale} title={text.runs.emptyTitle} body={text.runs.emptyBody} />
           ) : null}
           {!error && runs.length > 0 ? (
-            <form id={runsBulkDeleteFormId}>
-              <ResizableTableColumns
-                columns={runsTableColumns}
-                fixedWidth={runsTableFixedColumnWidth}
-                storageKey={runsTableColumnStorageKey}
-              >
-                <Table
-                  className="table-fixed"
-                  style={{
-                    minWidth: "var(--runs-table-width)",
-                    width: "max(100%, var(--runs-table-width))"
-                  }}
+            <>
+              <form id={runsBulkDeleteFormId}>
+                <ResizableTableColumns
+                  columns={runsTableColumns}
+                  fixedWidth={runsTableFixedColumnWidth}
+                  storageKey={runsTableColumnStorageKey}
                 >
-                  <colgroup>
-                    <col className="w-[44px]" />
-                    <col style={{ width: "var(--runs-col-run)" }} />
-                    <col style={{ width: "var(--runs-col-source)" }} />
-                    <col style={{ width: "var(--runs-col-status)" }} />
-                    <col style={{ width: "var(--runs-col-model)" }} />
-                    <col style={{ width: "var(--runs-col-tracked)" }} />
-                    <col style={{ width: "var(--runs-col-tokens)" }} />
-                    <col style={{ width: "var(--runs-col-cost)" }} />
-                    <col style={{ width: "var(--runs-col-started)" }} />
-                    <col style={{ width: "var(--runs-col-duration)" }} />
-                    <col className="w-[42px]" />
-                  </colgroup>
-                  <TableHeader>
-                    <TableRow className="bg-surface-muted/80 hover:bg-surface-muted/80">
-                      <TableHead className="h-11 pl-4 pr-0">
-                        <SelectAllRunsCheckbox
-                          formId={runsBulkDeleteFormId}
-                          label={text.runs.selectAll}
-                        />
-                      </TableHead>
-                      <TableHead className="relative h-11 pr-4">
-                        {text.runs.tableRun}
-                        <ColumnResizeHandle column="run" label={text.runs.tableRun} locale={locale} />
-                      </TableHead>
-                      <TableHead className="relative h-11 pr-4">
-                        {text.runs.tableSource}
-                        <ColumnResizeHandle column="source" label={text.runs.tableSource} locale={locale} />
-                      </TableHead>
-                      <TableHead className="relative h-11 pr-4">
-                        {text.runs.tableStatus}
-                        <ColumnResizeHandle column="status" label={text.runs.tableStatus} locale={locale} />
-                      </TableHead>
-                      <TableHead className="relative h-11 pr-4">
-                        {text.runs.tableModel}
-                        <ColumnResizeHandle column="model" label={text.runs.tableModel} locale={locale} />
-                      </TableHead>
-                      <TableHead className="relative h-11 pr-4">
-                        {text.runs.tableTracked}
-                        <ColumnResizeHandle column="tracked" label={text.runs.tableTracked} locale={locale} />
-                      </TableHead>
-                      <TableHead className="relative h-11 pr-4">
-                        {text.runs.tableTokens}
-                        <ColumnResizeHandle column="tokens" label={text.runs.tableTokens} locale={locale} />
-                      </TableHead>
-                      <TableHead className="relative h-11 pr-4">
-                        {text.runs.tableCost}
-                        <ColumnResizeHandle column="cost" label={text.runs.tableCost} locale={locale} />
-                      </TableHead>
-                      <TableHead className="relative h-11 pr-4">
-                        {text.runs.tableStarted}
-                        <ColumnResizeHandle column="started" label={text.runs.tableStarted} locale={locale} />
-                      </TableHead>
-                      <TableHead className="relative h-11 pr-4">
-                        {text.runs.tableDuration}
-                        <ColumnResizeHandle column="duration" label={text.runs.tableDuration} locale={locale} />
-                      </TableHead>
-                      <TableHead className="h-11 pr-4" />
-                    </TableRow>
-                  </TableHeader>
-                  <TableBody>
-                    {runs.map((run) => (
-                      <TableRow
-                        key={run.id}
-                        className="group"
-                      >
+                  <Table
+                    className="table-fixed"
+                    style={{
+                      minWidth: "var(--runs-table-width)",
+                      width: "max(100%, var(--runs-table-width))"
+                    }}
+                  >
+                    <colgroup>
+                      <col className="w-[44px]" />
+                      <col style={{ width: "var(--runs-col-run)" }} />
+                      <col style={{ width: "var(--runs-col-source)" }} />
+                      <col style={{ width: "var(--runs-col-status)" }} />
+                      <col style={{ width: "var(--runs-col-model)" }} />
+                      <col style={{ width: "var(--runs-col-tracked)" }} />
+                      <col style={{ width: "var(--runs-col-tokens)" }} />
+                      <col style={{ width: "var(--runs-col-cost)" }} />
+                      <col style={{ width: "var(--runs-col-started)" }} />
+                      <col style={{ width: "var(--runs-col-duration)" }} />
+                      <col className="w-[42px]" />
+                    </colgroup>
+                    <TableHeader>
+                      <TableRow className="bg-surface-muted/80 hover:bg-surface-muted/80">
+                        <TableHead className="h-11 pl-4 pr-0">
+                          <SelectAllRunsCheckbox
+                            formId={runsBulkDeleteFormId}
+                            label={text.runs.selectAll}
+                          />
+                        </TableHead>
+                        <TableHead className="relative h-11 pr-4">
+                          {text.runs.tableRun}
+                          <ColumnResizeHandle column="run" label={text.runs.tableRun} locale={locale} />
+                        </TableHead>
+                        <TableHead className="relative h-11 pr-4">
+                          {text.runs.tableSource}
+                          <ColumnResizeHandle column="source" label={text.runs.tableSource} locale={locale} />
+                        </TableHead>
+                        <TableHead className="relative h-11 pr-4">
+                          {text.runs.tableStatus}
+                          <ColumnResizeHandle column="status" label={text.runs.tableStatus} locale={locale} />
+                        </TableHead>
+                        <TableHead className="relative h-11 pr-4">
+                          {text.runs.tableModel}
+                          <ColumnResizeHandle column="model" label={text.runs.tableModel} locale={locale} />
+                        </TableHead>
+                        <TableHead className="relative h-11 pr-4">
+                          {text.runs.tableTracked}
+                          <ColumnResizeHandle column="tracked" label={text.runs.tableTracked} locale={locale} />
+                        </TableHead>
+                        <TableHead className="relative h-11 pr-4">
+                          {text.runs.tableTokens}
+                          <ColumnResizeHandle column="tokens" label={text.runs.tableTokens} locale={locale} />
+                        </TableHead>
+                        <TableHead className="relative h-11 pr-4">
+                          {text.runs.tableCost}
+                          <ColumnResizeHandle column="cost" label={text.runs.tableCost} locale={locale} />
+                        </TableHead>
+                        <TableHead className="relative h-11 pr-4">
+                          {text.runs.tableStarted}
+                          <ColumnResizeHandle column="started" label={text.runs.tableStarted} locale={locale} />
+                        </TableHead>
+                        <TableHead className="relative h-11 pr-4">
+                          {text.runs.tableDuration}
+                          <ColumnResizeHandle column="duration" label={text.runs.tableDuration} locale={locale} />
+                        </TableHead>
+                        <TableHead className="h-11 pr-4" />
+                      </TableRow>
+                    </TableHeader>
+                    <TableBody>
+                      {runs.map((run) => (
+                        <TableRow
+                          key={run.id}
+                          className="group"
+                        >
                         <TableCell className="py-4 pl-4 pr-0 align-top">
                           <input
                             type="checkbox"
@@ -392,12 +423,20 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                             failedText={text.runs.deleteFailed}
                           />
                         </TableCell>
-                      </TableRow>
-                    ))}
-                  </TableBody>
-                </Table>
-              </ResizableTableColumns>
-            </form>
+                        </TableRow>
+                      ))}
+                    </TableBody>
+                  </Table>
+                </ResizableTableColumns>
+              </form>
+              {pagination.totalPages > 1 ? (
+                <RunsPaginationControls
+                  locale={locale}
+                  pagination={pagination}
+                  scannerMode={scannerMode}
+                />
+              ) : null}
+            </>
           ) : null}
         </Card>
       </section>
@@ -443,13 +482,18 @@ function ColumnResizeHandle({
   );
 }
 
-async function getRuns(locale: Locale): Promise<{ runs: DashboardRun[]; error?: string }> {
+async function getRunPage(
+  locale: Locale,
+  page: number
+): Promise<{ page: DashboardRunPage; error?: string }> {
   try {
-    const response = await fetch(`${collectorUrl}/runs`, { cache: "no-store" });
+    const response = await fetch(`${collectorUrl}/runs?page=${page}&pageSize=${runsPageSize}`, {
+      cache: "no-store"
+    });
 
     if (!response.ok) {
       return {
-        runs: [],
+        page: createEmptyRunPage(page),
         error:
           locale === "zh"
             ? `Collector 返回 ${response.status}`
@@ -457,10 +501,16 @@ async function getRuns(locale: Locale): Promise<{ runs: DashboardRun[]; error?: 
       };
     }
 
-    return { runs: (await response.json()) as DashboardRun[] };
+    const payload = await response.json();
+
+    return {
+      page: Array.isArray(payload)
+        ? createRunPageFromRuns(payload as DashboardRun[], page)
+        : (payload as DashboardRunPage)
+    };
   } catch (err) {
     return {
-      runs: [],
+      page: createEmptyRunPage(page),
       error:
         err instanceof Error
           ? err.message
@@ -469,6 +519,85 @@ async function getRuns(locale: Locale): Promise<{ runs: DashboardRun[]; error?: 
             : "Collector is unreachable"
     };
   }
+}
+
+async function getScannerRuns(): Promise<{ runs: DashboardRun[] }> {
+  try {
+    const response = await fetch(`${collectorUrl}/runs?includeUntracked=1`, { cache: "no-store" });
+
+    if (!response.ok) {
+      return { runs: [] };
+    }
+
+    const payload = await response.json();
+
+    return { runs: Array.isArray(payload) ? (payload as DashboardRun[]) : [] };
+  } catch {
+    return { runs: [] };
+  }
+}
+
+function createEmptyRunPage(page: number): DashboardRunPage {
+  return createRunPageFromRuns([], page);
+}
+
+function createRunPageFromRuns(runs: DashboardRun[], page: number): DashboardRunPage {
+  const totalPages = Math.max(1, Math.ceil(runs.length / runsPageSize));
+  const safePage = Math.min(Math.max(1, page), totalPages);
+  const start = (safePage - 1) * runsPageSize;
+  const counts = new Map<string, number>();
+
+  for (const run of runs) {
+    const agent = run.metadata?.agent ?? "manual";
+    counts.set(agent, (counts.get(agent) ?? 0) + 1);
+  }
+
+  return {
+    runs: runs.slice(start, start + runsPageSize),
+    pagination: {
+      page: safePage,
+      pageSize: runsPageSize,
+      total: runs.length,
+      totalPages
+    },
+    summary: {
+      totalRuns: runs.length,
+      runningRuns: runs.filter((run) => run.status === "running").length,
+      failedRuns: runs.filter((run) => run.status === "error").length,
+      agents: [...counts.entries()]
+        .map(([agent, count]) => ({ agent, count }))
+        .sort((a, b) => b.count - a.count || a.agent.localeCompare(b.agent))
+    }
+  };
+}
+
+function parsePageParam(value: string | string[] | undefined) {
+  const raw = Array.isArray(value) ? value[0] : value;
+  const parsed = Number(raw);
+
+  return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1;
+}
+
+function parseScannerMode(value: string | string[] | undefined): "detected" | "all" {
+  const raw = Array.isArray(value) ? value[0] : value;
+
+  return raw === "all" ? "all" : "detected";
+}
+
+function runsHref(locale: Locale, page: number, scannerMode: "detected" | "all") {
+  const params = new URLSearchParams();
+
+  if (page > 1) {
+    params.set("page", String(page));
+  }
+
+  if (scannerMode === "all") {
+    params.set("scanner", "all");
+  }
+
+  const query = params.toString();
+
+  return localizedHref(query ? `/runs?${query}` : "/runs", locale);
 }
 
 function MetricCard({
@@ -522,24 +651,42 @@ function MetricCard({
 }
 
 function ScannerStatus({
+  currentPage,
   diagnostics,
+  hiddenCount,
+  showAll,
   locale
 }: {
+  currentPage: number;
   diagnostics: ScannerDiagnostic[];
+  hiddenCount: number;
+  showAll: boolean;
   locale: Locale;
 }) {
   const text = copy[locale];
+  const nextMode = showAll ? "detected" : "all";
+  const toggleLabel = showAll
+    ? text.runs.scannerShowDetected
+    : `${text.runs.scannerShowAll}${hiddenCount > 0 ? ` (${hiddenCount.toLocaleString()})` : ""}`;
 
   return (
     <Card className="mt-5 overflow-hidden py-0">
-      <div className="flex items-start gap-3 border-b border-border/80 bg-surface-raised px-4 py-4 sm:px-5">
-        <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-900 dark:bg-teal-950/35 dark:text-teal-300">
-          <Server className="h-4 w-4" aria-hidden />
-        </span>
-        <div className="min-w-0">
-          <h2 className="text-sm font-semibold text-foreground">{text.runs.scannerStatus}</h2>
-          <p className="mt-1 text-xs text-muted-foreground">{text.runs.scannerStatusHelp}</p>
+      <div className="flex flex-col gap-3 border-b border-border/80 bg-surface-raised px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5">
+        <div className="flex min-w-0 items-start gap-3">
+          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-900 dark:bg-teal-950/35 dark:text-teal-300">
+            <Server className="h-4 w-4" aria-hidden />
+          </span>
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold text-foreground">{text.runs.scannerStatus}</h2>
+            <p className="mt-1 text-xs text-muted-foreground">{text.runs.scannerStatusHelp}</p>
+          </div>
         </div>
+        <Button variant="outline" size="sm" asChild>
+          <Link href={runsHref(locale, currentPage, nextMode)}>
+            <ListFilter className="h-4 w-4" aria-hidden />
+            {toggleLabel}
+          </Link>
+        </Button>
       </div>
       <div className="overflow-x-auto">
         <Table>
@@ -609,25 +756,71 @@ function ScannerStatus({
   );
 }
 
-function getAgentSourceSummary(runs: DashboardRun[], locale: Locale) {
-  const counts = new Map<string, number>();
+function RunsPaginationControls({
+  locale,
+  pagination,
+  scannerMode
+}: {
+  locale: Locale;
+  pagination: DashboardRunPage["pagination"];
+  scannerMode: "detected" | "all";
+}) {
+  const text = copy[locale];
+  const previousPage = Math.max(1, pagination.page - 1);
+  const nextPage = Math.min(pagination.totalPages, pagination.page + 1);
 
-  for (const run of runs) {
-    const agent = run.metadata?.agent ?? "manual";
-    counts.set(agent, (counts.get(agent) ?? 0) + 1);
-  }
+  return (
+    <div className="flex flex-col gap-3 border-t border-border/80 bg-surface-raised px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+      <div className="text-xs text-muted-foreground tabular-nums">
+        {pagination.page.toLocaleString()} / {pagination.totalPages.toLocaleString()}
+      </div>
+      <div className="flex items-center gap-2">
+        {pagination.page > 1 ? (
+          <Button variant="outline" size="sm" asChild>
+            <Link href={runsHref(locale, previousPage, scannerMode)}>
+              <ChevronLeft className="h-4 w-4" aria-hidden />
+              {text.detail.previousPage}
+            </Link>
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" disabled>
+            <ChevronLeft className="h-4 w-4" aria-hidden />
+            {text.detail.previousPage}
+          </Button>
+        )}
+        {pagination.page < pagination.totalPages ? (
+          <Button variant="outline" size="sm" asChild>
+            <Link href={runsHref(locale, nextPage, scannerMode)}>
+              {text.detail.nextPage}
+              <ChevronRight className="h-4 w-4" aria-hidden />
+            </Link>
+          </Button>
+        ) : (
+          <Button variant="outline" size="sm" disabled>
+            {text.detail.nextPage}
+            <ChevronRight className="h-4 w-4" aria-hidden />
+          </Button>
+        )}
+      </div>
+    </div>
+  );
+}
 
-  const sources = [...counts.entries()].sort((a, b) => {
-    const countDiff = b[1] - a[1];
+function getAgentSourceSummary(
+  sources: Array<{ agent: string; count: number }>,
+  locale: Locale
+) {
+  const sortedSources = [...sources].sort((a, b) => {
+    const countDiff = b.count - a.count;
 
-    return countDiff === 0 ? a[0].localeCompare(b[0]) : countDiff;
+    return countDiff === 0 ? a.agent.localeCompare(b.agent) : countDiff;
   });
 
   return {
-    total: sources.length,
-    detail: sources
+    total: sortedSources.length,
+    detail: sortedSources
       .slice(0, 3)
-      .map(([agent, count]) => `${formatAgent(agent, locale)} ${count.toLocaleString()}`)
+      .map(({ agent, count }) => `${formatAgent(agent, locale)} ${count.toLocaleString()}`)
       .join(" / ")
   };
 }
@@ -641,6 +834,14 @@ function getScannerDiagnostics(runs: DashboardRun[]) {
     .filter((diagnostic): diagnostic is ScannerDiagnostic => diagnostic !== undefined);
 
   return diagnostics.sort((a, b) => getScannerStatusRank(a.status) - getScannerStatusRank(b.status));
+}
+
+function isDetectedScannerDiagnostic(diagnostic: ScannerDiagnostic) {
+  return (
+    diagnostic.status !== "missing" ||
+    diagnostic.pathExists === true ||
+    (diagnostic.messageCount ?? 0) > 0
+  );
 }
 
 function normalizeScannerDiagnostic(record: Record<string, unknown>): ScannerDiagnostic | undefined {

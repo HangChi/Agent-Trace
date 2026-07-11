@@ -108,7 +108,6 @@ export async function collectUsageOnce(options: UsageScanOptions = {}) {
       defaultCollectorUrl
   );
   const configuredClients = options.clients ?? process.env.AGENT_TRACE_USAGE_CLIENTS;
-  const clients = configuredClients === undefined ? undefined : normalizeClients(configuredClients);
   const commandTimeoutMs = options.commandTimeoutMs ?? defaultCommandTimeoutMs;
   const home = normalizeHome(options.home ?? process.env.AGENT_TRACE_USAGE_HOME ?? process.env.TOKSCALE_HOME ?? homedir());
   const runTokscale = options.runTokscale ?? ((clientCsv, timeoutMs, scanHome) =>
@@ -125,9 +124,25 @@ export async function collectUsageOnce(options: UsageScanOptions = {}) {
     });
   }
 
-  const raw = await runTokscale(clients, commandTimeoutMs, home);
+  const clientDiagnostics = await collectDiagnosticsForScan({
+    commandTimeoutMs,
+    home,
+    tokscaleCommand: options.tokscaleCommand,
+    runTokscaleClients: options.runTokscaleClients,
+    skipClientDiagnostics: configuredClients !== undefined &&
+      options.runTokscale !== undefined &&
+      options.runTokscaleClients === undefined
+  });
+  const diagnosticsHaveClientList = hasDiagnosticClientList(clientDiagnostics);
+  const clients = configuredClients === undefined
+    ? getDefaultScanClients(clientDiagnostics, diagnosticsHaveClientList)
+    : normalizeClients(configuredClients);
+  const shouldRunPrimaryScan = configuredClients !== undefined ||
+    !diagnosticsHaveClientList ||
+    clients !== undefined;
+  const raw = shouldRunPrimaryScan ? await runTokscale(clients, commandTimeoutMs, home) : { entries: [] };
   const primaryRows = normalizeTokscaleUsage(raw);
-  const reconciliation = shouldReconcileCodex(clients) && home
+  const reconciliation = shouldRunPrimaryScan && shouldReconcileCodex(clients) && home
     ? await findUncoveredCodexHistories(
         home,
         primaryRows
@@ -144,21 +159,18 @@ export async function collectUsageOnce(options: UsageScanOptions = {}) {
     : [];
   const rows = mergeUsageRows(primaryRows, supplementalRows);
   const diagnostics = [
-    ...(await collectDiagnosticsForScan({
-      commandTimeoutMs,
-      home,
-      tokscaleCommand: options.tokscaleCommand,
-      runTokscaleClients: options.runTokscaleClients,
-      skipClientDiagnostics: options.runTokscale !== undefined && options.runTokscaleClients === undefined
-    })),
+    ...clientDiagnostics,
     ...getUsageWarningDiagnostics(raw),
     ...reconciliation.diagnostics
   ];
+  const scanClients = configuredClients === undefined && diagnosticsHaveClientList
+    ? getDiagnosticClientIds(clientDiagnostics)
+    : clients?.split(",").filter(Boolean);
 
   await postJson("/integrations/usage-scan", {
     source: "tokscale",
     complete: true,
-    scanClients: clients?.split(","),
+    scanClients: scanClients && scanClients.length > 0 ? scanClients : undefined,
     scannedAt: new Date().toISOString(),
     rows,
     diagnostics: diagnostics.length > 0 ? mergeDiagnostics(diagnostics) : undefined
@@ -296,6 +308,36 @@ function mergeUsageRows(primary: UsageRow[], supplemental: UsageRow[]) {
   }
 
   return [...rows.values()];
+}
+
+function hasDiagnosticClientList(diagnostics: UsageDiagnostic[]) {
+  return diagnostics.some((diagnostic) => diagnostic.client !== "tokscale");
+}
+
+function getDefaultScanClients(diagnostics: UsageDiagnostic[], hasClientList: boolean) {
+  if (!hasClientList) {
+    return undefined;
+  }
+
+  const clients = diagnostics
+    .filter(
+      (diagnostic) =>
+        diagnostic.status === "available" ||
+        (diagnostic.status === "waiting" && diagnostic.pathExists === true)
+    )
+    .map((diagnostic) => diagnostic.client);
+
+  return clients.length > 0 ? [...new Set(clients)].join(",") : undefined;
+}
+
+function getDiagnosticClientIds(diagnostics: UsageDiagnostic[]) {
+  return [
+    ...new Set(
+      diagnostics
+        .map((diagnostic) => diagnostic.client)
+        .filter((client) => client && client !== "tokscale")
+    )
+  ];
 }
 
 function shouldReconcileCodex(clients: string | undefined) {

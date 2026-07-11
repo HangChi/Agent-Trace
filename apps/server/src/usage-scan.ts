@@ -210,7 +210,7 @@ function getScanTokenUsage(row: Record<string, unknown>): TokenUsage {
     getInteger(row, "reasoningTokens", "reasoning_tokens", "reasoningOutputTokens", "reasoning") ?? 0;
   const total =
     getInteger(row, "totalTokens", "total_tokens", "total") ??
-    input + output + cacheReadInput + cacheCreationInput + reasoningOutput;
+    input + output + cacheReadInput + cacheCreationInput;
 
   return compactTokenUsage({
     input,
