@@ -41,3 +41,18 @@ for (const required of [
 if (!prepareSource.includes('"cli.tgz"')) {
   throw new Error("Desktop resources must package the CLI usage scanner as cli.tgz.");
 }
+
+for (const required of [
+  "getDevelopmentCliInvocation",
+  'require.resolve("tsx/cli"',
+  'path.join(cliRoot, "src", "index.ts")',
+  "ELECTRON_RUN_AS_NODE"
+]) {
+  if (!mainSource.includes(required)) {
+    throw new Error(`Desktop development scanner is missing direct launch marker: ${required}`);
+  }
+}
+
+if (mainSource.includes('["--filter", "@agent-trace/cli", "exec", "tsx"')) {
+  throw new Error("Desktop development scanner must not depend on a package-manager .bin shim.");
+}

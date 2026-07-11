@@ -7,6 +7,7 @@ import { installHooks } from "./hooks.js";
 import {
   collectUsageClientDiagnostics,
   collectUsageOnce,
+  isUsageScannerEnabled,
   resolveTokscaleCommand,
   syncUsageClients
 } from "./usage.js";
@@ -19,6 +20,16 @@ const claudeConfigDir = mkdtempSync(join(tmpdir(), "agent-trace-cli-smoke-claude
 try {
   process.env.CODEX_HOME = codexHome;
   process.env.CLAUDE_CONFIG_DIR = claudeConfigDir;
+
+  if (
+    !isUsageScannerEnabled(undefined) ||
+    !isUsageScannerEnabled("true") ||
+    isUsageScannerEnabled("0") ||
+    isUsageScannerEnabled("false") ||
+    isUsageScannerEnabled("off")
+  ) {
+    throw new Error("Expected local usage scanning to default on with explicit disable values.");
+  }
 
   const tokscaleInvocation = resolveTokscaleCommand();
 

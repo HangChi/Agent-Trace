@@ -107,11 +107,26 @@ async function startUsageScannerService(collectorUrl) {
     );
   }
 
-  return spawnPnpm(
-    ["--filter", "@agent-trace/cli", "exec", "tsx", "src/index.ts", ...args],
+  const invocation = getDevelopmentCliInvocation();
+
+  return spawnPackagedNode(
+    invocation.runner,
     {},
+    invocation.cwd,
+    [invocation.script, ...args],
     processOptions
   );
+}
+
+function getDevelopmentCliInvocation() {
+  const workspaceRoot = resolveWorkspaceRoot();
+  const cliRoot = path.join(workspaceRoot, "packages", "cli");
+
+  return {
+    runner: require.resolve("tsx/cli", { paths: [cliRoot] }),
+    script: path.join(cliRoot, "src", "index.ts"),
+    cwd: workspaceRoot
+  };
 }
 
 function isUsageScannerEnabled() {

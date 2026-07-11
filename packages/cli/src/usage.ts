@@ -819,6 +819,12 @@ function normalizeHome(value: string | undefined) {
   return trimmed ? trimmed : undefined;
 }
 
+export function isUsageScannerEnabled(value: string | undefined) {
+  const configured = String(value ?? "").trim().toLowerCase();
+
+  return configured !== "0" && configured !== "false" && configured !== "off";
+}
+
 function sleep(ms: number, signal: AbortSignal | undefined) {
   return new Promise<void>((resolve) => {
     if (signal?.aborted) {

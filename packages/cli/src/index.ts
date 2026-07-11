@@ -15,6 +15,7 @@ import {
 import {
   collectUsageClientDiagnostics,
   collectUsageOnce,
+  isUsageScannerEnabled,
   syncUsageClients,
   watchUsage
 } from "./usage.js";
@@ -216,7 +217,9 @@ async function runDev(argv: string[] = []) {
   const webPort = getEnv("AGENT_TRACE_WEB_PORT", "TOOLTRACE_WEB_PORT") ?? "3000";
   const databasePath = getEnv("AGENT_TRACE_DB_PATH", "TOOLTRACE_DB_PATH");
   const serverUrl = `http://localhost:${serverPort}`;
-  const usageScan = flags["usage-scan"] === "true";
+  const usageScan = isUsageScannerEnabled(
+    flags["usage-scan"] ?? process.env.AGENT_TRACE_USAGE_SCAN
+  );
   const usageSync = flags["usage-sync"] === "true" || flags.sync === "true";
   const usageClients = flags["usage-clients"] ?? process.env.AGENT_TRACE_USAGE_CLIENTS;
   const usageHome = flags["usage-home"] ?? flags.home ?? process.env.AGENT_TRACE_USAGE_HOME;
@@ -558,7 +561,7 @@ Environment:
   TOOLTRACE_*               Legacy environment variable names are still accepted
 
 Options:
-  --usage-scan                 Enable local tokscale usage scanner
+  --usage-scan <boolean>       Local tokscale scanner, default enabled; false disables it
   --usage-sync                 Run supported tokscale sync commands before scanner cycles
   --usage-clients <clients>    Clients to scan, default all tokscale clients
   --usage-home <path>          Local home directory passed to tokscale
