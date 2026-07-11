@@ -33,11 +33,12 @@ pnpm --filter @agent-trace/cli build
 node packages/cli/dist/index.js dev
 ```
 
-The packaged desktop app automatically scans all local clients supported by
-`tokscale` after the collector starts, then refreshes every 15 seconds. Set
-`AGENT_TRACE_USAGE_SCAN=0` (`false` and `off` are also accepted) to disable it.
+The packaged desktop app and `agent-trace dev` automatically scan all local
+clients supported by `tokscale` after the collector starts, then refresh every
+15 seconds. Set `AGENT_TRACE_USAGE_SCAN=0` (`false` and `off` are also accepted),
+or pass `--usage-scan=false` to `agent-trace dev`, to disable it.
 
-When running through the CLI, enable the watcher explicitly:
+The watcher is enabled by default when running through the CLI:
 
 ```bash
 node packages/cli/dist/index.js dev --usage-scan
@@ -148,7 +149,7 @@ node packages/cli/dist/index.js uninstall claude-code
 - Codex reconciliation covers both `~/.codex/sessions` and `~/.codex/archived_sessions`. Restored or copied histories are deduplicated by their model/token event sequence, and unique histories missed by the primary scan are rescanned through an isolated tokscale home. Raw prompts, responses, files, and source logs are never posted.
 - Scanner reasoning tokens are output metadata and are not added on top of output when deriving totals.
 - Run `agent-trace usage clients --home <path>` to see which local sources exist, which have message counts, and which need login/sync. For Cursor cache misses, run `tokscale cursor login`, then `tokscale cursor sync --json --home <path>`, and scan again.
-- Cost display prefers scanner-provided `costUsd`. Without scan cost, Agent-Trace only calculates cost for exact `AGENT_TRACE_MODEL_PRICES_JSON` entries; other models are shown as unpriced instead of guessed from stale built-in rates.
+- Cost display prefers scanner-provided `costUsd` and labels it as estimated API-equivalent cost, not a Codex subscription invoice. Without scan cost, Agent-Trace only calculates cost for exact `AGENT_TRACE_MODEL_PRICES_JSON` entries; other models are shown as unpriced instead of guessed from stale built-in rates.
 
 To verify hook ingestion without running Codex or Claude Code, start the local collector and run:
 

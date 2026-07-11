@@ -15,22 +15,22 @@ node packages/cli/dist/index.js dev
 To also scan local agent usage snapshots while the dashboard runs:
 
 ```bash
-node packages/cli/dist/index.js dev --usage-scan
+node packages/cli/dist/index.js dev
 node packages/cli/dist/index.js dev --usage-scan --usage-sync --usage-home C:\Users\alice
 ```
 
-The packaged desktop app starts this scanner automatically after its collector
-is ready. It performs an initial complete scan and then refreshes every 15
-seconds. Set `AGENT_TRACE_USAGE_SCAN=0` (`false` and `off` are also accepted) to
-disable automatic desktop scanning.
+The packaged desktop app and `agent-trace dev` start this scanner automatically
+after the collector is ready. It performs an initial complete scan and then
+refreshes every 15 seconds. Set `AGENT_TRACE_USAGE_SCAN=0` (`false` and `off` are
+also accepted), or pass `--usage-scan=false`, to disable automatic scanning.
 
 The scanner passes the local user home directory to `tokscale` by default. If
 your shell or app runtime points `HOME` at a sandbox or another user, pass the
 real home explicitly:
 
 ```bash
-node packages/cli/dist/index.js dev --usage-scan --usage-home /Users/alice
-node packages/cli/dist/index.js dev --usage-scan --usage-home C:\Users\alice
+node packages/cli/dist/index.js dev --usage-home /Users/alice
+node packages/cli/dist/index.js dev --usage-home C:\Users\alice
 ```
 
 Before a scan, you can inspect which local data sources `tokscale` can see:
@@ -139,6 +139,12 @@ contents, and raw source logs are not sent.
 The official usage parser recognizes the common response shapes from mainstream
 providers:
 
+Ordinary command, tool, and MCP responses are not searched recursively for
+token-like property names. Hook usage must appear in an explicit provider usage
+container; the known Claude Code `Agent` response is handled as a dedicated
+structured exception. This prevents business data such as `totalTokens` in a
+tool report from contaminating model usage.
+
 - OpenAI-compatible APIs, including OpenAI, xAI, DeepSeek, Mistral, and similar
   chat-completion responses: `input_tokens`/`output_tokens` or
   `prompt_tokens`/`completion_tokens`, `total_tokens`, cached prompt details,
@@ -201,8 +207,9 @@ official token-counting endpoint or SDK where available.
 
 The dashboard prefers costs supplied by usage scans, because `tokscale` can keep
 its pricing data current outside the Agent-Trace release cycle. If a scan row
-contains `costUsd`, that stored cost is shown directly and converted to CNY when
-an exchange rate is available.
+contains `costUsd`, that stored cost is shown directly, labelled as estimated,
+and converted to CNY when an exchange rate is available. It represents
+API-equivalent estimated cost, not the user's Codex subscription invoice.
 
 When no stored cost is available, Agent-Trace only calculates cost for models
 that have an exact `AGENT_TRACE_MODEL_PRICES_JSON` or

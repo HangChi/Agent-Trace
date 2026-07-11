@@ -42,13 +42,15 @@ node packages/cli/dist/index.js usage clients --home C:\Users\song
 node packages/cli/dist/index.js usage sync --clients cursor,antigravity,trae,warp --home C:\Users\song
 ```
 
-桌面应用会在 collector 启动后自动扫描一次本机全部 `tokscale` 客户端，并每 15 秒刷新。设置
-`AGENT_TRACE_USAGE_SCAN=0`（也支持 `false` 或 `off`）可关闭桌面端自动扫描。CLI 默认同样
-扫描 `tokscale` 支持的全部客户端；只有显式传入 `--clients` 时才会限制范围。
+桌面应用和 `agent-trace dev` 会在 collector 启动后自动扫描一次本机全部 `tokscale` 客户端，
+并每 15 秒刷新。设置 `AGENT_TRACE_USAGE_SCAN=0`（也支持 `false` 或 `off`），或者向
+`agent-trace dev` 传入 `--usage-scan=false`，可关闭自动扫描。CLI 默认扫描 `tokscale` 支持的
+全部客户端；只有显式传入 `--clients` 时才会限制范围。
 
 Codex 扫描会同时核对 `~/.codex/sessions` 和 `~/.codex/archived_sessions`。恢复或归档产生的
 重复 JSONL 会按模型/token 事件序列去重；`reasoning` 已包含在 output 中，只单独展示，不会
-重复加入 total。价格优先采用 `tokscale` 返回的 `costUsd`，缺价且没有精确配置时显示未定价。
+重复加入 total。价格优先采用 `tokscale` 返回的 `costUsd`，并标记为等价 API 调用估算成本，
+不是 Codex 订阅账单；缺价且没有精确配置时显示未定价。
 
 开发时也可以直接从源码启动 CLI：
 
