@@ -1,5 +1,5 @@
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { asc, desc, eq, inArray } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
 
 import type {
   CreateRun,
@@ -10,6 +10,7 @@ import type {
   DashboardModelUsage,
   DashboardRun,
   DashboardRunMetadata,
+  DashboardRunPage,
   DashboardRunSummary,
   DashboardTraceEvent,
   DashboardTraceMetadata,
@@ -19,13 +20,20 @@ import type {
 } from "@agent-trace/schema";
 
 import { createSqliteDatabase, db as defaultDb } from "./db.js";
+import { migrateDatabase } from "./migrations.js";
 import { events, runs, usageSessions } from "./schema.js";
+import { analyzeTraceInsights } from "./trace-insights.js";
 import type { TranscriptTrace } from "./transcript-scan.js";
 
 type Database = BetterSQLite3Database;
 
 type ListRunsOptions = {
   includeUntracked?: boolean;
+};
+
+type ListRunsPageOptions = ListRunsOptions & {
+  page?: number;
+  pageSize?: number;
 };
 
 type EventSummary = DashboardRunSummary & {
@@ -40,9 +48,31 @@ type ListEventsOptions = DashboardEventFilters & {
   pageSize?: number;
 };
 
+type EventSummaryRow = Pick<
+  typeof events.$inferSelect,
+  "runId" | "status" | "timestamp" | "name" | "metadataJson"
+>;
+
+type EventScanRow = Pick<
+  typeof events.$inferSelect,
+  | "id"
+  | "runId"
+  | "parentId"
+  | "type"
+  | "name"
+  | "status"
+  | "timestamp"
+  | "durationMs"
+  | "metadataJson"
+> & { inputCommand: string | null; errorMessage: string | null };
+
 const defaultStaleRunMinutes = 30;
 const defaultEventPageSize = 100;
 const maxEventPageSize = 500;
+const defaultRunPageSize = 50;
+const maxRunPageSize = 200;
+const runScanChunkSize = 200;
+const noEventTimestampSentinel = "<no-events>";
 
 function stringifyJson(value: unknown) {
   return value === undefined ? null : JSON.stringify(value);
@@ -55,89 +85,10 @@ function parseJson(value: string | null) {
 export function initializeDatabase(path?: string) {
   const sqlite = createSqliteDatabase(path);
 
-  sqlite.exec(`
-    CREATE TABLE IF NOT EXISTS runs (
-      id TEXT PRIMARY KEY,
-      name TEXT NOT NULL,
-      status TEXT NOT NULL,
-      started_at TEXT NOT NULL,
-      ended_at TEXT,
-      input_json TEXT,
-      output_json TEXT,
-      error TEXT,
-      metadata_json TEXT
-    );
-
-    CREATE TABLE IF NOT EXISTS events (
-      id TEXT PRIMARY KEY,
-      run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
-      parent_id TEXT,
-      type TEXT NOT NULL,
-      name TEXT NOT NULL,
-      status TEXT NOT NULL,
-      timestamp TEXT NOT NULL,
-      duration_ms INTEGER,
-      input_json TEXT,
-      output_json TEXT,
-      error_json TEXT,
-      metadata_json TEXT
-    );
-
-    CREATE INDEX IF NOT EXISTS events_run_id_idx ON events(run_id);
-    CREATE INDEX IF NOT EXISTS runs_started_at_idx ON runs(started_at);
-
-    CREATE TABLE IF NOT EXISTS usage_sessions (
-      client TEXT NOT NULL,
-      session_id TEXT NOT NULL,
-      model TEXT NOT NULL,
-      provider TEXT NOT NULL,
-      input_tokens INTEGER NOT NULL,
-      output_tokens INTEGER NOT NULL,
-      cache_read_tokens INTEGER NOT NULL,
-      cache_write_tokens INTEGER NOT NULL,
-      reasoning_tokens INTEGER NOT NULL,
-      total_tokens INTEGER NOT NULL,
-      cost_usd REAL,
-      message_count INTEGER,
-      started_at TEXT,
-      last_used_at TEXT,
-      scanned_at TEXT NOT NULL,
-      PRIMARY KEY (client, session_id, model, provider)
-    );
-
-    CREATE TABLE IF NOT EXISTS usage_scan_state (
-      id TEXT PRIMARY KEY,
-      scanned_at TEXT NOT NULL,
-      diagnostics_json TEXT NOT NULL,
-      error TEXT
-    );
-  `);
-
-  ensureColumn(sqlite, "runs", "metadata_json", "TEXT");
-  removeLegacyUsageScanRecords(sqlite);
-
-  sqlite.close();
-}
-
-function removeLegacyUsageScanRecords(sqlite: ReturnType<typeof createSqliteDatabase>) {
-  const usageEventIds = (sqlite
-    .prepare("SELECT id, metadata_json AS metadataJson FROM events")
-    .all() as Array<{ id: string; metadataJson: string | null }>)
-    .filter((row) => getJsonSource(row.metadataJson) === "usage-scan")
-    .map((row) => row.id);
-  const usageRunIds = (sqlite
-    .prepare("SELECT id, input_json AS inputJson FROM runs")
-    .all() as Array<{ id: string; inputJson: string | null }>)
-    .filter((row) => getJsonSource(row.inputJson) === "usage-scan")
-    .map((row) => row.id);
-  const deleteEvent = sqlite.prepare("DELETE FROM events WHERE id = ?");
-  const deleteRunEvents = sqlite.prepare("DELETE FROM events WHERE run_id = ?");
-  const deleteRun = sqlite.prepare("DELETE FROM runs WHERE id = ?");
-
-  for (const id of usageEventIds) deleteEvent.run(id);
-  for (const id of usageRunIds) {
-    deleteRunEvents.run(id);
-    deleteRun.run(id);
+  try {
+    migrateDatabase(sqlite);
+  } finally {
+    sqlite.close();
   }
 }
 
@@ -294,44 +245,210 @@ export async function listRuns(
   database: Database = defaultDb
 ): Promise<DashboardRun[]> {
   const rows = await database.select().from(runs).orderBy(desc(runs.startedAt));
-  const eventRows = await database.select().from(events);
+  const eventRows = await selectEventSummaryRows(database);
   const usageRows = await database.select().from(usageSessions);
   const summaries = summarizeEventsByRun(eventRows);
   const usageBySession = groupUsageBySession(usageRows);
-  const staleRuns = await closeStaleRunningRuns(rows, summaries, database);
 
   return rows
     .map((run) => {
       const input = parseJson(run.inputJson);
-      const metadata = parseJson(run.metadataJson);
       const summary = summaries.get(run.id);
-      const staleRun = staleRuns.get(run.id);
-      const isStale = staleRun !== undefined || isStaleClosedRun(run);
-
-      const status = staleRun?.status ?? run.status;
+      const status = run.status;
 
       return {
-        id: run.id,
-        name: run.name,
-        status,
-        startedAt: run.startedAt,
-        endedAt: staleRun?.endedAt ?? run.endedAt ?? undefined,
-        input,
-        output: parseJson(run.outputJson),
-        error: status === "error" ? (staleRun?.error ?? run.error ?? undefined) : undefined,
-        metadata: mergeRunMetadata(metadata, summary, getUsageForRun(metadata, usageBySession)),
+        ...toDashboardRun(run, summary, usageBySession),
         _include:
           options.includeUntracked ||
           shouldIncludeRunInList({
             input,
             summary,
-            isStale,
+            isStale: isStaleClosedRun(run),
             status
           })
       };
     })
     .filter((run) => run._include)
     .map(({ _include, ...run }) => run);
+}
+
+export async function listRunsPage(
+  options: ListRunsPageOptions = {},
+  database: Database = defaultDb
+): Promise<DashboardRunPage> {
+  const eventRows = await selectEventSummaryRows(database);
+  const usageRows = await database.select().from(usageSessions);
+  const summaries = summarizeEventsByRun(eventRows);
+  const usageBySession = groupUsageBySession(usageRows);
+  const runRows = options.includeUntracked
+    ? await selectRunSummaryRows(database)
+    : await scanRunSummaryRows(database);
+  const visibleRows = runRows.filter((run) => {
+    if (options.includeUntracked) return true;
+
+    return shouldIncludeRunInList({
+      input: parseJson(run.inputJson),
+      summary: summaries.get(run.id),
+      isStale: isStaleClosedRun(run),
+      status: run.status
+    });
+  });
+  const pageSize = normalizeRunPageSize(options.pageSize);
+  const totalPages = Math.max(1, Math.ceil(visibleRows.length / pageSize));
+  const page = Math.min(normalizePage(options.page), totalPages);
+  const start = (page - 1) * pageSize;
+  const pageIds = visibleRows.slice(start, start + pageSize).map((run) => run.id);
+  const pageRows = visibleRows.length === 0
+    ? []
+    : options.includeUntracked
+      ? await database
+          .select()
+          .from(runs)
+          .orderBy(desc(runs.startedAt))
+          .limit(pageSize)
+          .offset(start)
+      : await database
+          .select()
+          .from(runs)
+          .where(inArray(runs.id, pageIds))
+          .orderBy(desc(runs.startedAt))
+          .limit(pageSize)
+          .offset(0);
+
+  return {
+    runs: pageRows.map((run) =>
+      toDashboardRun(run, summaries.get(run.id), usageBySession)
+    ),
+    pagination: {
+      page,
+      pageSize,
+      total: visibleRows.length,
+      totalPages
+    },
+    summary: getRunPageSummary(visibleRows)
+  };
+}
+
+const runSummarySelection = {
+  id: runs.id,
+  status: runs.status,
+  startedAt: runs.startedAt,
+  inputJson: runs.inputJson,
+  error: runs.error,
+  metadataJson: runs.metadataJson
+};
+
+function selectRunSummaryRows(database: Database) {
+  return database
+    .select(runSummarySelection)
+    .from(runs)
+    .orderBy(desc(runs.startedAt));
+}
+
+async function scanRunSummaryRows(database: Database) {
+  const rows: Awaited<ReturnType<typeof selectRunSummaryRows>> = [];
+
+  for (let offset = 0; ; offset += runScanChunkSize) {
+    const chunk = await database
+      .select(runSummarySelection)
+      .from(runs)
+      .orderBy(desc(runs.startedAt))
+      .limit(runScanChunkSize)
+      .offset(offset);
+    rows.push(...chunk);
+
+    if (chunk.length < runScanChunkSize) return rows;
+  }
+}
+
+export async function reconcileStaleRuns(database: Database = defaultDb): Promise<number> {
+  const runRows = await database
+    .select({ id: runs.id, status: runs.status, startedAt: runs.startedAt })
+    .from(runs);
+  const eventRows = await selectEventSummaryRows(database);
+  const summaries = summarizeEventsByRun(eventRows);
+
+  return closeStaleRunningRuns(
+    runRows,
+    summaries,
+    getEventActivitySnapshots(eventRows),
+    database
+  );
+}
+
+type EventActivitySnapshot = { count: number; maxTimestamp: string | null };
+
+function getEventActivitySnapshots(eventRows: EventSummaryRow[]) {
+  const snapshots = new Map<string, EventActivitySnapshot>();
+
+  for (const event of eventRows) {
+    const snapshot = snapshots.get(event.runId) ?? { count: 0, maxTimestamp: null };
+    snapshot.count += 1;
+    if (snapshot.maxTimestamp === null || event.timestamp > snapshot.maxTimestamp) {
+      snapshot.maxTimestamp = event.timestamp;
+    }
+    snapshots.set(event.runId, snapshot);
+  }
+
+  return snapshots;
+}
+
+function selectEventSummaryRows(database: Database) {
+  return database
+    .select({
+      runId: events.runId,
+      status: events.status,
+      timestamp: events.timestamp,
+      name: events.name,
+      metadataJson: events.metadataJson
+    })
+    .from(events);
+}
+
+function toDashboardRun(
+  run: typeof runs.$inferSelect,
+  summary: EventSummary | undefined,
+  usageBySession: Map<string, Array<typeof usageSessions.$inferSelect>>
+): DashboardRun {
+  const input = parseJson(run.inputJson);
+  const metadata = parseJson(run.metadataJson);
+
+  return {
+    id: run.id,
+    name: run.name,
+    status: run.status,
+    startedAt: run.startedAt,
+    endedAt: getRunEndedAt(
+      input,
+      run.status,
+      run.endedAt ?? undefined,
+      summary?.lastEventAt
+    ),
+    input,
+    output: parseJson(run.outputJson),
+    error: run.status === "error" ? (run.error ?? undefined) : undefined,
+    metadata: mergeRunMetadata(metadata, summary, getUsageForRun(metadata, usageBySession))
+  };
+}
+
+function getRunPageSummary(
+  runRows: Array<{ status: string; metadataJson: string | null }>
+): DashboardRunPage["summary"] {
+  const agents = new Map<string, number>();
+
+  for (const run of runRows) {
+    const agent = getString(asRecord(parseJson(run.metadataJson)).agent) ?? "manual";
+    agents.set(agent, (agents.get(agent) ?? 0) + 1);
+  }
+
+  return {
+    totalRuns: runRows.length,
+    runningRuns: runRows.filter((run) => run.status === "running").length,
+    failedRuns: runRows.filter((run) => run.status === "error").length,
+    agents: [...agents.entries()]
+      .map(([agent, count]) => ({ agent, count }))
+      .sort((a, b) => b.count - a.count || a.agent.localeCompare(b.agent))
+  };
 }
 
 export async function listEventsByRunId(
@@ -365,7 +482,27 @@ export async function listEventsPageByRunId(
   options: ListEventsOptions = {},
   database: Database = defaultDb
 ): Promise<DashboardEventPage> {
-  const allEvents = await listEventsByRunId(runId, database);
+  const scanSelection = {
+    id: events.id,
+    runId: events.runId,
+    parentId: events.parentId,
+    type: events.type,
+    name: events.name,
+    status: events.status,
+    timestamp: events.timestamp,
+    durationMs: events.durationMs,
+    metadataJson: events.metadataJson
+  };
+  const scanRows: EventScanRow[] = await database
+    .select({
+      ...scanSelection,
+      inputCommand: sql<string | null>`json_extract(${events.inputJson}, '$.command')`,
+      errorMessage: sql<string | null>`json_extract(${events.errorJson}, '$.message')`
+    })
+    .from(events)
+    .where(eq(events.runId, runId))
+    .orderBy(asc(events.timestamp));
+  const allEvents = scanRows.map(toScannedDashboardEvent);
   const visibility = normalizeVisibility(options.visibility);
   const pageSize = normalizePageSize(options.pageSize);
   const page = normalizePage(options.page);
@@ -387,9 +524,52 @@ export async function listEventsPageByRunId(
   const totalPages = Math.max(1, Math.ceil(sortedEvents.length / pageSize));
   const safePage = Math.min(page, totalPages);
   const start = (safePage - 1) * pageSize;
+  const pageIds = sortedEvents.slice(start, start + pageSize).map((event) => event.id);
+  const matchingIds = new Set(sortedEvents.map((event) => event.id));
+  const canUseDirectOffset = canUseDirectEventOffset(
+    options,
+    visibility,
+    scanRows.filter((event) => matchingIds.has(event.id))
+  );
+  const statusFilter = normalizeFilter(options.status);
+  const typeFilter = normalizeFilter(options.type);
+  const pageRows = pageIds.length === 0
+    ? []
+    : canUseDirectOffset
+      ? await database
+          .select()
+          .from(events)
+          .where(
+            and(
+              eq(events.runId, runId),
+              statusFilter === "all" ? undefined : eq(events.status, statusFilter),
+              typeFilter === "all" ? undefined : eq(events.type, typeFilter)
+            )
+          )
+          .orderBy(desc(events.timestamp))
+          .limit(pageSize)
+          .offset(start)
+      : await database
+          .select()
+          .from(events)
+          .where(and(eq(events.runId, runId), inArray(events.id, pageIds)))
+          .orderBy(desc(events.timestamp))
+          .limit(pageSize)
+          .offset(0);
+  const pageEvents = pageRows.map(toDashboardEvent);
+  const pageEventById = new Map(pageEvents.map((event) => [event.id, event]));
+  const errorEvents = (
+    await database
+      .select()
+      .from(events)
+      .where(and(eq(events.runId, runId), eq(events.status, "error")))
+      .orderBy(asc(events.timestamp))
+  ).map(toDashboardEvent);
 
   return {
-    events: sortedEvents.slice(start, start + pageSize),
+    events: pageIds
+      .map((id) => pageEventById.get(id))
+      .filter((event): event is DashboardTraceEvent => event !== undefined),
     counts: {
       total: allEvents.length,
       display: displayEvents.length,
@@ -414,10 +594,67 @@ export async function listEventsPageByRunId(
       totalDurationMs: allEvents.reduce((sum, event) => sum + (event.durationMs ?? 0), 0),
       failedEvents: allEvents.filter((event) => event.status === "error").length,
       sourceMetadata: getSourceMetadata(allEvents),
-      errorEvents: allEvents.filter((event) => event.status === "error")
+      errorEvents,
+      insights: analyzeTraceInsights(allEvents)
     },
     visibility
   };
+}
+
+function toDashboardEvent(event: typeof events.$inferSelect): DashboardTraceEvent {
+  return {
+    id: event.id,
+    runId: event.runId,
+    parentId: event.parentId ?? undefined,
+    type: event.type,
+    name: event.name,
+    status: event.status,
+    timestamp: normalizeStoredTimestamp(event.timestamp),
+    durationMs: event.durationMs ?? undefined,
+    input: parseJson(event.inputJson),
+    output: parseJson(event.outputJson),
+    error: parseJson(event.errorJson),
+    metadata: normalizeMetadataForDisplay(parseJson(event.metadataJson))
+  };
+}
+
+function toScannedDashboardEvent(event: EventScanRow): DashboardTraceEvent {
+  return {
+    id: event.id,
+    runId: event.runId,
+    parentId: event.parentId ?? undefined,
+    type: event.type,
+    name: event.name,
+    status: event.status,
+    timestamp: normalizeStoredTimestamp(event.timestamp),
+    durationMs: event.durationMs ?? undefined,
+    input: event.inputCommand ? { command: event.inputCommand } : undefined,
+    error: event.errorMessage ? { message: event.errorMessage } : undefined,
+    metadata: normalizeMetadataForDisplay(parseJson(event.metadataJson))
+  };
+}
+
+function canUseDirectEventOffset(
+  options: ListEventsOptions,
+  visibility: DashboardEventVisibility,
+  eventRows: EventScanRow[]
+) {
+  if (
+    visibility !== "all" ||
+    options.q?.trim() ||
+    normalizeFilter(options.category) !== "all"
+  ) {
+    return false;
+  }
+
+  const timestamps = eventRows.map((event) => event.timestamp);
+  return (
+    new Set(timestamps).size === timestamps.length &&
+    timestamps.every((timestamp) => {
+      const timestampMs = parseStoredTimestampMs(timestamp);
+      return Number.isFinite(timestampMs) && normalizeStoredTimestamp(timestamp) === timestamp;
+    })
+  );
 }
 
 export async function deleteRun(id: string, database: Database = defaultDb): Promise<boolean> {
@@ -440,23 +677,6 @@ export async function deleteRuns(ids: string[], database: Database = defaultDb):
   const result = await database.delete(runs).where(inArray(runs.id, uniqueIds));
 
   return result.changes;
-}
-
-function ensureColumn(
-  sqlite: ReturnType<typeof createSqliteDatabase>,
-  tableName: string,
-  columnName: string,
-  definition: string
-) {
-  const rows = sqlite.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{
-    name: string;
-  }>;
-
-  if (rows.some((row) => row.name === columnName)) {
-    return;
-  }
-
-  sqlite.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
 }
 
 function mergeRunMetadata(
@@ -710,7 +930,7 @@ function normalizeMetadataForDisplay(metadata: unknown): DashboardTraceMetadata 
   return base as DashboardTraceMetadata;
 }
 
-function summarizeEventsByRun(eventRows: Array<typeof events.$inferSelect>) {
+function summarizeEventsByRun(eventRows: EventSummaryRow[]) {
   const summaries = new Map<string, EventSummary>();
   const runIdsWithSessionScan = getRunIdsWithSessionScan(eventRows);
   const runIdsWithLiveActions = getRunIdsWithLiveActions(eventRows);
@@ -808,7 +1028,7 @@ function summarizeEventsByRun(eventRows: Array<typeof events.$inferSelect>) {
   return summaries;
 }
 
-function getRunIdsWithLiveActions(eventRows: Array<typeof events.$inferSelect>) {
+function getRunIdsWithLiveActions(eventRows: EventSummaryRow[]) {
   const runIds = new Set<string>();
 
   for (const row of eventRows) {
@@ -825,14 +1045,14 @@ function getRunIdsWithLiveActions(eventRows: Array<typeof events.$inferSelect>) 
 }
 
 async function closeStaleRunningRuns(
-  runRows: Array<typeof runs.$inferSelect>,
+  runRows: Array<{ id: string; status: string; startedAt: string }>,
   summaries: Map<string, EventSummary>,
+  activitySnapshots: Map<string, EventActivitySnapshot>,
   database: Database
 ) {
-  const staleRuns = new Map<string, { status: "error"; endedAt: string; error: string }>();
+  let reconciledRuns = 0;
   const staleMs = getStaleRunMs();
   const now = Date.now();
-  const endedAt = new Date(now).toISOString();
   const error = `No completion hook received after ${Math.round(staleMs / 60_000)} minutes of inactivity.`;
 
   for (const run of runRows) {
@@ -847,15 +1067,26 @@ async function closeStaleRunningRuns(
       continue;
     }
 
-    staleRuns.set(run.id, { status: "error", endedAt, error });
-
-    await database
+    const endedAt = lastActivityAt;
+    const activitySnapshot = activitySnapshots.get(run.id) ?? {
+      count: 0,
+      maxTimestamp: null
+    };
+    const result = await database
       .update(runs)
       .set({ status: "error", endedAt, error })
-      .where(eq(runs.id, run.id));
+      .where(
+        and(
+          eq(runs.id, run.id),
+          eq(runs.status, "running"),
+          sql`(SELECT count(*) FROM ${events} WHERE ${events.runId} = ${run.id}) = ${activitySnapshot.count}`,
+          sql`coalesce((SELECT max(${events.timestamp}) FROM ${events} WHERE ${events.runId} = ${run.id}), ${noEventTimestampSentinel}) = ${activitySnapshot.maxTimestamp ?? noEventTimestampSentinel}`
+        )
+      );
+    if (result.changes === 1) reconciledRuns += 1;
   }
 
-  return staleRuns;
+  return reconciledRuns;
 }
 
 function shouldIncludeRunInList({
@@ -888,7 +1119,7 @@ function shouldIncludeRunInList({
   return visibleTotal > 0 || summary.hasErrorEvent;
 }
 
-function getRunIdsWithSessionScan(eventRows: Array<typeof events.$inferSelect>) {
+function getRunIdsWithSessionScan(eventRows: EventSummaryRow[]) {
   const runIds = new Set<string>();
 
   for (const row of eventRows) {
@@ -906,7 +1137,7 @@ function isScanSessionUsage(tokenUsage: Record<string, unknown>) {
   return tokenUsage.sourceKind === "scan" && tokenUsage.scope === "session";
 }
 
-function isStaleClosedRun(run: typeof runs.$inferSelect) {
+function isStaleClosedRun(run: { status: string; error: string | null }) {
   return (
     run.status === "error" &&
     typeof run.error === "string" &&
@@ -918,6 +1149,22 @@ function getCollectorSource(input: unknown) {
   const source = getString(asRecord(input).source);
 
   return source === "agent-hook" || source === "codex-otel" ? source : undefined;
+}
+
+function getRunEndedAt(
+  input: unknown,
+  status: string,
+  storedEndedAt: string | undefined,
+  lastEventAt: string | undefined
+) {
+  if (status === "running" || !storedEndedAt || !lastEventAt) {
+    return storedEndedAt;
+  }
+
+  const source = getString(asRecord(input).source);
+  return source === "codex-otel" || source === "transcript-scan"
+    ? lastEventAt
+    : storedEndedAt;
 }
 
 function getSummaryActionTotal(summary: EventSummary) {
@@ -1237,15 +1484,25 @@ function normalizeFilter(value: string | undefined) {
 }
 
 function normalizePage(value: number | undefined) {
-  return Number.isFinite(value) && value !== undefined && value > 0 ? Math.floor(value) : 1;
+  return Number.isFinite(value) && value !== undefined
+    ? Math.max(1, Math.floor(value))
+    : 1;
 }
 
 function normalizePageSize(value: number | undefined) {
-  if (!Number.isFinite(value) || value === undefined || value <= 0) {
+  if (!Number.isFinite(value) || value === undefined) {
     return defaultEventPageSize;
   }
 
-  return Math.min(Math.floor(value), maxEventPageSize);
+  return Math.min(Math.max(1, Math.floor(value)), maxEventPageSize);
+}
+
+function normalizeRunPageSize(value: number | undefined) {
+  if (!Number.isFinite(value) || value === undefined) {
+    return defaultRunPageSize;
+  }
+
+  return Math.min(Math.max(1, Math.floor(value)), maxRunPageSize);
 }
 
 function sortEventsDesc(events: DashboardTraceEvent[]) {

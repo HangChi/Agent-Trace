@@ -1,0 +1,150 @@
+import type Database from "better-sqlite3";
+
+type Migration = (sqlite: Database.Database) => void;
+
+const migrations: Migration[] = [
+  (sqlite) => {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS runs (
+        id TEXT PRIMARY KEY,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        started_at TEXT NOT NULL,
+        ended_at TEXT,
+        input_json TEXT,
+        output_json TEXT,
+        error TEXT,
+        metadata_json TEXT
+      );
+
+      CREATE TABLE IF NOT EXISTS events (
+        id TEXT PRIMARY KEY,
+        run_id TEXT NOT NULL REFERENCES runs(id) ON DELETE CASCADE,
+        parent_id TEXT,
+        type TEXT NOT NULL,
+        name TEXT NOT NULL,
+        status TEXT NOT NULL,
+        timestamp TEXT NOT NULL,
+        duration_ms INTEGER,
+        input_json TEXT,
+        output_json TEXT,
+        error_json TEXT,
+        metadata_json TEXT
+      );
+
+      CREATE INDEX IF NOT EXISTS events_run_id_idx ON events(run_id);
+      CREATE INDEX IF NOT EXISTS events_run_id_timestamp_idx ON events(run_id, timestamp);
+      CREATE INDEX IF NOT EXISTS runs_started_at_idx ON runs(started_at);
+
+      CREATE TABLE IF NOT EXISTS usage_sessions (
+        client TEXT NOT NULL,
+        session_id TEXT NOT NULL,
+        model TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        input_tokens INTEGER NOT NULL,
+        output_tokens INTEGER NOT NULL,
+        cache_read_tokens INTEGER NOT NULL,
+        cache_write_tokens INTEGER NOT NULL,
+        reasoning_tokens INTEGER NOT NULL,
+        total_tokens INTEGER NOT NULL,
+        cost_usd REAL,
+        message_count INTEGER,
+        started_at TEXT,
+        last_used_at TEXT,
+        scanned_at TEXT NOT NULL,
+        PRIMARY KEY (client, session_id, model, provider)
+      );
+
+      CREATE TABLE IF NOT EXISTS usage_scan_state (
+        id TEXT PRIMARY KEY,
+        scanned_at TEXT NOT NULL,
+        diagnostics_json TEXT NOT NULL,
+        error TEXT
+      );
+    `);
+  },
+  (sqlite) => {
+    ensureColumn(sqlite, "runs", "metadata_json", "TEXT");
+    removeLegacyUsageScanRecords(sqlite);
+  }
+];
+
+export const currentSchemaVersion = migrations.length;
+
+export function migrateDatabase(sqlite: Database.Database): void {
+  const databaseVersion = assertSupportedDatabaseVersion(sqlite);
+
+  for (let index = databaseVersion; index < migrations.length; index += 1) {
+    const migration = migrations[index];
+    const nextVersion = index + 1;
+
+    sqlite.transaction(() => {
+      migration!(sqlite);
+      sqlite.pragma(`user_version = ${nextVersion}`);
+    })();
+  }
+}
+
+export function assertSupportedDatabaseVersion(sqlite: Database.Database): number {
+  const databaseVersion = sqlite.pragma("user_version", { simple: true }) as number;
+
+  if (databaseVersion > currentSchemaVersion) {
+    throw new Error(
+      `Database version ${databaseVersion} is newer than supported version ${currentSchemaVersion}.`
+    );
+  }
+
+  return databaseVersion;
+}
+
+function removeLegacyUsageScanRecords(sqlite: Database.Database) {
+  const usageEventIds = (sqlite
+    .prepare("SELECT id, metadata_json AS metadataJson FROM events")
+    .all() as Array<{ id: string; metadataJson: string | null }>)
+    .filter((row) => getJsonSource(row.metadataJson) === "usage-scan")
+    .map((row) => row.id);
+  const usageRunIds = (sqlite
+    .prepare("SELECT id, input_json AS inputJson FROM runs")
+    .all() as Array<{ id: string; inputJson: string | null }>)
+    .filter((row) => getJsonSource(row.inputJson) === "usage-scan")
+    .map((row) => row.id);
+  const deleteEvent = sqlite.prepare("DELETE FROM events WHERE id = ?");
+  const deleteRunEvents = sqlite.prepare("DELETE FROM events WHERE run_id = ?");
+  const deleteRun = sqlite.prepare("DELETE FROM runs WHERE id = ?");
+
+  for (const id of usageEventIds) deleteEvent.run(id);
+  for (const id of usageRunIds) {
+    deleteRunEvents.run(id);
+    deleteRun.run(id);
+  }
+}
+
+function getJsonSource(value: string | null) {
+  if (!value) return undefined;
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>).source
+      : undefined;
+  } catch {
+    return undefined;
+  }
+}
+
+function ensureColumn(
+  sqlite: Database.Database,
+  tableName: string,
+  columnName: string,
+  definition: string
+) {
+  const rows = sqlite.prepare(`PRAGMA table_info(${tableName})`).all() as Array<{
+    name: string;
+  }>;
+
+  if (rows.some((row) => row.name === columnName)) {
+    return;
+  }
+
+  sqlite.exec(`ALTER TABLE ${tableName} ADD COLUMN ${columnName} ${definition}`);
+}

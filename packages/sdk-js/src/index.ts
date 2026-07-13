@@ -4,6 +4,7 @@ export type StartRunOptions = {
   name: string;
   input?: unknown;
   endpoint?: string;
+  deliveryTimeoutMs?: number;
 };
 
 export type TraceStepOptions = {
@@ -30,9 +31,11 @@ export type TraceRun = {
 };
 
 const defaultEndpoint = "http://localhost:4319";
+const defaultDeliveryTimeoutMs = 1000;
 
 export function startRun(options: StartRunOptions): TraceRun {
   const endpoint = trimTrailingSlash(options.endpoint ?? defaultEndpoint);
+  const deliveryTimeoutMs = normalizeDeliveryTimeout(options.deliveryTimeoutMs);
   const runId = createId("run");
   const startPromise = post(endpoint, "/runs", {
     id: runId,
@@ -40,7 +43,7 @@ export function startRun(options: StartRunOptions): TraceRun {
     status: "running",
     startedAt: new Date().toISOString(),
     input: options.input
-  });
+  }, deliveryTimeoutMs);
 
   async function traceStep<T>(
     type: TraceEventType,
@@ -69,7 +72,7 @@ export function startRun(options: StartRunOptions): TraceRun {
         input,
         output,
         metadata: options?.metadata
-      });
+      }, deliveryTimeoutMs);
 
       return output;
     } catch (err) {
@@ -85,7 +88,7 @@ export function startRun(options: StartRunOptions): TraceRun {
         input,
         error: serializeError(err),
         metadata: options?.metadata
-      });
+      }, deliveryTimeoutMs);
 
       throw err;
     }
@@ -115,7 +118,7 @@ export function startRun(options: StartRunOptions): TraceRun {
         status: "success",
         endedAt: new Date().toISOString(),
         output
-      });
+      }, deliveryTimeoutMs);
     },
     async fail(error: unknown) {
       await startPromise;
@@ -123,7 +126,7 @@ export function startRun(options: StartRunOptions): TraceRun {
         status: "error",
         endedAt: new Date().toISOString(),
         error: serializeError(error).message
-      });
+      }, deliveryTimeoutMs);
     }
   };
 }
@@ -132,26 +135,57 @@ export const tracer = {
   startRun
 };
 
-async function post(endpoint: string, path: string, body: unknown) {
-  await send(endpoint, path, "POST", body);
+async function post(endpoint: string, path: string, body: unknown, deliveryTimeoutMs: number) {
+  await send(endpoint, path, "POST", body, deliveryTimeoutMs);
 }
 
-async function patch(endpoint: string, path: string, body: unknown) {
-  await send(endpoint, path, "PATCH", body);
+async function patch(endpoint: string, path: string, body: unknown, deliveryTimeoutMs: number) {
+  await send(endpoint, path, "PATCH", body, deliveryTimeoutMs);
 }
 
-async function send(endpoint: string, path: string, method: "PATCH" | "POST", body: unknown) {
+async function send(
+  endpoint: string,
+  path: string,
+  method: "PATCH" | "POST",
+  body: unknown,
+  deliveryTimeoutMs: number
+) {
+  const controller = new AbortController();
+  let timer: ReturnType<typeof setTimeout> | undefined;
+  const timeout = new Promise<never>((_resolve, reject) => {
+    timer = setTimeout(() => {
+      controller.abort();
+      reject(new Error("Trace delivery timed out."));
+    }, deliveryTimeoutMs);
+  });
+
   try {
-    await fetch(`${endpoint}${path}`, {
-      method,
-      headers: {
-        "content-type": "application/json"
-      },
-      body: JSON.stringify(body)
-    });
+    const response = await Promise.race([
+      fetch(`${endpoint}${path}`, {
+        method,
+        headers: {
+          "content-type": "application/json"
+        },
+        body: JSON.stringify(body),
+        signal: controller.signal
+      }),
+      timeout
+    ]);
+
+    if (!response.ok) {
+      throw new Error(`Trace delivery failed with status ${response.status}.`);
+    }
   } catch {
     // Tracing must not change the behavior of the user's agent.
+  } finally {
+    clearTimeout(timer);
   }
+}
+
+function normalizeDeliveryTimeout(value: number | undefined) {
+  return value !== undefined && Number.isFinite(value) && value > 0
+    ? value
+    : defaultDeliveryTimeoutMs;
 }
 
 function createId(prefix: string) {

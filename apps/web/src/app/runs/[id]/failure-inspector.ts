@@ -1,7 +1,9 @@
-import type { DashboardTraceEvent } from "@agent-trace/schema";
+import type { DashboardEventPage } from "@agent-trace/schema";
+
+type EventErrorSummary = DashboardEventPage["summary"]["errorEvents"][number];
 
 export type InspectableEvent = Pick<
-  DashboardTraceEvent,
+  EventErrorSummary,
   "error" | "metadata" | "name" | "status" | "type"
 >;
 

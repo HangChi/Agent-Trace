@@ -256,6 +256,21 @@ export type DashboardEventFilters = {
   category?: string;
 };
 
+export type DashboardTraceInsightKind =
+  | "repeated_action"
+  | "retry_loop"
+  | "slow_step"
+  | "token_hotspot"
+  | "failure_cascade";
+
+export type DashboardTraceInsight = {
+  kind: DashboardTraceInsightKind;
+  severity: "info" | "warning" | "error";
+  eventIds: string[];
+  title: string;
+  evidence: Record<string, string | number>;
+};
+
 export type DashboardEventPage = {
   events: DashboardTraceEvent[];
   counts: {
@@ -280,6 +295,7 @@ export type DashboardEventPage = {
     failedEvents: number;
     sourceMetadata: DashboardTraceMetadata;
     errorEvents: DashboardTraceEvent[];
+    insights?: DashboardTraceInsight[];
   };
   visibility: DashboardEventVisibility;
 };

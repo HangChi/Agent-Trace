@@ -6,7 +6,9 @@
   "scripts": {
     "build": "next build",
     "dev": "next dev",
+    "lint": "pnpm run typecheck",
     "start": "next start",
+    "test": "tsx src/lib/cost.smoke.ts && tsx src/app/runs/scanner-status.smoke.ts && tsx src/app/runs/[id]/trace-tree.smoke.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {
@@ -29,6 +31,7 @@
     "@types/node": "^24.10.2",
     "@types/react": "^19.2.7",
     "@types/react-dom": "^19.2.3",
-    "tailwindcss": "^4.1.18"
+    "tailwindcss": "^4.1.18",
+    "tsx": "^4.21.0"
   }
 }

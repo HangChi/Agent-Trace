@@ -6,7 +6,7 @@ const databasePath = join(tmpdir(), `agent-trace-api-smoke-${Date.now()}.db`);
 process.env.AGENT_TRACE_DB_PATH = databasePath;
 
 const { createApp } = await import("./app.js");
-const { initializeDatabase } = await import("./storage.js");
+const { initializeDatabase, reconcileStaleRuns } = await import("./storage.js");
 
 initializeDatabase(databasePath);
 
@@ -295,6 +295,8 @@ if (createUntrackedEventResponse.status !== 201) {
   );
 }
 
+await reconcileStaleRuns();
+
 const filteredRunsResponse = await app.request("/runs");
 const filteredRuns = await filteredRunsResponse.json();
 
@@ -309,7 +311,11 @@ const untrackedRun = Array.isArray(allRuns)
   : undefined;
 
 if (untrackedRun?.status !== "error" || !untrackedRun.endedAt || !untrackedRun.error) {
-  throw new Error("Expected stale running runs to be closed when runs are listed.");
+  throw new Error("Expected stale running runs to be closed by explicit reconciliation.");
+}
+
+if (untrackedRun.endedAt !== staleTimestamp) {
+  throw new Error("Expected stale runs to end at their last activity, not the cleanup time.");
 }
 
 const createRecoveredRunResponse = await app.request("/runs", {
@@ -330,6 +336,7 @@ if (createRecoveredRunResponse.status !== 201) {
   );
 }
 
+await reconcileStaleRuns();
 const staleRecoveredRunsResponse = await app.request("/runs?includeUntracked=1");
 const staleRecoveredRuns = await staleRecoveredRunsResponse.json();
 const staleRecoveredRun = Array.isArray(staleRecoveredRuns)
@@ -938,6 +945,8 @@ if (
 
 const codexOtelSessionId = "codex_otel_session_smoke";
 const codexOtelRunId = "run_codex_codex_otel_session_smoke";
+const codexOtelTimestamp = "2026-07-10T10:15:30.000Z";
+const codexOtelTimeUnixNano = (BigInt(Date.parse(codexOtelTimestamp)) * 1_000_000n).toString();
 
 await expectAccepted(
   app.request("/integrations/codex/otel/v1/logs?surface=cli&surface_source=agent-trace-cli", {
@@ -953,7 +962,7 @@ await expectAccepted(
             {
               logRecords: [
                 {
-                  timeUnixNano: (BigInt(Date.now()) * 1_000_000n).toString(),
+                  timeUnixNano: codexOtelTimeUnixNano,
                   body: { stringValue: "codex.sse_event" },
                   attributes: [
                     { key: "event.name", value: { stringValue: "codex.sse_event" } },
@@ -965,7 +974,7 @@ await expectAccepted(
                   ]
                 },
                 {
-                  timeUnixNano: (BigInt(Date.now()) * 1_000_000n).toString(),
+                  timeUnixNano: codexOtelTimeUnixNano,
                   body: {
                     stringValue: JSON.stringify({
                       type: "response.completed",
@@ -989,7 +998,7 @@ await expectAccepted(
                   ]
                 },
                 {
-                  timeUnixNano: (BigInt(Date.now()) * 1_000_000n).toString(),
+                  timeUnixNano: codexOtelTimeUnixNano,
                   body: {
                     stringValue: JSON.stringify({
                       type: "response.completed",
@@ -1089,6 +1098,10 @@ if (
   listedCodexOtelRun.metadata.surfaceSource !== "agent-trace-cli"
 ) {
   throw new Error("Expected untracked Codex OTel runs to keep CLI surface hints.");
+}
+
+if (listedCodexOtelRun.endedAt !== codexOtelTimestamp) {
+  throw new Error("Expected replayed Codex OTel runs to use the event timestamp as their end time.");
 }
 
 const codexDesktopOtelSessionId = "codex_desktop_otel_session_smoke";

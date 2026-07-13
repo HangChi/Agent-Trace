@@ -170,13 +170,14 @@ export function normalizeAgentHook(
     },
     metadata
   };
+  const eventTimestamp = new Date().toISOString();
   const event: CreateTraceEvent = {
     id: createId("evt"),
     runId: run.id,
     type: eventType,
     name: getHookEventName(hookEvent, toolName, metadata),
     status,
-    timestamp: new Date().toISOString(),
+    timestamp: eventTimestamp,
     durationMs: getDurationMs(body, tokenUsage),
     input: getRedactedInput(hookEvent, body, command, skillName),
     output: getRedactedOutput(hookEvent, body, tokenUsage),
@@ -190,7 +191,7 @@ export function normalizeAgentHook(
         : undefined,
     metadata
   };
-  const runUpdate = getRunUpdate(hookEvent);
+  const runUpdate = getRunUpdate(hookEvent, eventTimestamp);
 
   return {
     run,
@@ -324,13 +325,14 @@ export function normalizeCodexOtelLogs(payload: unknown, hints: IngestHints = {}
           metadata
         };
         const traceEventType = getOtelEventType(eventName, tokenUsage);
+        const eventTimestamp = getOtelTimestamp(record);
         const event: CreateTraceEvent = {
           id: createId("evt"),
           runId: run.id,
           type: traceEventType,
           name: getOtelDisplayName(eventName, toolName, command, tokenUsage),
           status,
-          timestamp: getOtelTimestamp(record),
+          timestamp: eventTimestamp,
           durationMs: getNonnegativeNumber(attributes, "duration_ms", "durationMs", "duration"),
           input: getOtelRedactedPayload(bodyRecord, command),
           output: tokenUsage === undefined ? undefined : { tokenUsage },
@@ -341,7 +343,7 @@ export function normalizeCodexOtelLogs(payload: unknown, hints: IngestHints = {}
         traces.push({
           run,
           event,
-          runUpdate: getOtelRunUpdate(eventName, bodyRecord, tokenUsage)
+          runUpdate: getOtelRunUpdate(eventName, bodyRecord, tokenUsage, eventTimestamp)
         });
       }
     }
@@ -451,18 +453,18 @@ function getHookEventName(
   return hookEvent;
 }
 
-function getRunUpdate(hookEvent: string): UpdateRun | undefined {
+function getRunUpdate(hookEvent: string, eventTimestamp: string): UpdateRun | undefined {
   if (hookEvent === "SessionEnd" || hookEvent === "Stop") {
     return {
       status: "success",
-      endedAt: new Date().toISOString()
+      endedAt: eventTimestamp
     };
   }
 
   if (hookEvent === "StopFailure") {
     return {
       status: "error",
-      endedAt: new Date().toISOString(),
+      endedAt: eventTimestamp,
       error: "Agent hook reported StopFailure"
     };
   }
@@ -480,12 +482,13 @@ function getRunUpdate(hookEvent: string): UpdateRun | undefined {
 function getOtelRunUpdate(
   eventName: string,
   body: Record<string, unknown>,
-  tokenUsage: TokenUsage | undefined
+  tokenUsage: TokenUsage | undefined,
+  eventTimestamp: string
 ): UpdateRun | undefined {
   if (eventName.includes("turn.failed") || getString(body, "type") === "turn.failed") {
     return {
       status: "error",
-      endedAt: new Date().toISOString(),
+      endedAt: eventTimestamp,
       error: "Codex turn failed"
     };
   }
@@ -497,7 +500,7 @@ function getOtelRunUpdate(
   ) {
     return {
       status: "success",
-      endedAt: new Date().toISOString()
+      endedAt: eventTimestamp
     };
   }
 

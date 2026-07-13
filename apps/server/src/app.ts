@@ -1,5 +1,4 @@
 import { createRunSchema, createTraceEventSchema, updateRunSchema } from "@agent-trace/schema";
-import type { DashboardRun, DashboardRunPage } from "@agent-trace/schema";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 
@@ -17,14 +16,20 @@ import {
   listEventsByRunId,
   listEventsPageByRunId,
   listRuns,
+  listRunsPage,
   updateRun
 } from "./storage.js";
 import { getScannerStatus, getUsageSummary } from "./usage-storage.js";
 
+const loopbackDashboardOrigin = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?$/;
+
 export function createApp() {
   const app = new Hono();
 
-  app.use("*", cors());
+  app.use(
+    "*",
+    cors({ origin: (origin) => (loopbackDashboardOrigin.test(origin) ? origin : undefined) })
+  );
 
   app.get("/health", (c) => {
     return c.json({ ok: true, service: "agent-trace" });
@@ -98,15 +103,15 @@ export function createApp() {
 
   app.get("/runs", async (c) => {
     const includeUntracked = ["1", "true"].includes(c.req.query("includeUntracked") ?? "");
+    const searchParams = new URL(c.req.url).searchParams;
+    const hasPagination = searchParams.has("page") || searchParams.has("pageSize");
     const page = parseNumber(c.req.query("page"));
     const pageSize = parseNumber(c.req.query("pageSize"));
-    const runs = await listRuns({ includeUntracked });
-
-    if (page !== undefined || pageSize !== undefined) {
-      return c.json(createRunPage(runs, { page, pageSize }));
+    if (hasPagination) {
+      return c.json(await listRunsPage({ includeUntracked, page, pageSize }));
     }
 
-    return c.json(runs);
+    return c.json(await listRuns({ includeUntracked }));
   });
 
   app.delete("/runs", async (c) => {
@@ -158,57 +163,6 @@ function hasEventListQuery(request: { query: (name: string) => string | undefine
   return ["visibility", "page", "pageSize", "q", "status", "type", "category"].some(
     (name) => request.query(name) !== undefined
   );
-}
-
-function createRunPage(
-  runs: DashboardRun[],
-  options: { page?: number; pageSize?: number }
-): DashboardRunPage {
-  const pageSize = normalizeRunPageSize(options.pageSize);
-  const totalPages = Math.max(1, Math.ceil(runs.length / pageSize));
-  const page = Math.min(normalizeRunPage(options.page), totalPages);
-  const start = (page - 1) * pageSize;
-
-  return {
-    runs: runs.slice(start, start + pageSize),
-    pagination: {
-      page,
-      pageSize,
-      total: runs.length,
-      totalPages
-    },
-    summary: getRunPageSummary(runs)
-  };
-}
-
-function getRunPageSummary(runs: DashboardRun[]): DashboardRunPage["summary"] {
-  const counts = new Map<string, number>();
-
-  for (const run of runs) {
-    const agent = run.metadata?.agent ?? "manual";
-    counts.set(agent, (counts.get(agent) ?? 0) + 1);
-  }
-
-  return {
-    totalRuns: runs.length,
-    runningRuns: runs.filter((run) => run.status === "running").length,
-    failedRuns: runs.filter((run) => run.status === "error").length,
-    agents: [...counts.entries()]
-      .map(([agent, count]) => ({ agent, count }))
-      .sort((a, b) => b.count - a.count || a.agent.localeCompare(b.agent))
-  };
-}
-
-function normalizeRunPage(value: number | undefined) {
-  return Number.isFinite(value) && value !== undefined && value > 0 ? Math.floor(value) : 1;
-}
-
-function normalizeRunPageSize(value: number | undefined) {
-  if (!Number.isFinite(value) || value === undefined || value <= 0) {
-    return 50;
-  }
-
-  return Math.min(Math.floor(value), 200);
 }
 
 function parseVisibility(value: string | undefined) {

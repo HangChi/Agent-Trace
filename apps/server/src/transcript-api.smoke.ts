@@ -67,6 +67,19 @@ try {
     throw new Error("Expected only transcript-backed usage sessions to become runs.");
   }
 
+  await json(
+    app.request(`/runs/run_codex_${sessionId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ status: "success", endedAt: "2026-07-13T11:58:47.368Z" })
+    })
+  );
+  const repairedRuns = await json(app.request("/runs?includeUntracked=1"));
+  const repairedRun = repairedRuns.find((item: any) => item.id === `run_codex_${sessionId}`);
+  if (repairedRun?.endedAt !== "2026-07-12T11:00:05.000Z") {
+    throw new Error("Expected transcript duration to end at the last real event timestamp.");
+  }
+
   const events = await json(app.request(`/runs/run_codex_${sessionId}/events`));
   if (
     events.length !== 3 ||

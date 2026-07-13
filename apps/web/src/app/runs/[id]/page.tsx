@@ -2,6 +2,7 @@ import Link from "next/link";
 import type {
   DashboardEventPage,
   DashboardEventVisibility,
+  DashboardTraceInsight,
   DashboardTraceEvent
 } from "@agent-trace/schema";
 import {
@@ -36,6 +37,8 @@ import {
   formatRedaction,
   formatStatus,
   formatSurface,
+  formatTraceInsightEvidence,
+  formatTraceInsightTitle,
   localizedHref,
   parseLocale,
   type Locale
@@ -43,6 +46,7 @@ import {
 import { cn } from "~/lib/utils";
 import { AutoRefresh } from "../run-controls";
 import { inspectFailures } from "./failure-inspector";
+import { buildTraceForest, type TraceTreeNode } from "./trace-tree";
 
 export const dynamic = "force-dynamic";
 
@@ -57,6 +61,7 @@ type DetailSearchParams = Promise<{
   show?: SearchParamValue;
   visibility?: SearchParamValue;
   page?: SearchParamValue;
+  view?: SearchParamValue;
 }>;
 
 type EventFilters = {
@@ -65,6 +70,8 @@ type EventFilters = {
   type: string;
   category: string;
 };
+
+type DetailView = "timeline" | "tree";
 
 const collectorUrl = process.env.AGENT_TRACE_API_URL ?? process.env.TOOLTRACE_API_URL ?? "http://localhost:4319";
 
@@ -82,6 +89,7 @@ export default async function RunDetailPage({
   const filters = parseEventFilters(query);
   const visibility = parseVisibility(query);
   const page = parsePage(query.page);
+  const view = parseDetailView(query.view);
   const { result, error } = await getEventPage(id, locale, filters, visibility, page);
   const events = result?.events ?? [];
   const counts = result?.counts ?? { total: 0, display: 0, hidden: 0, matching: 0 };
@@ -92,12 +100,14 @@ export default async function RunDetailPage({
     totalDurationMs: 0,
     failedEvents: 0,
     sourceMetadata: {},
-    errorEvents: []
+    errorEvents: [],
+    insights: []
   };
   const totalTokens = summary.totalTokens;
   const totalDurationMs = summary.totalDurationMs;
   const failedEvents = summary.failedEvents;
   const failureInsights = inspectFailures(summary.errorEvents);
+  const traceInsights = summary.insights ?? [];
   const sourceMetadata = summary.sourceMetadata;
 
   return (
@@ -115,7 +125,7 @@ export default async function RunDetailPage({
             <div className="flex items-center gap-2">
               <LanguageSwitcher
                 locale={locale}
-                path={detailPath(id, filters, visibility, pagination.page)}
+                path={detailPath(id, filters, visibility, pagination.page, view)}
               />
               <ThemeToggle locale={locale} />
             </div>
@@ -142,10 +152,32 @@ export default async function RunDetailPage({
           <div className="border-b border-border/80 bg-surface-raised px-4 py-4 sm:px-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h2 className="text-sm font-semibold text-foreground">{text.detail.timeline}</h2>
-                <p className="mt-1 text-xs leading-5 text-muted-foreground">{text.detail.timelineHelp}</p>
+                <h2 className="text-sm font-semibold text-foreground">
+                  {view === "tree" ? text.detail.tree : text.detail.timeline}
+                </h2>
+                <p className="mt-1 text-xs leading-5 text-muted-foreground">
+                  {view === "tree" ? text.detail.treeHelp : text.detail.timelineHelp}
+                </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
+                <div className="inline-flex rounded-md border border-border/80 bg-surface-muted p-0.5">
+                  <Button variant={view === "timeline" ? "secondary" : "ghost"} size="xs" asChild>
+                    <Link
+                      href={detailHref(id, locale, filters, visibility, pagination.page, "timeline")}
+                      aria-current={view === "timeline" ? "page" : undefined}
+                    >
+                      {text.detail.timelineView}
+                    </Link>
+                  </Button>
+                  <Button variant={view === "tree" ? "secondary" : "ghost"} size="xs" asChild>
+                    <Link
+                      href={detailHref(id, locale, filters, visibility, pagination.page, "tree")}
+                      aria-current={view === "tree" ? "page" : undefined}
+                    >
+                      {text.detail.treeView}
+                    </Link>
+                  </Button>
+                </div>
                 <span className="inline-flex w-fit items-center rounded-md border border-border/80 bg-surface-muted px-2 py-1 text-xs text-muted-foreground">
                   {formatFilterCount(events.length, pagination.total, locale)}
                 </span>
@@ -156,7 +188,8 @@ export default async function RunDetailPage({
                       locale,
                       filters,
                       visibility === "hidden" ? "display" : "hidden",
-                      1
+                      1,
+                      view
                     )}
                     className="inline-flex w-fit items-center rounded-md border border-border/80 bg-surface-muted px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-accent hover:text-foreground"
                     title={
@@ -179,6 +212,7 @@ export default async function RunDetailPage({
               facets={facets}
               resultCount={pagination.total}
               visibility={visibility}
+              view={view}
             />
           </div>
           {error ? <ErrorState message={error} locale={locale} /> : null}
@@ -192,13 +226,20 @@ export default async function RunDetailPage({
               body={text.detail.emptyFilterBody}
             />
           ) : null}
-          {!error && events.length > 0 ? <Timeline events={events} locale={locale} /> : null}
+          {!error && events.length > 0 ? (
+            view === "tree" ? (
+              <TraceTree events={events} locale={locale} />
+            ) : (
+              <Timeline events={events} locale={locale} />
+            )
+          ) : null}
           {!error && pagination.totalPages > 1 ? (
             <PaginationControls
               runId={id}
               locale={locale}
               filters={filters}
               visibility={visibility}
+              view={view}
               pagination={pagination}
             />
           ) : null}
@@ -220,6 +261,21 @@ export default async function RunDetailPage({
               </dl>
             </CardContent>
           </Card>
+
+          {traceInsights.length > 0 ? (
+            <Card className="py-0">
+              <CardContent className="p-4">
+                <h2 className="text-sm font-semibold text-foreground">
+                  {text.detail.automaticDiagnostics}
+                </h2>
+                <div className="mt-3 space-y-3">
+                  {traceInsights.map((insight) => (
+                    <TraceInsight key={`${insight.kind}-${insight.eventIds.join("-")}`} insight={insight} locale={locale} />
+                  ))}
+                </div>
+              </CardContent>
+            </Card>
+          ) : null}
 
           <Card className="py-0">
             <CardContent className="p-4">
@@ -353,7 +409,8 @@ function FilterBar({
   filters,
   facets,
   resultCount,
-  visibility
+  visibility,
+  view
 }: {
   runId: string;
   locale: Locale;
@@ -361,6 +418,7 @@ function FilterBar({
   facets: DashboardEventPage["facets"];
   resultCount: number;
   visibility: DashboardEventVisibility;
+  view: DetailView;
 }) {
   const text = copy[locale];
   const typeOptions = facets.types;
@@ -374,6 +432,7 @@ function FilterBar({
     >
       {locale === "en" ? <input type="hidden" name="lang" value="en" /> : null}
       {visibility !== "display" ? <input type="hidden" name="visibility" value={visibility} /> : null}
+      {view !== "timeline" ? <input type="hidden" name="view" value={view} /> : null}
       <label className="min-w-0 text-xs font-medium text-muted-foreground md:col-span-2 2xl:col-span-1">
         {text.detail.filterSearch}
         <span className="mt-1 flex h-9 items-center gap-2 rounded-md border border-input bg-surface-raised px-3 text-foreground shadow-xs">
@@ -422,7 +481,7 @@ function FilterBar({
       <div className="flex items-end">
         {hasActiveFilters ? (
           <Button type="button" variant="ghost" size="sm" className="w-full" asChild>
-            <Link href={detailHref(runId, locale, emptyEventFilters, visibility, 1)}>
+            <Link href={detailHref(runId, locale, emptyEventFilters, visibility, 1, view)}>
               {text.detail.clearFilters}
             </Link>
           </Button>
@@ -470,12 +529,14 @@ function PaginationControls({
   locale,
   filters,
   visibility,
+  view,
   pagination
 }: {
   runId: string;
   locale: Locale;
   filters: EventFilters;
   visibility: DashboardEventVisibility;
+  view: DetailView;
   pagination: DashboardEventPage["pagination"];
 }) {
   const text = copy[locale];
@@ -490,7 +551,7 @@ function PaginationControls({
       <div className="flex items-center gap-2">
         {pagination.page > 1 ? (
           <Button variant="outline" size="sm" asChild>
-            <Link href={detailHref(runId, locale, filters, visibility, previousPage)}>
+            <Link href={detailHref(runId, locale, filters, visibility, previousPage, view)}>
               {text.detail.previousPage}
             </Link>
           </Button>
@@ -501,7 +562,7 @@ function PaginationControls({
         )}
         {pagination.page < pagination.totalPages ? (
           <Button variant="outline" size="sm" asChild>
-            <Link href={detailHref(runId, locale, filters, visibility, nextPage)}>
+            <Link href={detailHref(runId, locale, filters, visibility, nextPage, view)}>
               {text.detail.nextPage}
             </Link>
           </Button>
@@ -516,8 +577,6 @@ function PaginationControls({
 }
 
 function Timeline({ events, locale }: { events: DashboardTraceEvent[]; locale: Locale }) {
-  const text = copy[locale];
-
   return (
     <ol className="divide-y divide-border/70">
       {events.map((event) => (
@@ -539,62 +598,166 @@ function Timeline({ events, locale }: { events: DashboardTraceEvent[]; locale: L
                 dotClass(event.status)
               )}
             />
-            <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
-              <div className="min-w-0 flex-1">
-                <div className="flex flex-wrap items-center gap-2">
-                  <h3 className="max-w-full break-words text-sm font-semibold text-foreground">{event.name}</h3>
-                  <span className="rounded-md border border-border/80 bg-surface-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
-                    {formatEventType(event.type, locale)}
-                  </span>
-                  <StatusBadge status={event.status} locale={locale} />
-                  <CategoryBadge event={event} locale={locale} />
-                </div>
-                <div className="mt-2 flex flex-wrap items-center gap-2 text-xs text-muted-foreground">
-                  <span className="font-mono tabular-nums">{event.durationMs ?? 0}ms</span>
-                  {event.metadata?.agent ? <SourceBadge agent={event.metadata.agent} locale={locale} /> : null}
-                  {event.metadata?.hookEvent ? <MetadataBadge value={event.metadata.hookEvent} /> : null}
-                  {event.metadata?.provider ? <span>{event.metadata.provider}</span> : null}
-                  {event.metadata?.model ? <span className="font-mono">{event.metadata.model}</span> : null}
-                </div>
-                <EventPrimaryDetail event={event} locale={locale} />
-                {hasTraceIds(event) ? (
-                  <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px] text-muted-foreground">
-                    {event.metadata?.sessionId ? <TraceId label="session" value={event.metadata.sessionId} /> : null}
-                    {event.metadata?.turnId ? <TraceId label="turn" value={event.metadata.turnId} /> : null}
-                    {event.metadata?.promptId ? <TraceId label="prompt" value={event.metadata.promptId} /> : null}
-                    {event.metadata?.toolUseId ? <TraceId label="tool" value={event.metadata.toolUseId} /> : null}
-                  </div>
-                ) : null}
-              </div>
-              <div className="max-w-[360px] shrink-0 break-all text-left font-mono text-[10px] leading-4 text-muted-foreground lg:text-right">
-                {event.id}
-              </div>
-            </div>
-
-            {event.error ? (
-              <div className="mt-3 rounded-lg border border-status-error-border bg-status-error-subtle px-3 py-2 text-sm text-status-error shadow-xs">
-                {event.error.message}
-              </div>
-            ) : null}
-
-            <details className="group mt-3">
-              <summary className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-accent">
-                <FileJson className="h-3.5 w-3.5" aria-hidden />
-                {text.common.jsonDetail}
-                <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" aria-hidden />
-              </summary>
-              <pre className="mt-2 max-h-[420px] overflow-auto rounded-lg border border-border/80 bg-code p-4 text-xs leading-5 text-zinc-100 shadow-inner">
-                {JSON.stringify(
-                  { input: event.input, output: event.output, error: event.error, metadata: event.metadata },
-                  null,
-                  2
-                )}
-              </pre>
-            </details>
+            <EventDetails event={event} locale={locale} />
           </article>
         </li>
       ))}
     </ol>
+  );
+}
+
+function TraceInsight({ insight, locale }: { insight: DashboardTraceInsight; locale: Locale }) {
+  const text = copy[locale];
+  const Icon = insight.severity === "info" ? Zap : AlertTriangle;
+
+  return (
+    <div className={cn("rounded-lg border px-3 py-3 shadow-xs", traceInsightContainerClass(insight.severity))}>
+      <div className="flex items-center gap-2">
+        <Icon className={cn("h-4 w-4 shrink-0", traceInsightTextClass(insight.severity))} />
+        <div className={cn("min-w-0 flex-1 text-sm font-semibold", traceInsightTextClass(insight.severity))}>
+          {formatTraceInsightTitle(insight.kind, locale)}
+        </div>
+        <span className={cn("rounded-md border px-1.5 py-0.5 text-[10px] font-semibold uppercase", traceInsightBadgeClass(insight.severity))}>
+          {text.detail.insightSeverities[insight.severity]}
+        </span>
+      </div>
+      <p className="mt-2 text-sm leading-6 text-foreground">
+        {formatTraceInsightEvidence(insight, locale)}
+      </p>
+    </div>
+  );
+}
+
+function traceInsightContainerClass(severity: DashboardTraceInsight["severity"]) {
+  if (severity === "error") return "border-status-error-border bg-status-error-subtle";
+  if (severity === "warning") return "border-status-warning-border bg-status-warning-subtle";
+  return "border-border/80 bg-surface-muted";
+}
+
+function traceInsightTextClass(severity: DashboardTraceInsight["severity"]) {
+  if (severity === "error") return "text-status-error";
+  if (severity === "warning") return "text-status-warning";
+  return "text-primary";
+}
+
+function traceInsightBadgeClass(severity: DashboardTraceInsight["severity"]) {
+  if (severity === "error") return "border-status-error-border text-status-error";
+  if (severity === "warning") return "border-status-warning-border text-status-warning";
+  return "border-border text-primary";
+}
+
+function TraceTree({ events, locale }: { events: DashboardTraceEvent[]; locale: Locale }) {
+  return (
+    <ol className="space-y-2 px-4 py-4 sm:px-5">
+      {buildTraceForest(events).map((node) => (
+        <TraceTreeItem key={node.event.id} node={node} locale={locale} />
+      ))}
+    </ol>
+  );
+}
+
+function TraceTreeItem({ node, locale }: { node: TraceTreeNode; locale: Locale }) {
+  const event = node.event;
+
+  return (
+    <li>
+      <details className="rounded-lg border border-border/80 bg-surface-raised shadow-xs">
+        <summary className="cursor-pointer px-3 py-3 transition-colors hover:bg-accent/25 sm:px-4">
+          <span className="ml-2 inline-flex max-w-[calc(100%-0.5rem)] flex-wrap items-center gap-2 align-middle">
+            <span className="inline-flex items-center gap-1.5 font-mono text-xs font-medium text-muted-foreground">
+              <Clock3 className="h-3 w-3" aria-hidden />
+              {formatClockTime(event.timestamp, locale)}
+            </span>
+            <EventSummary event={event} locale={locale} />
+          </span>
+        </summary>
+        <div className="border-t border-border/70 px-4 py-4 sm:px-5">
+          <EventDetails event={event} locale={locale} showSummary={false} />
+          {node.children.length > 0 ? (
+            <ol className="mt-4 space-y-2 border-l border-border/80 pl-3 sm:pl-4">
+              {node.children.map((child) => (
+                <TraceTreeItem key={child.event.id} node={child} locale={locale} />
+              ))}
+            </ol>
+          ) : null}
+        </div>
+      </details>
+    </li>
+  );
+}
+
+function EventSummary({ event, locale }: { event: DashboardTraceEvent; locale: Locale }) {
+  return (
+    <span className="inline-flex min-w-0 flex-wrap items-center gap-2">
+      <span className="max-w-full break-words text-sm font-semibold text-foreground">{event.name}</span>
+      <span className="rounded-md border border-border/80 bg-surface-muted px-2 py-0.5 font-mono text-[11px] text-muted-foreground">
+        {formatEventType(event.type, locale)}
+      </span>
+      <StatusBadge status={event.status} locale={locale} />
+      <CategoryBadge event={event} locale={locale} />
+    </span>
+  );
+}
+
+function EventDetails({
+  event,
+  locale,
+  showSummary = true
+}: {
+  event: DashboardTraceEvent;
+  locale: Locale;
+  showSummary?: boolean;
+}) {
+  const text = copy[locale];
+
+  return (
+    <>
+      <div className="flex min-w-0 flex-col gap-2 lg:flex-row lg:items-start lg:justify-between">
+        <div className="min-w-0 flex-1">
+          {showSummary ? <EventSummary event={event} locale={locale} /> : null}
+          <div className={cn("flex flex-wrap items-center gap-2 text-xs text-muted-foreground", showSummary && "mt-2")}>
+            <span className="font-mono tabular-nums">{event.durationMs ?? 0}ms</span>
+            {event.metadata?.agent ? <SourceBadge agent={event.metadata.agent} locale={locale} /> : null}
+            {event.metadata?.hookEvent ? <MetadataBadge value={event.metadata.hookEvent} /> : null}
+            {event.metadata?.provider ? <span>{event.metadata.provider}</span> : null}
+            {event.metadata?.model ? <span className="font-mono">{event.metadata.model}</span> : null}
+          </div>
+          <EventPrimaryDetail event={event} locale={locale} />
+          {hasTraceIds(event) ? (
+            <div className="mt-2 flex flex-wrap gap-x-3 gap-y-1 font-mono text-[11px] text-muted-foreground">
+              {event.metadata?.sessionId ? <TraceId label="session" value={event.metadata.sessionId} /> : null}
+              {event.metadata?.turnId ? <TraceId label="turn" value={event.metadata.turnId} /> : null}
+              {event.metadata?.promptId ? <TraceId label="prompt" value={event.metadata.promptId} /> : null}
+              {event.metadata?.toolUseId ? <TraceId label="tool" value={event.metadata.toolUseId} /> : null}
+            </div>
+          ) : null}
+        </div>
+        <div className="max-w-[360px] shrink-0 break-all text-left font-mono text-[10px] leading-4 text-muted-foreground lg:text-right">
+          {event.id}
+        </div>
+      </div>
+
+      {event.error ? (
+        <div className="mt-3 rounded-lg border border-status-error-border bg-status-error-subtle px-3 py-2 text-sm text-status-error shadow-xs">
+          {event.error.message}
+        </div>
+      ) : null}
+
+      <details className="group mt-3">
+        <summary className="inline-flex cursor-pointer items-center gap-1.5 rounded-md px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-accent">
+          <FileJson className="h-3.5 w-3.5" aria-hidden />
+          {text.common.jsonDetail}
+          <ChevronDown className="h-3.5 w-3.5 transition-transform group-open:rotate-180" aria-hidden />
+        </summary>
+        <pre className="mt-2 max-h-[420px] overflow-auto rounded-lg border border-border/80 bg-code p-4 text-xs leading-5 text-zinc-100 shadow-inner">
+          {JSON.stringify(
+            { input: event.input, output: event.output, error: event.error, metadata: event.metadata },
+            null,
+            2
+          )}
+        </pre>
+      </details>
+    </>
   );
 }
 
@@ -719,6 +882,10 @@ function parsePage(value: SearchParamValue) {
   return Number.isFinite(parsed) && parsed > 0 ? Math.floor(parsed) : 1;
 }
 
+function parseDetailView(value: SearchParamValue): DetailView {
+  return getSearchParam(value) === "tree" ? "tree" : "timeline";
+}
+
 function getEventCategory(event: DashboardTraceEvent) {
   const metadata = event.metadata;
   const category = metadata?.category;
@@ -778,16 +945,18 @@ function detailHref(
   locale: Locale,
   filters: EventFilters,
   visibility: DashboardEventVisibility,
-  page: number
+  page: number,
+  view: DetailView
 ) {
-  return localizedHref(detailPath(runId, filters, visibility, page), locale);
+  return localizedHref(detailPath(runId, filters, visibility, page, view), locale);
 }
 
 function detailPath(
   runId: string,
   filters: EventFilters,
   visibility: DashboardEventVisibility,
-  page: number
+  page: number,
+  view: DetailView
 ) {
   const params = new URLSearchParams();
 
@@ -807,6 +976,10 @@ function detailPath(
 
   if (page > 1) {
     params.set("page", page.toString());
+  }
+
+  if (view !== "timeline") {
+    params.set("view", view);
   }
 
   const suffix = params.toString();

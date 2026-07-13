@@ -1,4 +1,5 @@
 import type { Route } from "next";
+import type { DashboardTraceInsight, DashboardTraceInsightKind } from "@agent-trace/schema";
 
 export type Locale = "zh" | "en";
 
@@ -115,6 +116,11 @@ export const copy = {
       timeline: "\u8ffd\u8e2a\u65f6\u95f4\u7ebf",
       timelineHelp:
         "\u9ed8\u8ba4\u53ea\u5c55\u793a\u547d\u4ee4\u3001\u5de5\u5177\u3001skill\u3001MCP \u548c token \u4e8b\u4ef6\u3002",
+      tree: "\u8ffd\u8e2a\u6811",
+      treeHelp:
+        "\u6309\u7236\u4e8b\u4ef6\u5173\u7cfb\u7ec4\u7ec7\u5f53\u524d\u9875\u7684\u4e8b\u4ef6\uff1b\u7f3a\u5931\u7236\u4e8b\u4ef6\u6216\u5faa\u73af\u5173\u7cfb\u663e\u793a\u4e3a\u6839\u8282\u70b9\u3002",
+      timelineView: "\u65f6\u95f4\u7ebf",
+      treeView: "\u6811\u72b6",
       summary: "\u8fd0\u884c\u6458\u8981",
       surface: "\u8fd0\u884c\u7aef",
       session: "\u4f1a\u8bdd",
@@ -122,6 +128,26 @@ export const copy = {
       totalDuration: "\u603b\u8017\u65f6",
       failedSteps: "\u5931\u8d25\u6b65\u9aa4",
       tokenUsage: "Token \u7528\u91cf",
+      automaticDiagnostics: "\u81ea\u52a8\u8bca\u65ad",
+      insightTitles: {
+        repeated_action: "\u91cd\u590d\u64cd\u4f5c",
+        retry_loop: "\u91cd\u8bd5\u5faa\u73af",
+        slow_step: "\u6162\u6b65\u9aa4",
+        token_hotspot: "Token \u70ed\u70b9",
+        failure_cascade: "\u5931\u8d25\u7ea7\u8054"
+      },
+      insightEvidence: {
+        repeated_action: "{actionName} \u8fde\u7eed\u6267\u884c\u4e86 {count} \u6b21\u3002",
+        retry_loop: "{actionName} \u5171\u5c1d\u8bd5 {attempts} \u6b21\uff0c\u5176\u4e2d\u5931\u8d25 {failedAttempts} \u6b21\u3002",
+        slow_step: "\u8017\u65f6 {durationMs} \u6beb\u79d2\uff0c\u8fbe\u5230 {thresholdMs} \u6beb\u79d2\u9608\u503c\u3002",
+        token_hotspot: "\u4f7f\u7528 {eventTokens} / {runTokens} \u4e2a\u8fd0\u884c Token\uff08{share}\uff09\u3002",
+        failure_cascade: "\u68c0\u6d4b\u5230 {errorCount} \u4e2a\u5173\u8054\u9519\u8bef\u3002"
+      },
+      insightSeverities: {
+        info: "\u4fe1\u606f",
+        warning: "\u8b66\u544a",
+        error: "\u9519\u8bef"
+      },
       failureInspector: "\u5931\u8d25\u8bca\u65ad",
       noFailures: "\u5f53\u524d\u8fd0\u884c\u6ca1\u6709\u68c0\u6d4b\u5230\u5931\u8d25\u6b65\u9aa4\u3002",
       step: "\u6b65\u9aa4",
@@ -232,6 +258,11 @@ export const copy = {
       errors: "Errors",
       timeline: "Trace timeline",
       timelineHelp: "Shows commands, tools, skills, MCP calls, and token events by default.",
+      tree: "Trace tree",
+      treeHelp:
+        "Groups events from the current page by parent relationship; missing parents and cycles appear as roots.",
+      timelineView: "Timeline",
+      treeView: "Tree",
       summary: "Run summary",
       surface: "Surface",
       session: "Session",
@@ -239,6 +270,26 @@ export const copy = {
       totalDuration: "Total duration",
       failedSteps: "Failed steps",
       tokenUsage: "Token usage",
+      automaticDiagnostics: "Automatic diagnostics",
+      insightTitles: {
+        repeated_action: "Repeated action",
+        retry_loop: "Retry loop",
+        slow_step: "Slow step",
+        token_hotspot: "Token hotspot",
+        failure_cascade: "Failure cascade"
+      },
+      insightEvidence: {
+        repeated_action: "{actionName} repeated {count} times.",
+        retry_loop: "{actionName} took {attempts} attempts, including {failedAttempts} failed attempts.",
+        slow_step: "Duration {durationMs} ms reached the {thresholdMs} ms threshold.",
+        token_hotspot: "{eventTokens} of {runTokens} run tokens ({share}).",
+        failure_cascade: "{errorCount} related errors were detected."
+      },
+      insightSeverities: {
+        info: "Info",
+        warning: "Warning",
+        error: "Error"
+      },
       failureInspector: "Failure inspector",
       noFailures: "No failed steps detected for this run.",
       step: "Step",
@@ -262,6 +313,32 @@ export const copy = {
     }
   }
 } as const;
+
+export function formatTraceInsightTitle(kind: DashboardTraceInsightKind, locale: Locale) {
+  return copy[locale].detail.insightTitles[kind];
+}
+
+export function formatTraceInsightEvidence(insight: DashboardTraceInsight, locale: Locale) {
+  const numberFormat = new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en");
+  const evidence = Object.fromEntries(
+    Object.entries(insight.evidence).map(([key, value]) => [
+      key,
+      typeof value === "number" ? numberFormat.format(value) : value
+    ])
+  );
+
+  if (typeof insight.evidence.share === "number") {
+    evidence.share = new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en", {
+      style: "percent",
+      maximumFractionDigits: 1
+    }).format(insight.evidence.share);
+  }
+
+  return Object.entries(evidence).reduce(
+    (message, [key, value]) => message.replaceAll(`{${key}}`, String(value)),
+    copy[locale].detail.insightEvidence[insight.kind] as string
+  );
+}
 
 export function formatAgent(agent: string, locale: Locale) {
   const labels: Record<string, string> = {

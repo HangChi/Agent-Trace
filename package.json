@@ -11,8 +11,10 @@
     "desktop:pack:win": "node apps/desktop/scripts/package-win.mjs dir",
     "dev": "pnpm -r --parallel dev",
     "format": "pnpm -r format",
-    "lint": "pnpm -r lint",
-    "test": "pnpm -r test",
+    "lint": "node scripts/workspace-scripts.smoke.mjs && pnpm -r lint && git diff --check",
+    "prepare": "pnpm --filter @agent-trace/schema build",
+    "pretest": "pnpm --filter @agent-trace/schema build",
+    "test": "node scripts/workspace-scripts.smoke.mjs && node --test scripts/workspace-scripts.test.mjs && pnpm -r test",
     "typecheck": "pnpm -r typecheck"
   },
   "devDependencies": {

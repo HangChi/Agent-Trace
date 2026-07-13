@@ -9,9 +9,11 @@
     "build": "node scripts/check.mjs",
     "dev": "electron .",
     "dist:win": "node scripts/package-win.mjs nsis",
+    "lint": "node scripts/check.mjs",
     "pack:win": "node scripts/package-win.mjs dir",
     "prepare:icon": "node scripts/generate-icon.mjs",
-    "prepare:resources": "node scripts/prepare-dist.mjs"
+    "prepare:resources": "node scripts/prepare-dist.mjs",
+    "test": "node scripts/check.mjs"
   },
   "devDependencies": {
     "@agent-trace/cli": "workspace:*",
