@@ -47,6 +47,7 @@ import {
 import { DesktopCloseSettings } from "./desktop-close-settings";
 import { calculateRunCost, getUsdCnyRate, type RunCost } from "~/lib/cost";
 import { ResizableTableColumns } from "./resizable-table-columns";
+import { fetchScannerStatus, type ScannerDiagnostic } from "./scanner-status";
 
 export const dynamic = "force-dynamic";
 
@@ -127,25 +128,15 @@ const runsTableColumns = [
   }
 ];
 
-type ScannerDiagnostic = {
-  client: string;
-  status: string;
-  messageCount?: number;
-  path?: string;
-  pathExists?: boolean;
-  warning?: string;
-  actionHint?: string;
-};
-
 export default async function RunsPage({ searchParams }: { searchParams: RunsSearchParams }) {
   const params = await searchParams;
   const locale = parseLocale(params.lang);
   const text = copy[locale];
   const requestedPage = parsePageParam(params.page);
   const scannerMode = parseScannerMode(params.scanner);
-  const [{ page: runPage, error }, { runs: scannerRuns }, exchangeRate] = await Promise.all([
+  const [{ page: runPage, error }, scannerStatus, exchangeRate] = await Promise.all([
     getRunPage(locale, requestedPage),
-    getScannerRuns(),
+    fetchScannerStatus(collectorUrl),
     getUsdCnyRate()
   ]);
   const runs = runPage.runs;
@@ -154,7 +145,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
   const failedRuns = runPage.summary.failedRuns;
   const runningRuns = runPage.summary.runningRuns;
   const agentSources = getAgentSourceSummary(runPage.summary.agents, locale);
-  const allScannerDiagnostics = getScannerDiagnostics(scannerRuns.length > 0 ? scannerRuns : runs);
+  const allScannerDiagnostics = scannerStatus.diagnostics;
   const scannerDiagnostics = scannerMode === "all"
     ? allScannerDiagnostics
     : allScannerDiagnostics.filter(isDetectedScannerDiagnostic);
@@ -521,22 +512,6 @@ async function getRunPage(
   }
 }
 
-async function getScannerRuns(): Promise<{ runs: DashboardRun[] }> {
-  try {
-    const response = await fetch(`${collectorUrl}/runs?includeUntracked=1`, { cache: "no-store" });
-
-    if (!response.ok) {
-      return { runs: [] };
-    }
-
-    const payload = await response.json();
-
-    return { runs: Array.isArray(payload) ? (payload as DashboardRun[]) : [] };
-  } catch {
-    return { runs: [] };
-  }
-}
-
 function createEmptyRunPage(page: number): DashboardRunPage {
   return createRunPageFromRuns([], page);
 }
@@ -825,59 +800,10 @@ function getAgentSourceSummary(
   };
 }
 
-function getScannerDiagnostics(runs: DashboardRun[]) {
-  const statusRun = runs.find(
-    (run) => run.id === "run_usage_scan_status" || run.metadata?.agent === "usage-scan"
-  );
-  const diagnostics = asArray(asRecord(statusRun?.metadata).diagnostics)
-    .map((item) => normalizeScannerDiagnostic(asRecord(item)))
-    .filter((diagnostic): diagnostic is ScannerDiagnostic => diagnostic !== undefined);
-
-  return diagnostics.sort((a, b) => getScannerStatusRank(a.status) - getScannerStatusRank(b.status));
-}
-
 function isDetectedScannerDiagnostic(diagnostic: ScannerDiagnostic) {
-  return (
-    diagnostic.status !== "missing" ||
-    diagnostic.pathExists === true ||
-    (diagnostic.messageCount ?? 0) > 0
-  );
+  return diagnostic.status !== "missing" || diagnostic.pathExists === true;
 }
 
-function normalizeScannerDiagnostic(record: Record<string, unknown>): ScannerDiagnostic | undefined {
-  const client = getString(record.client);
-  const status = getString(record.status);
-
-  if (!client || !status) {
-    return undefined;
-  }
-
-  const messageCount = getNumber(record.messageCount);
-
-  return {
-    client,
-    status,
-    messageCount: messageCount > 0 ? messageCount : undefined,
-    path: getString(record.path),
-    pathExists: typeof record.pathExists === "boolean" ? record.pathExists : undefined,
-    warning: getString(record.warning),
-    actionHint: getString(record.actionHint)
-  };
-}
-
-function getScannerStatusRank(status: string) {
-  const ranks: Record<string, number> = {
-    needs_sync: 0,
-    needs_login: 1,
-    error: 2,
-    missing: 3,
-    waiting: 4,
-    synced: 5,
-    available: 6
-  };
-
-  return ranks[status] ?? 7;
-}
 
 function formatScannerStatus(status: string, locale: Locale) {
   const labels: Record<Locale, Record<string, string>> = {

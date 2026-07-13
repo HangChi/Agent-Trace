@@ -223,6 +223,7 @@ async function runDev(argv: string[] = []) {
   const usageSync = flags["usage-sync"] === "true" || flags.sync === "true";
   const usageClients = flags["usage-clients"] ?? process.env.AGENT_TRACE_USAGE_CLIENTS;
   const usageHome = flags["usage-home"] ?? flags.home ?? process.env.AGENT_TRACE_USAGE_HOME;
+  const historyContent = getHistoryContent(flags["history-content"]);
   const usageIntervalMs = parsePositiveNumber(flags["usage-interval-ms"]) ?? 15_000;
   const children: ChildProcess[] = [];
 
@@ -259,6 +260,7 @@ async function runDev(argv: string[] = []) {
       collectorUrl: serverUrl,
       clients: usageClients,
       home: usageHome,
+      historyContent,
       sync: usageSync,
       intervalMs: usageIntervalMs,
       signal: usageAbortController.signal
@@ -311,6 +313,7 @@ async function runUsage(argv: string[]) {
   const intervalMs = parsePositiveNumber(flags["interval-ms"]) ?? 15_000;
   const commandTimeoutMs = parsePositiveNumber(flags["timeout-ms"]);
   const sync = flags.sync === "true" || flags["usage-sync"] === "true";
+  const historyContent = getHistoryContent(flags["history-content"]);
 
   if (positionals[0] === "clients") {
     const diagnostics = await collectUsageClientDiagnostics({
@@ -356,6 +359,7 @@ async function runUsage(argv: string[]) {
       collectorUrl,
       clients,
       home,
+      historyContent,
       sync,
       intervalMs,
       commandTimeoutMs,
@@ -368,6 +372,7 @@ async function runUsage(argv: string[]) {
     collectorUrl,
     clients,
     home,
+    historyContent,
     sync,
     commandTimeoutMs
   });
@@ -558,6 +563,7 @@ Environment:
   AGENT_TRACE_WEB_PORT      Dashboard port, default 3000
   AGENT_TRACE_USAGE_CLIENTS Usage scanner clients
   AGENT_TRACE_USAGE_HOME    Local home directory for tokscale
+  AGENT_TRACE_HISTORY_CONTENT Prompt content mode: preview or metadata
   TOOLTRACE_*               Legacy environment variable names are still accepted
 
 Options:
@@ -565,6 +571,7 @@ Options:
   --usage-sync                 Run supported tokscale sync commands before scanner cycles
   --usage-clients <clients>    Clients to scan, default all tokscale clients
   --usage-home <path>          Local home directory passed to tokscale
+  --history-content <mode>     Prompt content mode, preview or metadata
   --usage-interval-ms <ms>     Scanner interval, default 15000
 `);
 }
@@ -575,7 +582,7 @@ agent-trace usage clients --home <path> [--json]
 agent-trace usage sync --clients <clients> --home <path>
 
 Scans local AI coding agent usage with tokscale and posts token/cost summaries to
-the local collector. Raw prompts, responses, and files are not sent.
+the local collector. Claude, Codex, and OpenCode can also send cleaned local prompt previews.
 
 Options:
   --once                    Run one scan, default behavior
@@ -585,6 +592,7 @@ Options:
   --interval-ms <ms>        Watch interval, default 15000
   --clients <clients>       Client list, default all tokscale clients
   --home <path>             Local home directory passed to tokscale
+  --history-content <mode>  Prompt content mode, preview or metadata
   --collector-url <url>     Collector base URL, default http://localhost:4319
   --timeout-ms <ms>         tokscale command timeout, default 60000
 
@@ -592,5 +600,12 @@ Environment:
   AGENT_TRACE_TOKSCALE_BIN    tokscale executable override
   AGENT_TRACE_USAGE_CLIENTS   Default client list
   AGENT_TRACE_USAGE_HOME      Local home directory for tokscale
+  AGENT_TRACE_HISTORY_CONTENT Prompt content mode: preview or metadata
 `);
+}
+
+function getHistoryContent(value: string | undefined) {
+  return (value ?? process.env.AGENT_TRACE_HISTORY_CONTENT)?.trim().toLowerCase() === "metadata"
+    ? "metadata" as const
+    : "preview" as const;
 }

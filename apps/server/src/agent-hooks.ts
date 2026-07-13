@@ -2,9 +2,10 @@ import {
   createEvent,
   createRun,
   getRunById,
-  replaceUsageScanSnapshot,
+  replaceTranscriptSnapshot,
   updateRun
 } from "./storage.js";
+import { replaceUsageSnapshot } from "./usage-storage.js";
 import {
   knownHookEvents,
   normalizeAgentHook,
@@ -14,6 +15,7 @@ import {
   type NormalizedTrace
 } from "./agent-hook-normalizer.js";
 import { normalizeUsageScan } from "./usage-scan.js";
+import { normalizeTranscriptScan } from "./transcript-scan.js";
 
 export type { AgentHookSource } from "./agent-hook-normalizer.js";
 export { knownHookEvents, normalizeAgentHook, normalizeCodexOtelLogs };
@@ -48,23 +50,15 @@ export async function ingestCodexOtelLogs(payload: unknown, hints: IngestHints =
 
 export async function ingestUsageScan(payload: unknown) {
   const normalized = normalizeUsageScan(payload);
-  const complete = asRecord(payload).complete === true;
-  const scanClients = getScanClients(asRecord(payload).scanClients);
-  replaceUsageScanSnapshot(normalized, complete, scanClients);
+  const transcripts = normalizeTranscriptScan(payload);
+  await replaceUsageSnapshot(normalized);
+  await replaceTranscriptSnapshot(transcripts.traces, transcripts.clients, transcripts.sessionKeys);
 
   return {
-    stored: normalized.length,
-    eventIds: normalized.map((trace) => trace.event.id),
-    runIds: [...new Set(normalized.map((trace) => trace.run.id))]
+    stored: normalized.rows.length,
+    transcripts: transcripts.traces.length,
+    reconciledClients: normalized.reconciledClients
   };
-}
-
-function getScanClients(value: unknown) {
-  const clients = Array.isArray(value)
-    ? value.filter((client): client is string => typeof client === "string" && client.length > 0)
-    : [];
-
-  return clients.length > 0 ? new Set(clients) : undefined;
 }
 
 async function persistTrace(normalized: NormalizedTrace) {

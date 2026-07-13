@@ -19,6 +19,7 @@ import {
   listRuns,
   updateRun
 } from "./storage.js";
+import { getScannerStatus, getUsageSummary } from "./usage-storage.js";
 
 export function createApp() {
   const app = new Hono();
@@ -90,6 +91,10 @@ export function createApp() {
   app.post("/integrations/usage-scan", async (c) => {
     return ingestUsageScanRequest(c);
   });
+
+  app.get("/usage/summary", async (c) => c.json(await getUsageSummary()));
+
+  app.get("/usage/scanner", async (c) => c.json(await getScannerStatus()));
 
   app.get("/runs", async (c) => {
     const includeUntracked = ["1", "true"].includes(c.req.query("includeUntracked") ?? "");

@@ -1,17 +1,20 @@
 import { spawn } from "node:child_process";
-import { existsSync } from "node:fs";
+import { existsSync, readdirSync } from "node:fs";
 import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { findUncoveredCodexHistories } from "./codex-history.js";
+import { collectTranscriptDetails } from "./transcript-collector.js";
+import type { HistoryContentMode } from "./transcript.js";
 
 export type UsageScanOptions = {
   collectorUrl?: string;
   clients?: string;
   commandTimeoutMs?: number;
   home?: string;
+  historyContent?: HistoryContentMode;
   sync?: boolean;
   tokscaleCommand?: string;
   runTokscale?: (clients: string | undefined, commandTimeoutMs: number, home: string | undefined) => Promise<unknown>;
@@ -113,6 +116,9 @@ export async function collectUsageOnce(options: UsageScanOptions = {}) {
   const runTokscale = options.runTokscale ?? ((clientCsv, timeoutMs, scanHome) =>
     runTokscaleJson(clientCsv, timeoutMs, scanHome, options.tokscaleCommand));
   const postJson = options.postJson ?? ((path, body) => postCollectorJson(collectorUrl, path, body));
+  const historyContent = normalizeHistoryContent(
+    options.historyContent ?? process.env.AGENT_TRACE_HISTORY_CONTENT
+  );
 
   if (options.sync) {
     await syncUsageClients({
@@ -138,8 +144,7 @@ export async function collectUsageOnce(options: UsageScanOptions = {}) {
     ? getDefaultScanClients(clientDiagnostics, diagnosticsHaveClientList)
     : normalizeClients(configuredClients);
   const shouldRunPrimaryScan = configuredClients !== undefined ||
-    !diagnosticsHaveClientList ||
-    clients !== undefined;
+    (diagnosticsHaveClientList && clients !== undefined);
   const raw = shouldRunPrimaryScan ? await runTokscale(clients, commandTimeoutMs, home) : { entries: [] };
   const primaryRows = normalizeTokscaleUsage(raw);
   const reconciliation = shouldRunPrimaryScan && shouldReconcileCodex(clients) && home
@@ -163,14 +168,25 @@ export async function collectUsageOnce(options: UsageScanOptions = {}) {
     ...getUsageWarningDiagnostics(raw),
     ...reconciliation.diagnostics
   ];
-  const scanClients = configuredClients === undefined && diagnosticsHaveClientList
+  const reconciledClients = configuredClients === undefined && diagnosticsHaveClientList
     ? getDiagnosticClientIds(clientDiagnostics)
     : clients?.split(",").filter(Boolean);
+  const transcriptSnapshot = home
+    ? await collectTranscriptDetails(home, rows, historyContent)
+    : { clients: [], sessionKeys: [], transcripts: [] };
+  const transcriptClients = transcriptSnapshot.clients.filter((client) =>
+    reconciledClients?.includes(client)
+  );
 
   await postJson("/integrations/usage-scan", {
     source: "tokscale",
     complete: true,
-    scanClients: scanClients && scanClients.length > 0 ? scanClients : undefined,
+    explicitClients: configuredClients === undefined ? undefined : clients?.split(",").filter(Boolean),
+    reconciledClients:
+      reconciledClients && reconciledClients.length > 0 ? reconciledClients : undefined,
+    transcriptClients: transcriptClients.length > 0 ? transcriptClients : undefined,
+    transcriptSessionIds: transcriptSnapshot.sessionKeys,
+    transcripts: transcriptSnapshot.transcripts,
     scannedAt: new Date().toISOString(),
     rows,
     diagnostics: diagnostics.length > 0 ? mergeDiagnostics(diagnostics) : undefined
@@ -178,7 +194,8 @@ export async function collectUsageOnce(options: UsageScanOptions = {}) {
 
   return {
     rows: rows.length,
-    diagnostics: diagnostics.length
+    diagnostics: diagnostics.length,
+    transcripts: transcriptSnapshot.transcripts.length
   };
 }
 
@@ -209,7 +226,7 @@ export async function collectUsageClientDiagnostics(
       runTokscaleClientsJson(clientHome, timeoutMs, options.tokscaleCommand));
   const raw = await runTokscaleClients(home, commandTimeoutMs);
 
-  return normalizeTokscaleClientDiagnostics(raw);
+  return applyLocalPathEvidence(normalizeTokscaleClientDiagnostics(raw), home);
 }
 
 export async function syncUsageClients(
@@ -322,8 +339,9 @@ function getDefaultScanClients(diagnostics: UsageDiagnostic[], hasClientList: bo
   const clients = diagnostics
     .filter(
       (diagnostic) =>
-        diagnostic.status === "available" ||
-        (diagnostic.status === "waiting" && diagnostic.pathExists === true)
+        diagnostic.client !== "micode" &&
+        diagnostic.pathExists === true &&
+        (diagnostic.status === "available" || diagnostic.status === "waiting")
     )
     .map((diagnostic) => diagnostic.client);
 
@@ -394,8 +412,17 @@ function normalizeClientDiagnostic(record: Record<string, unknown>): UsageDiagno
     "headless_message_count"
   ]);
   const path = getString(record, "sessionsPath", "sessions_path", "path", "cachePath", "cache_path");
-  const pathExists = getBoolean(record, "sessionsPathExists", "sessions_path_exists", "pathExists", "path_exists") ??
-    anyKnownPathExists(record);
+  const primaryPathExists = getBoolean(
+    record,
+    "sessionsPathExists",
+    "sessions_path_exists",
+    "pathExists",
+    "path_exists"
+  );
+  const alternativePathExists = anyKnownPathExists(record);
+  const pathExists = primaryPathExists === true || alternativePathExists === true
+    ? true
+    : primaryPathExists ?? alternativePathExists;
   const status = getDiagnosticStatus(client, messageCount, pathExists);
 
   return {
@@ -675,7 +702,7 @@ function getDiagnosticStatus(
   messageCount: number,
   pathExists: boolean | undefined
 ): UsageDiagnosticStatus {
-  if (messageCount > 0) {
+  if (pathExists === true && messageCount > 0) {
     return "available";
   }
 
@@ -683,7 +710,39 @@ function getDiagnosticStatus(
     return "needs_sync";
   }
 
-  return pathExists ? "waiting" : "missing";
+  return pathExists === true ? "waiting" : "missing";
+}
+
+function applyLocalPathEvidence(diagnostics: UsageDiagnostic[], home: string | undefined) {
+  if (!home) return diagnostics;
+
+  return diagnostics.map((diagnostic) => {
+    if (diagnostic.client !== "opencode" || diagnostic.pathExists === true) return diagnostic;
+    const directory = join(home, ".local", "share", "opencode");
+    let databasePath: string | undefined;
+
+    try {
+      const database = readdirSync(directory)
+        .filter((name) => /^opencode(?:-[A-Za-z0-9._-]+)?\.db$/.test(name))
+        .sort()[0];
+      databasePath = database ? join(directory, database) : undefined;
+    } catch {
+      databasePath = undefined;
+    }
+
+    if (!databasePath || !existsSync(databasePath)) return diagnostic;
+
+    const status: UsageDiagnosticStatus = diagnostic.messageCount && diagnostic.messageCount > 0
+      ? "available"
+      : "waiting";
+
+    return {
+      ...diagnostic,
+      status,
+      path: databasePath,
+      pathExists: true
+    };
+  });
 }
 
 function isSyncBackedClient(client: string) {
@@ -841,6 +900,10 @@ function normalizeIntervalMs(value: number | undefined) {
   return Number.isFinite(value) && value !== undefined && value > 0
     ? Math.max(1000, Math.floor(value))
     : 15_000;
+}
+
+export function normalizeHistoryContent(value: string | undefined): HistoryContentMode {
+  return value?.trim().toLowerCase() === "metadata" ? "metadata" : "preview";
 }
 
 function getBoolean(record: Record<string, unknown>, ...keys: string[]) {

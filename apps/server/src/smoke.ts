@@ -1708,38 +1708,28 @@ await expectAccepted(
 
 const usageScanRunsResponse = await app.request("/runs?includeUntracked=1");
 const usageScanRuns = await usageScanRunsResponse.json();
-const usageScanStatusRun = Array.isArray(usageScanRuns)
-  ? usageScanRuns.find((run) => run.id === "run_usage_scan_status")
-  : undefined;
-const scannerDiagnostics = usageScanStatusRun?.metadata?.diagnostics;
+const scannerStatusResponse = await app.request("/usage/scanner");
+const scannerStatus = await scannerStatusResponse.json();
+const scannerDiagnostics = scannerStatus?.diagnostics;
 
 if (
-  usageScanStatusRun?.metadata?.agent !== "usage-scan" ||
+  !Array.isArray(usageScanRuns) ||
+  usageScanRuns.some((run) => run.input?.source === "usage-scan") ||
   !Array.isArray(scannerDiagnostics) ||
   scannerDiagnostics.find((diagnostic) => diagnostic.client === "cursor")?.status !== "needs_sync"
 ) {
-  throw new Error("Expected usage scan diagnostics to be stored on a scanner status run.");
+  throw new Error("Expected scanner diagnostics outside the real runs list.");
 }
 
+const usageSummaryResponse = await app.request("/usage/summary");
+const usageSummary = await usageSummaryResponse.json();
+
 for (const row of usageScanRows) {
-  const runIdForRow = `run_${row.agent}_${row.sessionId}`;
-  const run = Array.isArray(usageScanRuns)
-    ? usageScanRuns.find((candidate: { id?: string }) => candidate.id === runIdForRow)
-    : undefined;
-  const summary = run?.metadata?.summary;
-  const modelUsage = summary?.modelUsage?.find((usage: { model?: string }) => usage.model === row.model);
-
-  if (run?.metadata?.agent !== row.agent) {
-    throw new Error(`Expected usage scan client ${row.client} to map to agent ${row.agent}.`);
-  }
-
-  if (
-    summary?.tokenUsage?.total !== row.totalTokens ||
-    summary.costUsd !== row.costUsd ||
-    modelUsage?.costUsd !== row.costUsd ||
-    modelUsage.tokenUsage.total !== row.totalTokens
-  ) {
-    throw new Error(`Expected usage scan summary for ${row.client} to use one upserted snapshot.`);
+  const clientUsage = usageSummary.clients?.find(
+    (usage: { client?: string }) => usage.client === row.client
+  );
+  if (clientUsage?.totalTokens !== row.totalTokens || clientUsage.costUsd !== row.costUsd) {
+    throw new Error(`Expected aggregate-only usage for ${row.client} in the usage summary.`);
   }
 }
 
@@ -1826,8 +1816,8 @@ const scanSnapshotEvents = Array.isArray(scanPrecedenceEvents)
   ? scanPrecedenceEvents.filter((event) => event.name === "token_usage")
   : [];
 
-if (scanSnapshotEvents.length !== 1) {
-  throw new Error("Expected repeated usage scans to upsert one deterministic token snapshot event.");
+if (scanSnapshotEvents.length !== 0) {
+  throw new Error("Expected usage snapshots to avoid creating token placeholder events.");
 }
 
 await expectAccepted(
@@ -2007,9 +1997,9 @@ if (
   replacementRuns.some((run) => run.id === replacementStaleRunId) ||
   !Array.isArray(replacementKeepEvents) ||
   !replacementKeepEvents.some((event) => event.name === "user_prompt") ||
-  !replacementKeepEvents.some((event) => event.name === "token_usage")
+  replacementKeepEvents.some((event) => event.name === "token_usage")
 ) {
-  throw new Error("Expected complete usage replacement to prune stale scans without deleting hook events.");
+  throw new Error("Expected complete usage replacement to keep hook events without scanner runs.");
 }
 
 await expectAccepted(
@@ -2026,13 +2016,13 @@ await expectAccepted(
   "incomplete usage replacement"
 );
 
-const afterIncompleteEventsResponse = await app.request(`/runs/${replacementKeepRunId}/events`);
-const afterIncompleteEvents = await afterIncompleteEventsResponse.json();
+const afterIncompleteRunsResponse = await app.request("/runs?includeUntracked=1");
+const afterIncompleteRuns = await afterIncompleteRunsResponse.json();
+const afterIncompleteRun = Array.isArray(afterIncompleteRuns)
+  ? afterIncompleteRuns.find((run) => run.id === replacementKeepRunId)
+  : undefined;
 
-if (
-  !Array.isArray(afterIncompleteEvents) ||
-  !afterIncompleteEvents.some((event) => event.name === "token_usage")
-) {
+if (afterIncompleteRun?.metadata?.summary?.tokenUsage?.total !== 150) {
   throw new Error("Expected incomplete usage scans to preserve the last successful snapshot.");
 }
 

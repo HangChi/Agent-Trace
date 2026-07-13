@@ -170,6 +170,77 @@ export type DashboardRunPage = {
   };
 };
 
+export type UsageSnapshotRow = {
+  client: string;
+  sessionId?: string;
+  model?: string;
+  provider?: string;
+  inputTokens: number;
+  outputTokens: number;
+  cacheReadTokens: number;
+  cacheWriteTokens: number;
+  reasoningTokens: number;
+  totalTokens: number;
+  costUsd?: number;
+  messageCount?: number;
+  startedAt?: string;
+  lastUsedAt?: string;
+};
+
+export type ScannerDiagnostic = {
+  client: string;
+  status: string;
+  messageCount?: number;
+  path?: string;
+  pathExists?: boolean;
+  warning?: string;
+  actionHint?: string;
+};
+
+export type DashboardUsageSummary = {
+  totalTokens: number;
+  costUsd: number;
+  clients: Array<{ client: string; totalTokens: number; costUsd: number }>;
+  models: Array<{ model: string; provider?: string; totalTokens: number; costUsd: number }>;
+};
+
+export type DashboardScannerStatus = {
+  scannedAt?: string;
+  diagnostics: ScannerDiagnostic[];
+  error?: string;
+};
+
+export type TranscriptTokenUsage = {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  reasoning: number;
+  total: number;
+};
+
+export type TranscriptIngestionEvent = {
+  kind: "prompt" | "turn";
+  timestamp: string;
+  text?: string;
+  tokens?: TranscriptTokenUsage;
+  tools?: string[];
+  costUsd?: number;
+  costEstimated?: boolean;
+};
+
+export type TranscriptIngestionSession = {
+  client: "claude" | "codex" | "opencode";
+  sessionId: string;
+  title?: string;
+  model?: string;
+  provider?: string;
+  contentMode: "preview" | "metadata";
+  startedAt: string;
+  lastUsedAt: string;
+  events: TranscriptIngestionEvent[];
+};
+
 export type DashboardTraceEvent = Omit<TraceEvent, "metadata" | "status" | "type"> & {
   status: TraceStatus | string;
   type: TraceEventType | string;

@@ -19,8 +19,8 @@ import type {
 } from "@agent-trace/schema";
 
 import { createSqliteDatabase, db as defaultDb } from "./db.js";
-import { events, runs } from "./schema.js";
-import { getStaleUsageScanEventIds, isUsageScanJson } from "./usage-snapshot.js";
+import { events, runs, usageSessions } from "./schema.js";
+import type { TranscriptTrace } from "./transcript-scan.js";
 
 type Database = BetterSQLite3Database;
 
@@ -85,11 +85,73 @@ export function initializeDatabase(path?: string) {
 
     CREATE INDEX IF NOT EXISTS events_run_id_idx ON events(run_id);
     CREATE INDEX IF NOT EXISTS runs_started_at_idx ON runs(started_at);
+
+    CREATE TABLE IF NOT EXISTS usage_sessions (
+      client TEXT NOT NULL,
+      session_id TEXT NOT NULL,
+      model TEXT NOT NULL,
+      provider TEXT NOT NULL,
+      input_tokens INTEGER NOT NULL,
+      output_tokens INTEGER NOT NULL,
+      cache_read_tokens INTEGER NOT NULL,
+      cache_write_tokens INTEGER NOT NULL,
+      reasoning_tokens INTEGER NOT NULL,
+      total_tokens INTEGER NOT NULL,
+      cost_usd REAL,
+      message_count INTEGER,
+      started_at TEXT,
+      last_used_at TEXT,
+      scanned_at TEXT NOT NULL,
+      PRIMARY KEY (client, session_id, model, provider)
+    );
+
+    CREATE TABLE IF NOT EXISTS usage_scan_state (
+      id TEXT PRIMARY KEY,
+      scanned_at TEXT NOT NULL,
+      diagnostics_json TEXT NOT NULL,
+      error TEXT
+    );
   `);
 
   ensureColumn(sqlite, "runs", "metadata_json", "TEXT");
+  removeLegacyUsageScanRecords(sqlite);
 
   sqlite.close();
+}
+
+function removeLegacyUsageScanRecords(sqlite: ReturnType<typeof createSqliteDatabase>) {
+  const usageEventIds = (sqlite
+    .prepare("SELECT id, metadata_json AS metadataJson FROM events")
+    .all() as Array<{ id: string; metadataJson: string | null }>)
+    .filter((row) => getJsonSource(row.metadataJson) === "usage-scan")
+    .map((row) => row.id);
+  const usageRunIds = (sqlite
+    .prepare("SELECT id, input_json AS inputJson FROM runs")
+    .all() as Array<{ id: string; inputJson: string | null }>)
+    .filter((row) => getJsonSource(row.inputJson) === "usage-scan")
+    .map((row) => row.id);
+  const deleteEvent = sqlite.prepare("DELETE FROM events WHERE id = ?");
+  const deleteRunEvents = sqlite.prepare("DELETE FROM events WHERE run_id = ?");
+  const deleteRun = sqlite.prepare("DELETE FROM runs WHERE id = ?");
+
+  for (const id of usageEventIds) deleteEvent.run(id);
+  for (const id of usageRunIds) {
+    deleteRunEvents.run(id);
+    deleteRun.run(id);
+  }
+}
+
+function getJsonSource(value: string | null) {
+  if (!value) return undefined;
+
+  try {
+    const parsed = JSON.parse(value) as unknown;
+    return parsed !== null && typeof parsed === "object" && !Array.isArray(parsed)
+      ? (parsed as Record<string, unknown>).source
+      : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 export async function createRun(run: CreateRun, database: Database = defaultDb) {
@@ -227,128 +289,15 @@ export async function upsertEvent(
   await database.update(events).set(values).where(eq(events.id, event.id));
 }
 
-export function replaceUsageScanSnapshot(
-  traces: Array<{ run: CreateRun; event: CreateTraceEvent }>,
-  complete: boolean,
-  scanClients?: ReadonlySet<string>,
-  database: Database = defaultDb
-) {
-  return database.transaction((transaction) => {
-    const currentEventIds = new Set(traces.map((trace) => trace.event.id));
-
-    for (const trace of traces) {
-      const existingRun = transaction
-        .select()
-        .from(runs)
-        .where(eq(runs.id, trace.run.id))
-        .limit(1)
-        .get();
-
-      if (!existingRun) {
-        transaction
-          .insert(runs)
-          .values({
-            id: trace.run.id,
-            name: trace.run.name,
-            status: "success",
-            startedAt: trace.run.startedAt ?? new Date().toISOString(),
-            endedAt: trace.event.timestamp ?? new Date().toISOString(),
-            inputJson: stringifyJson(trace.run.input),
-            outputJson: stringifyJson(trace.run.output),
-            error: trace.run.error,
-            metadataJson: stringifyJson(trace.run.metadata)
-          })
-          .run();
-      } else {
-        transaction
-          .update(runs)
-          .set({
-            status: "success",
-            endedAt: trace.event.timestamp ?? new Date().toISOString(),
-            error: null,
-            ...(isUsageScanJson(existingRun.inputJson)
-              ? { metadataJson: stringifyJson(trace.run.metadata) }
-              : {})
-          })
-          .where(eq(runs.id, trace.run.id))
-          .run();
-      }
-
-      const eventValues = {
-        runId: trace.event.runId,
-        parentId: trace.event.parentId,
-        type: trace.event.type,
-        name: trace.event.name,
-        status: trace.event.status,
-        timestamp: trace.event.timestamp ?? new Date().toISOString(),
-        durationMs: trace.event.durationMs,
-        inputJson: stringifyJson(trace.event.input),
-        outputJson: stringifyJson(trace.event.output),
-        errorJson: stringifyJson(trace.event.error),
-        metadataJson: stringifyJson(trace.event.metadata)
-      };
-
-      transaction
-        .insert(events)
-        .values({ id: trace.event.id, ...eventValues })
-        .onConflictDoUpdate({ target: events.id, set: eventValues })
-        .run();
-    }
-
-    const existingEvents = transaction
-      .select({ id: events.id, runId: events.runId, metadataJson: events.metadataJson })
-      .from(events)
-      .all();
-    const staleEventIds = getStaleUsageScanEventIds(
-      existingEvents,
-      currentEventIds,
-      complete,
-      scanClients
-    );
-
-    if (staleEventIds.length > 0) {
-      const candidateRunIds = new Set(
-        existingEvents
-          .filter((event) => staleEventIds.includes(event.id))
-          .map((event) => event.runId)
-      );
-
-      transaction.delete(events).where(inArray(events.id, staleEventIds)).run();
-
-      for (const runId of candidateRunIds) {
-        const run = transaction
-          .select({ inputJson: runs.inputJson })
-          .from(runs)
-          .where(eq(runs.id, runId))
-          .limit(1)
-          .get();
-        const remainingEvent = transaction
-          .select({ id: events.id })
-          .from(events)
-          .where(eq(events.runId, runId))
-          .limit(1)
-          .get();
-
-        if (run && isUsageScanJson(run.inputJson) && !remainingEvent) {
-          transaction.delete(runs).where(eq(runs.id, runId)).run();
-        }
-      }
-    }
-
-    return {
-      stored: traces.length,
-      staleEventsRemoved: staleEventIds.length
-    };
-  });
-}
-
 export async function listRuns(
   options: ListRunsOptions = {},
   database: Database = defaultDb
 ): Promise<DashboardRun[]> {
   const rows = await database.select().from(runs).orderBy(desc(runs.startedAt));
   const eventRows = await database.select().from(events);
+  const usageRows = await database.select().from(usageSessions);
   const summaries = summarizeEventsByRun(eventRows);
+  const usageBySession = groupUsageBySession(usageRows);
   const staleRuns = await closeStaleRunningRuns(rows, summaries, database);
 
   return rows
@@ -370,7 +319,7 @@ export async function listRuns(
         input,
         output: parseJson(run.outputJson),
         error: status === "error" ? (staleRun?.error ?? run.error ?? undefined) : undefined,
-        metadata: mergeRunMetadata(metadata, summary),
+        metadata: mergeRunMetadata(metadata, summary, getUsageForRun(metadata, usageBySession)),
         _include:
           options.includeUntracked ||
           shouldIncludeRunInList({
@@ -420,8 +369,17 @@ export async function listEventsPageByRunId(
   const visibility = normalizeVisibility(options.visibility);
   const pageSize = normalizePageSize(options.pageSize);
   const page = normalizePage(options.page);
-  const displayEvents = allEvents.filter(isDisplayEvent);
-  const hiddenEvents = allEvents.filter((event) => !isDisplayEvent(event));
+  const hasLiveActions = allEvents.some((event) => {
+    const metadata = asRecord(event.metadata);
+    return (
+      metadata.source !== "transcript" &&
+      ["command", "tool", "mcp", "skill"].includes(getString(metadata.category) ?? "")
+    );
+  });
+  const displayEvents = allEvents.filter(
+    (event) => isDisplayEvent(event) && (!hasLiveActions || event.metadata?.source !== "transcript")
+  );
+  const hiddenEvents = allEvents.filter((event) => !displayEvents.includes(event));
   const visibleEvents =
     visibility === "display" ? displayEvents : visibility === "hidden" ? hiddenEvents : allEvents;
   const filteredEvents = applyEventFilters(visibleEvents, options);
@@ -503,9 +461,17 @@ function ensureColumn(
 
 function mergeRunMetadata(
   metadata: unknown,
-  summary: EventSummary | undefined
+  summary: EventSummary | undefined,
+  usageRows: Array<typeof usageSessions.$inferSelect> = []
 ): DashboardRunMetadata | undefined {
   const base = normalizeMetadataForDisplay(metadata);
+
+  if (usageRows.length > 0) {
+    return {
+      ...base,
+      summary: mergeUsageIntoSummary(summary, usageRows)
+    };
+  }
 
   if (summary === undefined) {
     return Object.keys(base).length === 0 ? undefined : base;
@@ -514,6 +480,210 @@ function mergeRunMetadata(
   return {
     ...base,
     summary: toPublicSummary(summary)
+  };
+}
+
+export function replaceTranscriptSnapshot(
+  traces: TranscriptTrace[],
+  reconciledClients: string[],
+  currentSessionKeys: string[],
+  database: Database = defaultDb
+) {
+  return database.transaction((transaction) => {
+    const currentKeys = new Set(currentSessionKeys);
+
+    for (const trace of traces) {
+      const existingRun = transaction.select().from(runs).where(eq(runs.id, trace.run.id)).limit(1).get();
+      const runValues = {
+        id: trace.run.id,
+        name: trace.run.name,
+        status: trace.run.status,
+        startedAt: trace.run.startedAt ?? new Date().toISOString(),
+        endedAt: trace.run.endedAt,
+        inputJson: stringifyJson(trace.run.input),
+        outputJson: stringifyJson(trace.run.output),
+        error: trace.run.error,
+        metadataJson: stringifyJson(trace.run.metadata)
+      };
+
+      if (!existingRun) {
+        transaction.insert(runs).values(runValues).run();
+      } else if (getJsonSource(existingRun.inputJson) === "transcript-scan") {
+        transaction
+          .update(runs)
+          .set({
+            name: runValues.name,
+            status: runValues.status,
+            startedAt: runValues.startedAt,
+            endedAt: runValues.endedAt,
+            metadataJson: runValues.metadataJson
+          })
+          .where(eq(runs.id, trace.run.id))
+          .run();
+      }
+
+      const currentEventIds = new Set(trace.events.map((event) => event.id));
+      const priorTranscriptEvents = transaction
+        .select({ id: events.id, metadataJson: events.metadataJson })
+        .from(events)
+        .where(eq(events.runId, trace.run.id))
+        .all()
+        .filter((event) => getJsonSource(event.metadataJson) === "transcript");
+
+      for (const event of priorTranscriptEvents) {
+        if (!currentEventIds.has(event.id)) transaction.delete(events).where(eq(events.id, event.id)).run();
+      }
+
+      for (const event of trace.events) {
+        const values = {
+          runId: event.runId,
+          parentId: event.parentId,
+          type: event.type,
+          name: event.name,
+          status: event.status,
+          timestamp: event.timestamp ?? new Date().toISOString(),
+          durationMs: event.durationMs,
+          inputJson: stringifyJson(event.input),
+          outputJson: stringifyJson(event.output),
+          errorJson: stringifyJson(event.error),
+          metadataJson: stringifyJson(event.metadata)
+        };
+        transaction
+          .insert(events)
+          .values({ id: event.id, ...values })
+          .onConflictDoUpdate({ target: events.id, set: values })
+          .run();
+      }
+    }
+
+    if (reconciledClients.length === 0) return;
+
+    const staleRunIds = new Set<string>();
+    const transcriptEvents = transaction
+      .select({ id: events.id, runId: events.runId, metadataJson: events.metadataJson })
+      .from(events)
+      .all();
+
+    for (const event of transcriptEvents) {
+      const metadata = asRecord(parseJson(event.metadataJson));
+      const client = getString(metadata.transcriptClient);
+      const sessionId = getString(metadata.sessionId);
+      if (
+        metadata.source !== "transcript" ||
+        !client ||
+        !sessionId ||
+        !reconciledClients.includes(client) ||
+        currentKeys.has(`${client}:${sessionId}`)
+      ) continue;
+
+      staleRunIds.add(event.runId);
+      transaction.delete(events).where(eq(events.id, event.id)).run();
+    }
+
+    for (const runId of staleRunIds) {
+      const run = transaction.select().from(runs).where(eq(runs.id, runId)).limit(1).get();
+      const remaining = transaction.select({ id: events.id }).from(events).where(eq(events.runId, runId)).limit(1).get();
+      if (run && getJsonSource(run.inputJson) === "transcript-scan" && !remaining) {
+        transaction.delete(runs).where(eq(runs.id, runId)).run();
+      }
+    }
+  });
+}
+
+function groupUsageBySession(rows: Array<typeof usageSessions.$inferSelect>) {
+  const grouped = new Map<string, Array<typeof usageSessions.$inferSelect>>();
+
+  for (const row of rows) {
+    const key = `${row.client}\0${row.sessionId}`;
+    const values = grouped.get(key) ?? [];
+    values.push(row);
+    grouped.set(key, values);
+  }
+
+  return grouped;
+}
+
+function getUsageForRun(
+  metadata: unknown,
+  grouped: Map<string, Array<typeof usageSessions.$inferSelect>>
+) {
+  const value = asRecord(metadata);
+  const agent = getString(value.agent);
+  const sessionId = getString(value.sessionId);
+
+  if (!agent || !sessionId) return [];
+
+  const client = agent === "claude-code"
+    ? "claude"
+    : agent === "github-copilot"
+      ? "copilot"
+      : agent;
+
+  return grouped.get(`${client}\0${sessionId}`) ?? [];
+}
+
+function mergeUsageIntoSummary(
+  summary: EventSummary | undefined,
+  rows: Array<typeof usageSessions.$inferSelect>
+): DashboardRunSummary {
+  const base = summary ?? {
+    commandCount: 0,
+    toolCount: 0,
+    mcpCount: 0,
+    skillCount: 0,
+    promptCount: 0,
+    turnCount: 0,
+    tokenUsage: { input: 0, output: 0, total: 0 },
+    costUsd: 0,
+    unmodeledTokenUsage: { input: 0, output: 0, total: 0 },
+    models: [],
+    modelUsage: [],
+    commands: [],
+    tools: [],
+    mcpTools: [],
+    skills: [],
+    hasErrorEvent: false
+  } satisfies EventSummary;
+  const tokenUsage: TokenUsage = {
+    input: rows.reduce((sum, row) => sum + row.inputTokens, 0),
+    output: rows.reduce((sum, row) => sum + row.outputTokens, 0),
+    total: rows.reduce((sum, row) => sum + row.totalTokens, 0),
+    cachedInput: rows.reduce((sum, row) => sum + row.cacheReadTokens, 0),
+    cacheReadInput: rows.reduce((sum, row) => sum + row.cacheReadTokens, 0),
+    cacheCreationInput: rows.reduce((sum, row) => sum + row.cacheWriteTokens, 0),
+    reasoningOutput: rows.reduce((sum, row) => sum + row.reasoningTokens, 0),
+    source: "tokscale",
+    sourceKind: "scan",
+    scope: "session",
+    method: "tokscale"
+  };
+  const modelUsage = rows
+    .filter((row) => row.model)
+    .map((row) => ({
+      model: row.model,
+      provider: row.provider || undefined,
+      tokenUsage: {
+        input: row.inputTokens,
+        output: row.outputTokens,
+        total: row.totalTokens,
+        cachedInput: row.cacheReadTokens,
+        cacheReadInput: row.cacheReadTokens,
+        cacheCreationInput: row.cacheWriteTokens,
+        reasoningOutput: row.reasoningTokens,
+        source: "tokscale",
+        sourceKind: "scan" as const,
+        scope: "session" as const,
+        method: "tokscale"
+      },
+      costUsd: row.costUsd ?? undefined
+    }));
+
+  return {
+    ...toPublicSummary(base),
+    tokenUsage,
+    costUsd: rows.reduce((sum, row) => sum + (row.costUsd ?? 0), 0),
+    models: [...new Set(modelUsage.map((item) => item.model))],
+    modelUsage
   };
 }
 
@@ -543,9 +713,11 @@ function normalizeMetadataForDisplay(metadata: unknown): DashboardTraceMetadata 
 function summarizeEventsByRun(eventRows: Array<typeof events.$inferSelect>) {
   const summaries = new Map<string, EventSummary>();
   const runIdsWithSessionScan = getRunIdsWithSessionScan(eventRows);
+  const runIdsWithLiveActions = getRunIdsWithLiveActions(eventRows);
 
   for (const row of eventRows) {
     const metadata = asRecord(parseJson(row.metadataJson));
+    if (runIdsWithLiveActions.has(row.runId) && metadata.source === "transcript") continue;
     const summary = summaries.get(row.runId) ?? {
       commandCount: 0,
       toolCount: 0,
@@ -634,6 +806,22 @@ function summarizeEventsByRun(eventRows: Array<typeof events.$inferSelect>) {
   }
 
   return summaries;
+}
+
+function getRunIdsWithLiveActions(eventRows: Array<typeof events.$inferSelect>) {
+  const runIds = new Set<string>();
+
+  for (const row of eventRows) {
+    const metadata = asRecord(parseJson(row.metadataJson));
+    if (
+      metadata.source !== "transcript" &&
+      ["command", "tool", "mcp", "skill"].includes(getString(metadata.category) ?? "")
+    ) {
+      runIds.add(row.runId);
+    }
+  }
+
+  return runIds;
 }
 
 async function closeStaleRunningRuns(

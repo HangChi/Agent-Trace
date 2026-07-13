@@ -211,9 +211,14 @@ try {
     throw new Error("Expected usage scanner to omit raw prompt-like fields.");
   }
 
+  const defaultUsageHome = join(codexHome, "empty-usage-home");
+  const openCodeDatabase = join(defaultUsageHome, ".local", "share", "opencode", "opencode.db");
+  mkdirSync(dirname(openCodeDatabase), { recursive: true });
+  writeFileSync(openCodeDatabase, "");
+
   await collectUsageOnce({
     collectorUrl: "http://localhost:4319",
-    home: join(codexHome, "empty-usage-home"),
+    home: defaultUsageHome,
     runTokscaleClients: async () => ({
       clients: [
         {
@@ -229,8 +234,14 @@ try {
           sessionsPath: join(codexHome, ".workbuddy", "sessions")
         },
         {
+          client: "opencode",
+          messageCount: 1,
+          sessionsPathExists: false,
+          sessionsPath: join(defaultUsageHome, ".local", "share", "opencode", "storage", "message")
+        },
+        {
           client: "kiro",
-          messageCount: 0,
+          messageCount: 377,
           sessionsPathExists: false,
           sessionsPath: join(codexHome, ".kiro", "sessions")
         },
@@ -253,12 +264,19 @@ try {
 
   const defaultUsageScan = postedUsageScans.at(-1)?.body;
 
-  if (observedDefaultClients !== "codex,workbuddy,micode") {
-    throw new Error("Expected the default usage scan to only include clients with detectable local data.");
+  if (observedDefaultClients !== "codex,workbuddy,opencode") {
+    throw new Error(`Expected default scans to reject pathless Kiro rows and opt-in MiMo imports; got ${observedDefaultClients}.`);
   }
 
-  if (!Array.isArray(defaultUsageScan?.scanClients) || !defaultUsageScan.scanClients.includes("kiro")) {
+  if (!Array.isArray(defaultUsageScan?.reconciledClients) || !defaultUsageScan.reconciledClients.includes("kiro")) {
     throw new Error("Expected default usage scans to report all checked clients so stale Kiro rows can be pruned.");
+  }
+
+  const defaultDiagnostics = Array.isArray(defaultUsageScan?.diagnostics)
+    ? defaultUsageScan.diagnostics
+    : [];
+  if (defaultDiagnostics.find((item) => item.client === "kiro")?.status !== "missing") {
+    throw new Error("Expected a pathless Kiro diagnostic to stay missing despite a stale message count.");
   }
 
   const activeDuplicate = join(
