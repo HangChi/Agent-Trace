@@ -12,11 +12,19 @@ export function parseLocale(value: SearchParamValue): Locale {
 }
 
 export function localizedHref(path: string, locale: Locale): Route {
-  if (locale === "zh") {
-    return path as Route;
+  const queryIndex = path.indexOf("?");
+  const pathname = queryIndex === -1 ? path : path.slice(0, queryIndex);
+  const query = queryIndex === -1 ? "" : path.slice(queryIndex + 1);
+  const params = new URLSearchParams(query);
+
+  if (locale === "en") {
+    params.set("lang", "en");
+  } else {
+    params.delete("lang");
   }
 
-  return `${path}${path.includes("?") ? "&" : "?"}lang=en` as Route;
+  const nextQuery = params.toString();
+  return `${pathname}${nextQuery ? `?${nextQuery}` : ""}` as Route;
 }
 
 export const languageLabels: Record<Locale, string> = {
@@ -85,6 +93,13 @@ export const copy = {
       costUnpriced: "\u4ef7\u683c\u672a\u77e5",
       costEstimated: "\u4f30\u7b97",
       costUsdOnly: "\u6c47\u7387\u4e0d\u53ef\u7528",
+      usageTitle: "\u672c\u5730\u7528\u91cf\u8d26\u672c",
+      usageHelp: "\u6309\u5ba2\u6237\u7aef\u548c\u6a21\u578b\u6c47\u603b Scanner \u4fdd\u5b58\u7684 Token \u4e0e API \u7b49\u4ef7\u4f30\u7b97\u6210\u672c\u3002",
+      usageClients: "\u5ba2\u6237\u7aef",
+      usageModels: "\u6a21\u578b",
+      usageEstimatedCost: "\u4f30\u7b97\u6210\u672c",
+      usageEmpty: "\u5c1a\u65e0\u7528\u91cf\u6570\u636e\u3002",
+      usageUnavailable: "\u7528\u91cf\u6c47\u603b\u6682\u4e0d\u53ef\u7528\u3002",
       scannerStatus: "\u626b\u63cf\u5668\u72b6\u6001",
       scannerStatusHelp:
         "\u663e\u793a tokscale \u68c0\u6d4b\u5230\u7684\u672c\u5730 agent \u8bb0\u5f55\u3001\u7f13\u5b58\u548c\u9700\u8981 login/sync \u7684\u9879\u3002",
@@ -124,10 +139,14 @@ export const copy = {
         "\u9ed8\u8ba4\u53ea\u5c55\u793a\u547d\u4ee4\u3001\u5de5\u5177\u3001skill\u3001MCP \u548c token \u4e8b\u4ef6\u3002",
       tree: "\u8ffd\u8e2a\u6811",
       treeHelp:
-        "\u6309\u7236\u4e8b\u4ef6\u5173\u7cfb\u7ec4\u7ec7\u5f53\u524d\u9875\u7684\u4e8b\u4ef6\uff1b\u7f3a\u5931\u7236\u4e8b\u4ef6\u6216\u5faa\u73af\u5173\u7cfb\u663e\u793a\u4e3a\u6839\u8282\u70b9\u3002",
+        "\u6309\u7236\u4e8b\u4ef6\u5173\u7cfb\u7ec4\u7ec7\u7b26\u5408\u5f53\u524d\u7b5b\u9009\u7684\u5168\u90e8\u4e8b\u4ef6\uff1b\u7f3a\u5931\u7236\u4e8b\u4ef6\u6216\u5faa\u73af\u5173\u7cfb\u663e\u793a\u4e3a\u6839\u8282\u70b9\u3002",
       timelineView: "\u65f6\u95f4\u7ebf",
       treeView: "\u6811\u72b6",
       summary: "\u8fd0\u884c\u6458\u8981",
+      runStatus: "\u8fd0\u884c\u72b6\u6001",
+      startedAt: "\u5f00\u59cb\u65f6\u95f4",
+      endedAt: "\u7ed3\u675f\u65f6\u95f4",
+      runData: "Run \u539f\u59cb\u6570\u636e",
       surface: "\u8fd0\u884c\u7aef",
       session: "\u4f1a\u8bdd",
       redaction: "\u9690\u79c1\u7ea7\u522b",
@@ -235,6 +254,13 @@ export const copy = {
       costUnpriced: "unpriced",
       costEstimated: "estimated",
       costUsdOnly: "rate unavailable",
+      usageTitle: "Local usage ledger",
+      usageHelp: "Token totals and API-equivalent estimated cost saved by the scanner, grouped by client and model.",
+      usageClients: "Clients",
+      usageModels: "Models",
+      usageEstimatedCost: "Estimated cost",
+      usageEmpty: "No usage data yet.",
+      usageUnavailable: "Usage summary is unavailable.",
       scannerStatus: "Scanner status",
       scannerStatusHelp:
         "Shows local agent records, caches, and clients that need login/sync as reported by tokscale.",
@@ -272,10 +298,14 @@ export const copy = {
       timelineHelp: "Shows commands, tools, skills, MCP calls, and token events by default.",
       tree: "Trace tree",
       treeHelp:
-        "Groups events from the current page by parent relationship; missing parents and cycles appear as roots.",
+        "Groups all events matching the current filters by parent relationship; missing parents and cycles appear as roots.",
       timelineView: "Timeline",
       treeView: "Tree",
       summary: "Run summary",
+      runStatus: "Run status",
+      startedAt: "Started",
+      endedAt: "Ended",
+      runData: "Raw run data",
       surface: "Surface",
       session: "Session",
       redaction: "Redaction",

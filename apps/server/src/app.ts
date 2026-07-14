@@ -13,6 +13,7 @@ import {
   createRun,
   deleteRun,
   deleteRuns,
+  getDashboardRunById,
   listEventsByRunId,
   listEventsPageByRunId,
   listRuns,
@@ -103,15 +104,17 @@ export function createApp() {
 
   app.get("/runs", async (c) => {
     const includeUntracked = ["1", "true"].includes(c.req.query("includeUntracked") ?? "");
-    const searchParams = new URL(c.req.url).searchParams;
-    const hasPagination = searchParams.has("page") || searchParams.has("pageSize");
-    const page = parseNumber(c.req.query("page"));
-    const pageSize = parseNumber(c.req.query("pageSize"));
-    if (hasPagination) {
-      return c.json(await listRunsPage({ includeUntracked, page, pageSize }));
+    if (isLegacyQuery(c.req.query("legacy"))) {
+      return c.json(await listRuns({ includeUntracked }));
     }
 
-    return c.json(await listRuns({ includeUntracked }));
+    return c.json(
+      await listRunsPage({
+        includeUntracked,
+        page: parseNumber(c.req.query("page")),
+        pageSize: parseNumber(c.req.query("pageSize"))
+      })
+    );
   });
 
   app.delete("/runs", async (c) => {
@@ -127,7 +130,7 @@ export function createApp() {
   });
 
   app.get("/runs/:id/events", async (c) => {
-    if (!hasEventListQuery(c.req)) {
+    if (isLegacyQuery(c.req.query("legacy"))) {
       const events = await listEventsByRunId(c.req.param("id"));
 
       return c.json(events);
@@ -146,6 +149,16 @@ export function createApp() {
     return c.json(result);
   });
 
+  app.get("/runs/:id", async (c) => {
+    const run = await getDashboardRunById(c.req.param("id"));
+
+    if (!run) {
+      return c.json({ error: "run_not_found" }, 404);
+    }
+
+    return c.json(run);
+  });
+
   app.delete("/runs/:id", async (c) => {
     const deleted = await deleteRun(c.req.param("id"));
 
@@ -159,10 +172,8 @@ export function createApp() {
   return app;
 }
 
-function hasEventListQuery(request: { query: (name: string) => string | undefined }) {
-  return ["visibility", "page", "pageSize", "q", "status", "type", "category"].some(
-    (name) => request.query(name) !== undefined
-  );
+function isLegacyQuery(value: string | undefined) {
+  return value === "1" || value === "true";
 }
 
 function parseVisibility(value: string | undefined) {

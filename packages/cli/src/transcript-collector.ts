@@ -5,6 +5,8 @@ import { readOpenCodeSession } from "./opencode-session.js";
 import {
   parseClaudeTranscript,
   parseCodexTranscript,
+  parseWorkBuddyTitle,
+  parseWorkBuddyTranscript,
   type HistoryContentMode,
   type TranscriptEvent
 } from "./transcript.js";
@@ -29,7 +31,7 @@ export type TranscriptDetail = {
   events: TranscriptEvent[];
 };
 
-const transcriptClients = ["codex", "claude", "opencode"];
+const transcriptClients = ["codex", "claude", "opencode", "workbuddy"];
 const defaultFingerprints = new Map<string, string>();
 
 export async function collectTranscriptDetails(
@@ -44,6 +46,7 @@ export async function collectTranscriptDetails(
     join(home, ".codex", "archived_sessions")
   ]);
   const claudeFiles = indexJsonlFiles([join(home, ".claude", "projects")]);
+  const workBuddyFiles = indexJsonlFiles([join(home, ".workbuddy", "projects")]);
   const openCodeDatabases = discoverOpenCodeDatabases(home);
   const transcripts: TranscriptDetail[] = [];
   const sessionKeys: string[] = [];
@@ -75,14 +78,18 @@ export async function collectTranscriptDetails(
 
     const file = client === "codex"
       ? resolveCodexFile(codexFiles, sessionId)
-      : resolveClaudeFile(claudeFiles, sessionId);
+      : client === "claude"
+        ? resolveClaudeFile(claudeFiles, sessionId)
+        : resolveWorkBuddyFile(workBuddyFiles, sessionId);
     if (!file) continue;
 
     const fingerprint = fileFingerprint(file, contentMode);
     const text = readFileSync(file, "utf8");
     const parsed = client === "codex"
       ? parseCodexTranscript(text, contentMode)
-      : parseClaudeTranscript(text, contentMode);
+      : client === "claude"
+        ? parseClaudeTranscript(text, contentMode)
+        : parseWorkBuddyTranscript(text, contentMode);
     if (parsed.length === 0) continue;
 
     sessionKeys.push(key);
@@ -92,7 +99,9 @@ export async function collectTranscriptDetails(
     transcripts.push({
       client,
       sessionId,
-      title: `${client === "claude" ? "claude-code" : client}:${sessionId}`,
+      title: client === "workbuddy"
+        ? parseWorkBuddyTitle(text) || `workbuddy:${sessionId}`
+        : `${client === "claude" ? "claude-code" : client}:${sessionId}`,
       model: first.model,
       provider: first.provider,
       contentMode,
@@ -147,6 +156,10 @@ function resolveCodexFile(files: string[], sessionId: string) {
 }
 
 function resolveClaudeFile(files: string[], sessionId: string) {
+  return files.find((file) => basename(file, ".jsonl") === sessionId);
+}
+
+function resolveWorkBuddyFile(files: string[], sessionId: string) {
   return files.find((file) => basename(file, ".jsonl") === sessionId);
 }
 

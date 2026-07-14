@@ -8,7 +8,7 @@
     "dev": "next dev",
     "lint": "pnpm run typecheck",
     "start": "next start",
-    "test": "tsx src/lib/cost.smoke.ts && tsx src/app/runs/scanner-status.smoke.ts && tsx src/app/runs/[id]/trace-tree.smoke.ts",
+    "test": "tsx src/lib/cost.smoke.ts && tsx src/lib/i18n.smoke.ts && tsx src/app/runs/pagination.smoke.ts && tsx src/app/runs/scanner-status.smoke.ts && tsx src/app/runs/[id]/trace-tree.smoke.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

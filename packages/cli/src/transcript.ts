@@ -157,6 +157,70 @@ export function parseCodexTranscript(
   return events;
 }
 
+export function parseWorkBuddyTranscript(
+  text: string,
+  contentMode: HistoryContentMode
+): TranscriptEvent[] {
+  const events: TranscriptEvent[] = [];
+  const pendingTools: string[] = [];
+  const seenCallIds = new Set<string>();
+
+  for (const record of parseJsonLines(text)) {
+    const timestamp = isoTimestamp(record.timestamp);
+
+    if (record.type === "message" && record.role === "user") {
+      const prompt = getWorkBuddyPrompt(record.content);
+      if (prompt) {
+        events.push({
+          kind: "prompt",
+          timestamp,
+          ...(contentMode === "preview" ? { text: prompt } : {})
+        });
+      }
+    }
+
+    if (record.type === "function_call") {
+      const callId = getString(record.callId);
+      const name = getString(record.name);
+      if (name && (!callId || !seenCallIds.has(callId))) pendingTools.push(name);
+      if (callId) seenCallIds.add(callId);
+    }
+
+    const usage = asRecord(asRecord(record.message).usage);
+    if (Object.keys(usage).length === 0) continue;
+
+    const cacheRead = numberValue(usage.cache_read_input_tokens);
+    const tokens = makeTokens({
+      input: Math.max(0, numberValue(usage.input_tokens) - cacheRead),
+      output: usage.output_tokens,
+      cacheRead,
+      cacheWrite: usage.cache_creation_input_tokens,
+      reasoning: usage.reasoning_tokens
+    });
+    if (tokens.total === 0) continue;
+
+    events.push({
+      kind: "turn",
+      timestamp,
+      tokens,
+      tools: unique(pendingTools)
+    });
+    pendingTools.length = 0;
+  }
+
+  return events;
+}
+
+export function parseWorkBuddyTitle(text: string) {
+  for (const record of parseJsonLines(text)) {
+    if (record.type !== "ai-title") continue;
+    const title = cleanPromptPreview(record.aiTitle);
+    if (title) return title;
+  }
+
+  return "";
+}
+
 function getClaudePrompt(content: unknown) {
   if (typeof content === "string") {
     const text = cleanPromptPreview(content);
@@ -178,6 +242,19 @@ function getClaudePrompt(content: unknown) {
   return content.some((part) => asRecord(part).type === "image")
     ? { valid: true, text: "[image]" }
     : { valid: false, text: "" };
+}
+
+function getWorkBuddyPrompt(content: unknown) {
+  if (typeof content === "string") return cleanPromptPreview(content);
+  if (!Array.isArray(content)) return "";
+
+  return cleanPromptPreview(
+    content
+      .map(asRecord)
+      .filter((part) => part.type === "input_text" || part.type === "text")
+      .map((part) => getString(part.text) ?? "")
+      .join(" ")
+  );
 }
 
 function isSyntheticClaudePrompt(value: string) {
@@ -257,6 +334,16 @@ function unique(values: string[]) {
 function numberValue(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? number : 0;
+}
+
+function isoTimestamp(value: unknown) {
+  const numeric = Number(value);
+  if (Number.isFinite(numeric) && numeric > 0) {
+    return new Date(numeric < 100_000_000_000 ? numeric * 1000 : numeric).toISOString();
+  }
+
+  const text = getString(value) ?? "";
+  return Number.isFinite(new Date(text).getTime()) ? new Date(text).toISOString() : "";
 }
 
 function getArrayLength(value: unknown) {

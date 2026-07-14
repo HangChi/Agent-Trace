@@ -294,10 +294,11 @@ CLI 提交的主体：
 | 参数 | 说明 |
 | --- | --- |
 | `includeUntracked=1|true` | 包含没有可见追踪活动的 Run。 |
-| `page` | 页码，最小 1。只要提供 `page` 或 `pageSize` 就启用分页响应。 |
+| `page` | 页码，最小 1。 |
 | `pageSize` | 默认 50，最小 1，最大 200。 |
+| `legacy=1|true` | 兼容旧客户端，返回不分页的 `DashboardRun[]`。 |
 
-未提供分页参数时返回 `DashboardRun[]`。提供 `page` 或 `pageSize` 时返回：
+默认返回有界分页响应：
 
 ```json
 {
@@ -316,6 +317,10 @@ CLI 提交的主体：
   }
 }
 ```
+
+### `GET /runs/:id`
+
+返回单个 `DashboardRun`，包含 Run 的 input、output、error、metadata 和聚合 summary。Run 不存在时返回 `404`：`{ "error": "run_not_found" }`。
 
 ### `DELETE /runs`
 
@@ -341,9 +346,7 @@ CLI 提交的主体：
 
 ### `GET /runs/:id/events`
 
-不提供任何查询参数时返回按时间升序排列的 `DashboardTraceEvent[]`。
-
-只要提供下列任一参数，就返回分页读模型：
+默认返回分页读模型。传入 `legacy=1|true` 时返回按时间升序排列、不分页的 `DashboardTraceEvent[]`。
 
 | 参数 | 说明 |
 | --- | --- |
@@ -354,6 +357,7 @@ CLI 提交的主体：
 | `status` | 状态筛选；`all` 表示不限制。 |
 | `type` | 事件类型筛选；`all` 表示不限制。 |
 | `category` | command/tool/mcp/skill/tokens/lifecycle 等类别；`all` 表示不限制。 |
+| `legacy` | `1` 或 `true` 时返回旧版不分页数组。 |
 
 分页响应包含：
 

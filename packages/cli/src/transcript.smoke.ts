@@ -8,7 +8,9 @@ import { collectTranscriptDetails } from "./transcript-collector.js";
 import {
   cleanPromptPreview,
   parseClaudeTranscript,
-  parseCodexTranscript
+  parseCodexTranscript,
+  parseWorkBuddyTitle,
+  parseWorkBuddyTranscript
 } from "./transcript.js";
 
 const claudeUsage = {
@@ -126,6 +128,53 @@ if (parseCodexTranscript(codexTranscript, "metadata").some((event) => event.text
   throw new Error("Expected metadata mode to omit prompt text.");
 }
 
+const workBuddyStartedAt = Date.parse("2026-07-12T11:30:00.000Z");
+const workBuddyTranscript = [
+  JSON.stringify({
+    type: "message",
+    role: "user",
+    timestamp: workBuddyStartedAt,
+    content: [{ type: "input_text", text: "inspect the workspace" }]
+  }),
+  JSON.stringify({
+    type: "ai-title",
+    timestamp: workBuddyStartedAt,
+    aiTitle: "Workspace inspection"
+  }),
+  JSON.stringify({
+    type: "function_call",
+    timestamp: workBuddyStartedAt + 1000,
+    callId: "call-1",
+    name: "Read"
+  }),
+  JSON.stringify({
+    type: "function_call",
+    timestamp: workBuddyStartedAt + 1000,
+    callId: "call-1",
+    name: "Read",
+    message: {
+      usage: {
+        input_tokens: 100,
+        output_tokens: 20,
+        total_tokens: 120,
+        cache_read_input_tokens: 60
+      }
+    }
+  })
+].join("\n");
+const workBuddyEvents = parseWorkBuddyTranscript(workBuddyTranscript, "preview");
+const workBuddyTurn = workBuddyEvents.find((event) => event.kind === "turn");
+if (
+  parseWorkBuddyTitle(workBuddyTranscript) !== "Workspace inspection" ||
+  workBuddyEvents.find((event) => event.kind === "prompt")?.text !== "inspect the workspace" ||
+  workBuddyTurn?.tokens?.input !== 40 ||
+  workBuddyTurn.tokens.cacheRead !== 60 ||
+  workBuddyTurn.tokens.total !== 120 ||
+  workBuddyTurn.tools?.join(",") !== "Read"
+) {
+  throw new Error("Expected WorkBuddy JSONL to provide title, prompts, deduplicated tools, and tokens.");
+}
+
 const dirtyPreview = `${"x".repeat(300)} [Image: source: C:\\private\\shot.png]`;
 const cleanPreview = cleanPromptPreview(dirtyPreview);
 if (cleanPreview.length !== 240 || cleanPreview.includes("private")) {
@@ -169,25 +218,29 @@ try {
   );
   const claudeId = "claude-session";
   const claudeFile = join(transcriptHome, ".claude", "projects", "project", `${claudeId}.jsonl`);
+  const workBuddyId = "workbuddy-session";
+  const workBuddyFile = join(transcriptHome, ".workbuddy", "projects", "project", `${workBuddyId}.jsonl`);
   mkdirSync(join(codexFile, ".."), { recursive: true });
   mkdirSync(join(claudeFile, ".."), { recursive: true });
+  mkdirSync(join(workBuddyFile, ".."), { recursive: true });
   writeFileSync(codexFile, codexTranscript);
   writeFileSync(claudeFile, claudeTranscript);
+  writeFileSync(workBuddyFile, workBuddyTranscript);
   const rows = [
     transcriptUsageRow("codex", codexId, 0.42),
     transcriptUsageRow("claude", claudeId, 0.21),
-    transcriptUsageRow("workbuddy", "usage-only", 0.1)
+    transcriptUsageRow("workbuddy", workBuddyId, 0.1)
   ];
   const cache = new Map<string, string>();
   const first = await collectTranscriptDetails(transcriptHome, rows, "preview", cache);
   const second = await collectTranscriptDetails(transcriptHome, rows, "preview", cache);
 
   if (
-    first.transcripts.length !== 2 ||
-    first.sessionKeys.join(",") !== `codex:${codexId},claude:${claudeId}` ||
-    first.clients.join(",") !== "codex,claude,opencode" ||
+    first.transcripts.length !== 3 ||
+    first.sessionKeys.join(",") !== `codex:${codexId},claude:${claudeId},workbuddy:${workBuddyId}` ||
+    first.clients.join(",") !== "codex,claude,opencode,workbuddy" ||
     second.transcripts.length !== 0 ||
-    second.sessionKeys.length !== 2
+    second.sessionKeys.length !== 3
   ) {
     throw new Error("Expected transcript collection to send changed details and a complete session index.");
   }
@@ -203,7 +256,7 @@ try {
 
   const metadata = await collectTranscriptDetails(transcriptHome, rows, "metadata", cache);
   if (
-    metadata.transcripts.length !== 2 ||
+    metadata.transcripts.length !== 3 ||
     metadata.transcripts.some((detail) => detail.events.some((event) => event.text !== undefined))
   ) {
     throw new Error("Expected changing to metadata mode to rewrite every transcript without prompt text.");

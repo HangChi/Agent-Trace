@@ -19,7 +19,7 @@ test("web runs its TypeScript smokes directly", async () => {
 
   assert.equal(
     manifest.scripts?.test,
-    "tsx src/lib/cost.smoke.ts && tsx src/app/runs/scanner-status.smoke.ts && tsx src/app/runs/[id]/trace-tree.smoke.ts",
+    "tsx src/lib/cost.smoke.ts && tsx src/lib/i18n.smoke.ts && tsx src/app/runs/pagination.smoke.ts && tsx src/app/runs/scanner-status.smoke.ts && tsx src/app/runs/[id]/trace-tree.smoke.ts",
   );
 });
 

@@ -16,14 +16,15 @@ try {
   initializeDatabase(databasePath);
   const app = createApp();
   const sessionId = "transcript-session";
+  const workBuddySessionId = "workbuddy-session";
   const payload = {
     source: "tokscale",
     complete: true,
     scannedAt: "2026-07-12T12:00:00.000Z",
     reconciledClients: ["codex", "workbuddy"],
-    transcriptClients: ["codex"],
-    transcriptSessionIds: [`codex:${sessionId}`],
-    rows: [usageRow("codex", sessionId), usageRow("workbuddy", "usage-only")],
+    transcriptClients: ["codex", "workbuddy"],
+    transcriptSessionIds: [`codex:${sessionId}`, `workbuddy:${workBuddySessionId}`],
+    rows: [usageRow("codex", sessionId), usageRow("workbuddy", workBuddySessionId)],
     transcripts: [
       {
         client: "codex",
@@ -54,6 +55,35 @@ try {
             costEstimated: true
           }
         ]
+      },
+      {
+        client: "workbuddy",
+        sessionId: workBuddySessionId,
+        title: "WorkBuddy session",
+        model: "deepseek-v4-pro",
+        provider: "workbuddy",
+        startedAt: "2026-07-12T11:30:00.000Z",
+        lastUsedAt: "2026-07-12T11:30:05.000Z",
+        events: [
+          {
+            kind: "prompt",
+            timestamp: "2026-07-12T11:30:00.000Z",
+            text: "inspect the workspace"
+          },
+          {
+            kind: "turn",
+            timestamp: "2026-07-12T11:30:05.000Z",
+            tokens: {
+              input: 40,
+              output: 20,
+              cacheRead: 60,
+              cacheWrite: 0,
+              reasoning: 0,
+              total: 120
+            },
+            tools: ["Read"]
+          }
+        ]
       }
     ]
   };
@@ -61,10 +91,18 @@ try {
   await postScan(app, payload);
   await postScan(app, payload);
 
-  const runs = await json(app.request("/runs?includeUntracked=1"));
+  const runs = runRows(await json(app.request("/runs?includeUntracked=1")));
   const run = runs.find((item: any) => item.id === `run_codex_${sessionId}`);
-  if (!run || runs.some((item: any) => item.metadata?.agent === "workbuddy")) {
-    throw new Error("Expected only transcript-backed usage sessions to become runs.");
+  const workBuddyRun = runs.find((item: any) => item.id === `run_workbuddy_${workBuddySessionId}`);
+  if (!run || !workBuddyRun || workBuddyRun.name !== "WorkBuddy session") {
+    throw new Error("Expected Codex and WorkBuddy transcript-backed usage sessions to become runs.");
+  }
+
+  const workBuddyEvents = eventRows(await json(
+    app.request(`/runs/run_workbuddy_${workBuddySessionId}/events?visibility=all&page=1&pageSize=100`)
+  ));
+  if (!workBuddyEvents.some((event: any) => event.name === "Read")) {
+    throw new Error("Expected WorkBuddy tools to remain visible as tracked events.");
   }
 
   await json(
@@ -74,13 +112,15 @@ try {
       body: JSON.stringify({ status: "success", endedAt: "2026-07-13T11:58:47.368Z" })
     })
   );
-  const repairedRuns = await json(app.request("/runs?includeUntracked=1"));
+  const repairedRuns = runRows(await json(app.request("/runs?includeUntracked=1")));
   const repairedRun = repairedRuns.find((item: any) => item.id === `run_codex_${sessionId}`);
   if (repairedRun?.endedAt !== "2026-07-12T11:00:05.000Z") {
     throw new Error("Expected transcript duration to end at the last real event timestamp.");
   }
 
-  const events = await json(app.request(`/runs/run_codex_${sessionId}/events`));
+  const events = eventRows(await json(
+    app.request(`/runs/run_codex_${sessionId}/events?visibility=all&page=1&pageSize=100`)
+  ));
   if (
     events.length !== 3 ||
     events.filter((event: any) => event.metadata?.source === "transcript").length !== 3 ||
@@ -162,4 +202,12 @@ async function expectAccepted(response: Response | Promise<Response>) {
 
 async function json(response: Response | Promise<Response>) {
   return (await response).json() as Promise<any>;
+}
+
+function runRows(payload: any) {
+  return Array.isArray(payload) ? payload : payload.runs;
+}
+
+function eventRows(payload: any) {
+  return Array.isArray(payload) ? payload : payload.events;
 }

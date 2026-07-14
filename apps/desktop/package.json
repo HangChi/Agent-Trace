@@ -1,6 +1,6 @@
 {
   "name": "@agent-trace/desktop",
-  "version": "0.1.3",
+  "version": "0.2.0",
   "description": "Local-first AI agent debugging dashboard.",
   "author": "Agent-Trace",
   "private": true,

@@ -1,7 +1,7 @@
 import { spawn } from "node:child_process";
 import { existsSync, readdirSync, realpathSync, rmSync, cpSync, mkdirSync } from "node:fs";
 import { createRequire } from "node:module";
-import { dirname, resolve } from "node:path";
+import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import * as tar from "tar";
@@ -205,6 +205,16 @@ function runPnpm(args, cwd) {
 
 function rebuildBetterSqlite3ForElectron(stagedAppDir) {
   const moduleDir = realpathSync(resolve(stagedAppDir, "node_modules/better-sqlite3"));
+  const relativeModuleDir = relative(realpathSync(stagedAppDir), moduleDir);
+
+  if (relativeModuleDir.startsWith("..") || isAbsolute(relativeModuleDir)) {
+    throw new Error(`Refusing to rebuild better-sqlite3 outside the staged app: ${moduleDir}.`);
+  }
+
+  // pnpm deploy may hard-link package files to the workspace store. Remove the
+  // staged native build first so the Electron prebuild gets a new inode instead
+  // of overwriting the Node.js ABI binary used by source-mode development.
+  rmSync(resolve(moduleDir, "build"), { recursive: true, force: true });
   const prebuildInstallBin = resolve(moduleDir, "../prebuild-install/bin.js");
 
   if (!existsSync(prebuildInstallBin)) {

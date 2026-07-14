@@ -3,9 +3,10 @@ import type {
   DashboardRun,
   DashboardRunMetadata,
   DashboardRunPage,
-  DashboardRunSummary
+  DashboardRunSummary,
+  DashboardUsageSummary
 } from "@agent-trace/schema";
-import { Activity, AlertCircle, ChevronLeft, ChevronRight, Cpu, Eye, EyeOff, ListFilter, Play, Server } from "lucide-react";
+import { Activity, AlertCircle, ChevronLeft, ChevronRight, Coins, Cpu, Eye, EyeOff, ListFilter, Play, Server } from "lucide-react";
 
 import {
   ConsoleHeader,
@@ -47,6 +48,7 @@ import { DesktopCloseSettings } from "./desktop-close-settings";
 import { calculateRunCost, getUsdCnyRate, type RunCost } from "~/lib/cost";
 import { ResizableTableColumns } from "./resizable-table-columns";
 import { fetchScannerStatus, type ScannerDiagnostic } from "./scanner-status";
+import { getPaginationItems } from "./pagination";
 
 export const dynamic = "force-dynamic";
 
@@ -62,7 +64,7 @@ type RunMode = "tracked" | "all";
 const collectorUrl = process.env.AGENT_TRACE_API_URL ?? process.env.TOOLTRACE_API_URL ?? "http://localhost:4319";
 const runsBulkDeleteFormId = "runs-bulk-delete-form";
 const runsTableColumnStorageKey = "agent-trace:runs-table-columns:v2";
-const runsPageSize = 50;
+const runsPageSize = 20;
 const runsTableFixedColumnWidth = 44 + 42;
 const runsTableColumns = [
   {
@@ -137,9 +139,10 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
   const requestedPage = parsePageParam(params.page);
   const runMode = parseRunMode(params.runs);
   const scannerMode = parseScannerMode(params.scanner);
-  const [{ page: runPage, error }, scannerStatus, exchangeRate] = await Promise.all([
+  const [{ page: runPage, error }, scannerStatus, usageResult, exchangeRate] = await Promise.all([
     getRunPage(locale, requestedPage, runMode),
     fetchScannerStatus(collectorUrl),
+    getUsageSummary(locale),
     getUsdCnyRate()
   ]);
   const runs = runPage.runs;
@@ -201,6 +204,8 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
           <MetricCard label={text.runs.running} value={runningRuns} icon={Play} accent="amber" />
           <MetricCard label={text.runs.errors} value={failedRuns} icon={AlertCircle} accent="red" />
         </div>
+
+        <UsageLedger summary={usageResult.summary} error={usageResult.error} locale={locale} />
 
         {allScannerDiagnostics.length > 0 ? (
           <ScannerStatus
@@ -586,6 +591,35 @@ function parseScannerMode(value: string | string[] | undefined): "detected" | "a
   return raw === "all" ? "all" : "detected";
 }
 
+async function getUsageSummary(
+  locale: Locale
+): Promise<{ summary: DashboardUsageSummary; error?: string }> {
+  const emptySummary: DashboardUsageSummary = {
+    totalTokens: 0,
+    costUsd: 0,
+    clients: [],
+    models: []
+  };
+
+  try {
+    const response = await fetch(`${collectorUrl}/usage/summary`, { cache: "no-store" });
+
+    if (!response.ok) {
+      return {
+        summary: emptySummary,
+        error: locale === "zh" ? `用量汇总返回 ${response.status}` : `Usage summary returned ${response.status}`
+      };
+    }
+
+    return { summary: (await response.json()) as DashboardUsageSummary };
+  } catch (error) {
+    return {
+      summary: emptySummary,
+      error: error instanceof Error ? error.message : copy[locale].runs.usageUnavailable
+    };
+  }
+}
+
 function parseRunMode(value: string | string[] | undefined): RunMode {
   const raw = Array.isArray(value) ? value[0] : value;
 
@@ -715,7 +749,7 @@ function ScannerStatus({
       </div>
       <div className="overflow-x-auto">
         <Table>
-          <TableHeader>
+          <TableHeader sticky={false}>
             <TableRow className="bg-surface-muted/80 hover:bg-surface-muted/80">
               <TableHead className="h-10 pl-4">{text.runs.scannerClient}</TableHead>
               <TableHead className="h-10">{text.runs.scannerState}</TableHead>
@@ -795,6 +829,7 @@ function RunsPaginationControls({
   const text = copy[locale];
   const previousPage = Math.max(1, pagination.page - 1);
   const nextPage = Math.min(pagination.totalPages, pagination.page + 1);
+  const pageItems = getPaginationItems(pagination.page, pagination.totalPages);
 
   return (
     <div className="flex flex-col gap-3 border-t border-border/80 bg-surface-raised px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
@@ -809,7 +844,10 @@ function RunsPaginationControls({
             : pagination.pageSize
         )}
       </div>
-      <div className="flex items-center gap-2">
+      <nav
+        aria-label={locale === "zh" ? "运行记录分页" : "Run pagination"}
+        className="flex flex-wrap items-center justify-end gap-2"
+      >
         {pagination.page > 1 ? (
           <Button variant="outline" size="sm" asChild>
             <Link href={runsHref(locale, previousPage, scannerMode, runMode)}>
@@ -823,6 +861,34 @@ function RunsPaginationControls({
             {text.detail.previousPage}
           </Button>
         )}
+        <div className="flex items-center gap-1">
+          {pageItems.map((item, index) =>
+            item === "ellipsis" ? (
+              <span
+                key={`ellipsis-${index}`}
+                aria-hidden="true"
+                className="flex h-8 min-w-6 items-center justify-center px-1 text-xs text-muted-foreground"
+              >
+                …
+              </span>
+            ) : (
+              <Button
+                key={item}
+                variant={item === pagination.page ? "default" : "outline"}
+                size="icon-sm"
+                asChild
+              >
+                <Link
+                  href={runsHref(locale, item, scannerMode, runMode)}
+                  aria-current={item === pagination.page ? "page" : undefined}
+                  aria-label={locale === "zh" ? `第 ${item} 页` : `Page ${item}`}
+                >
+                  {item}
+                </Link>
+              </Button>
+            )
+          )}
+        </div>
         {pagination.page < pagination.totalPages ? (
           <Button variant="outline" size="sm" asChild>
             <Link href={runsHref(locale, nextPage, scannerMode, runMode)}>
@@ -836,8 +902,96 @@ function RunsPaginationControls({
             <ChevronRight className="h-4 w-4" aria-hidden />
           </Button>
         )}
-      </div>
+      </nav>
     </div>
+  );
+}
+
+function UsageLedger({
+  summary,
+  error,
+  locale
+}: {
+  summary: DashboardUsageSummary;
+  error?: string;
+  locale: Locale;
+}) {
+  const text = copy[locale].runs;
+  const clients = [...summary.clients].sort((a, b) => b.totalTokens - a.totalTokens);
+  const models = [...summary.models].sort((a, b) => b.totalTokens - a.totalTokens);
+
+  return (
+    <Card className="mt-5 overflow-hidden py-0">
+      <div className="flex flex-col gap-3 border-b border-border/70 bg-surface-raised px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+        <div>
+          <div className="flex items-center gap-2">
+            <Coins className="h-4 w-4 text-primary" aria-hidden />
+            <h2 className="text-sm font-semibold text-foreground">{text.usageTitle}</h2>
+          </div>
+          <p className="mt-1 text-xs text-muted-foreground">{text.usageHelp}</p>
+        </div>
+        <div className="flex items-baseline gap-4 font-mono tabular-nums">
+          <div className="text-right">
+            <div className="text-lg font-semibold text-foreground">{summary.totalTokens.toLocaleString()}</div>
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Tokens</div>
+          </div>
+          <div className="border-l border-border/80 pl-4 text-right">
+            <div className="text-lg font-semibold text-foreground">{formatUsd(summary.costUsd)}</div>
+            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{text.usageEstimatedCost}</div>
+          </div>
+        </div>
+      </div>
+
+      {error ? <div className="border-b border-border/70 px-5 py-3 text-sm text-destructive">{error}</div> : null}
+
+      <div className="grid divide-y divide-border/70 md:grid-cols-2 md:divide-x md:divide-y-0">
+        <UsageRankList title={text.usageClients} empty={text.usageEmpty} items={clients.map((item) => ({
+          label: item.client,
+          tokens: item.totalTokens,
+          costUsd: item.costUsd
+        }))} />
+        <UsageRankList title={text.usageModels} empty={text.usageEmpty} items={models.map((item) => ({
+          label: item.model,
+          detail: item.provider,
+          tokens: item.totalTokens,
+          costUsd: item.costUsd
+        }))} />
+      </div>
+    </Card>
+  );
+}
+
+function UsageRankList({
+  title,
+  empty,
+  items
+}: {
+  title: string;
+  empty: string;
+  items: Array<{ label: string; detail?: string; tokens: number; costUsd: number }>;
+}) {
+  return (
+    <section className="min-w-0 px-4 py-4 sm:px-5" aria-label={title}>
+      <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">{title}</h3>
+      {items.length === 0 ? (
+        <p className="mt-3 text-sm text-muted-foreground">{empty}</p>
+      ) : (
+        <ol className="mt-2 max-h-64 divide-y divide-border/70 overflow-auto">
+          {items.map((item) => (
+            <li key={`${item.label}-${item.detail ?? ""}`} className="flex items-center justify-between gap-4 py-2.5">
+              <div className="min-w-0">
+                <div className="truncate font-mono text-xs font-semibold text-foreground" title={item.label}>{item.label}</div>
+                {item.detail ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{item.detail}</div> : null}
+              </div>
+              <div className="shrink-0 text-right font-mono text-xs tabular-nums">
+                <div className="font-semibold text-foreground">{item.tokens.toLocaleString()}</div>
+                <div className="text-[10px] text-muted-foreground">{formatUsd(item.costUsd)}</div>
+              </div>
+            </li>
+          ))}
+        </ol>
+      )}
+    </section>
   );
 }
 

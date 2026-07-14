@@ -263,6 +263,32 @@ export async function listRuns(
     .map(({ _include, ...run }) => run);
 }
 
+export async function getDashboardRunById(
+  id: string,
+  database: Database = defaultDb
+): Promise<DashboardRun | undefined> {
+  const run = await database.select().from(runs).where(eq(runs.id, id)).limit(1).get();
+
+  if (!run) {
+    return undefined;
+  }
+
+  const eventRows = await database
+    .select({
+      runId: events.runId,
+      status: events.status,
+      timestamp: events.timestamp,
+      name: events.name,
+      metadataJson: events.metadataJson
+    })
+    .from(events)
+    .where(eq(events.runId, id));
+  const summaries = summarizeEventsByRun(eventRows);
+  const usageRows = await database.select().from(usageSessions);
+
+  return toDashboardRun(run, summaries.get(id), groupUsageBySession(usageRows));
+}
+
 export async function listRunsPage(
   options: ListRunsPageOptions = {},
   database: Database = defaultDb

@@ -2,6 +2,7 @@ import Link from "next/link";
 import type {
   DashboardEventPage,
   DashboardEventVisibility,
+  DashboardRun,
   DashboardTraceInsight,
   DashboardTraceEvent
 } from "@agent-trace/schema";
@@ -32,6 +33,7 @@ import {
   copy,
   formatAgent,
   formatClockTime,
+  formatDateTime,
   formatEventType,
   formatRedaction,
   formatStatus,
@@ -89,8 +91,18 @@ export default async function RunDetailPage({
   const visibility = parseVisibility(query);
   const page = parsePage(query.page);
   const view = parseDetailView(query.view);
-  const { result, error } = await getEventPage(id, locale, filters, visibility, page);
+  const [eventRequest, runRequest, treeRequest] = await Promise.all([
+    getEventPage(id, locale, filters, visibility, page),
+    getRun(id, locale),
+    view === "tree"
+      ? getTreeEvents(id, locale, filters, visibility)
+      : Promise.resolve({ events: undefined, error: undefined })
+  ]);
+  const { result } = eventRequest;
+  const error = eventRequest.error ?? runRequest.error ?? treeRequest.error;
+  const run = runRequest.run;
   const events = result?.events ?? [];
+  const renderedEvents = view === "tree" ? (treeRequest.events ?? []) : events;
   const counts = result?.counts ?? { total: 0, display: 0, hidden: 0, matching: 0 };
   const facets = result?.facets ?? { types: [], categories: [] };
   const pagination = result?.pagination ?? { page: 1, pageSize: 100, total: 0, totalPages: 1 };
@@ -130,9 +142,10 @@ export default async function RunDetailPage({
             <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">
               {text.detail.title}
             </p>
-            <h1 className="mt-1.5 break-all font-mono text-lg font-semibold leading-7 tracking-[-0.02em] text-foreground sm:text-xl">
-              {id}
+            <h1 className="mt-1.5 break-words text-lg font-semibold leading-7 tracking-[-0.02em] text-foreground sm:text-xl">
+              {run?.name ?? id}
             </h1>
+            {run ? <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">{id}</p> : null}
           </div>
           <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:flex lg:flex-wrap lg:justify-end">
             <MiniStat icon={Hash} label={text.detail.steps} value={pagination.total} />
@@ -214,21 +227,21 @@ export default async function RunDetailPage({
           {!error && pagination.total === 0 && counts.total === 0 ? (
             <EmptyState locale={locale} title={text.detail.emptyTitle} body={text.detail.emptyBody} />
           ) : null}
-          {!error && counts.total > 0 && events.length === 0 ? (
+          {!error && counts.total > 0 && renderedEvents.length === 0 ? (
             <EmptyState
               locale={locale}
               title={text.detail.emptyFilterTitle}
               body={text.detail.emptyFilterBody}
             />
           ) : null}
-          {!error && events.length > 0 ? (
+          {!error && renderedEvents.length > 0 ? (
             view === "tree" ? (
-              <TraceTree events={events} locale={locale} />
+              <TraceTree events={renderedEvents} locale={locale} />
             ) : (
-              <Timeline events={events} locale={locale} />
+              <Timeline events={renderedEvents} locale={locale} />
             )
           ) : null}
-          {!error && pagination.totalPages > 1 ? (
+          {!error && view === "timeline" && pagination.totalPages > 1 ? (
             <PaginationControls
               runId={id}
               locale={locale}
@@ -245,6 +258,9 @@ export default async function RunDetailPage({
             <CardContent className="p-4">
               <h2 className="text-sm font-semibold text-foreground">{text.detail.summary}</h2>
               <dl className="mt-4 divide-y divide-border/80 text-sm">
+                {run ? <SummaryRow label={text.detail.runStatus} value={formatStatus(run.status, locale)} /> : null}
+                {run ? <SummaryRow label={text.detail.startedAt} value={formatDateTime(run.startedAt, locale)} /> : null}
+                {run?.endedAt ? <SummaryRow label={text.detail.endedAt} value={formatDateTime(run.endedAt, locale)} /> : null}
                 <SummaryRow label={text.common.collector} value={collectorUrl} />
                 <SummaryRow label="Agent" value={formatAgent(sourceMetadata.agent ?? "manual", locale)} />
                 <SummaryRow label={text.detail.surface} value={formatSurface(sourceMetadata.surface, locale) ?? "-"} />
@@ -256,6 +272,27 @@ export default async function RunDetailPage({
               </dl>
             </CardContent>
           </Card>
+
+          {run ? (
+            <Card className="py-0">
+              <CardContent className="p-4">
+                <details className="group">
+                  <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-foreground">
+                    <FileJson className="h-4 w-4 text-primary" aria-hidden />
+                    {text.detail.runData}
+                    <ChevronDown className="ml-auto h-4 w-4 text-muted-foreground transition-transform group-open:rotate-180" aria-hidden />
+                  </summary>
+                  <pre className="mt-3 max-h-[420px] overflow-auto rounded-lg border border-border/80 bg-code p-4 text-xs leading-5 text-zinc-100 shadow-inner">
+                    {JSON.stringify(
+                      { input: run.input, output: run.output, error: run.error, metadata: run.metadata },
+                      null,
+                      2
+                    )}
+                  </pre>
+                </details>
+              </CardContent>
+            </Card>
+          ) : null}
 
           {traceInsights.length > 0 ? (
             <Card className="py-0">
@@ -328,21 +365,7 @@ async function getEventPage(
   page: number
 ): Promise<{ result?: DashboardEventPage; error?: string }> {
   try {
-    const params = new URLSearchParams({
-      visibility,
-      page: page.toString(),
-      pageSize: "100"
-    });
-
-    if (filters.q) {
-      params.set("q", filters.q);
-    }
-
-    for (const key of ["status", "type", "category"] as const) {
-      if (filters[key] !== "all") {
-        params.set(key, filters[key]);
-      }
-    }
+    const params = getEventQuery(filters, visibility, page, 100);
 
     const response = await fetch(`${collectorUrl}/runs/${runId}/events?${params.toString()}`, {
       cache: "no-store"
@@ -368,6 +391,85 @@ async function getEventPage(
             : "Collector is unreachable"
     };
   }
+}
+
+async function getRun(
+  runId: string,
+  locale: Locale
+): Promise<{ run?: DashboardRun; error?: string }> {
+  try {
+    const response = await fetch(`${collectorUrl}/runs/${runId}`, { cache: "no-store" });
+
+    if (!response.ok) {
+      return {
+        error: locale === "zh" ? `运行详情返回 ${response.status}` : `Run detail returned ${response.status}`
+      };
+    }
+
+    return { run: (await response.json()) as DashboardRun };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : copy[locale].common.unavailable };
+  }
+}
+
+async function getTreeEvents(
+  runId: string,
+  locale: Locale,
+  filters: EventFilters,
+  visibility: DashboardEventVisibility
+): Promise<{ events?: DashboardTraceEvent[]; error?: string }> {
+  const events: DashboardTraceEvent[] = [];
+  let page = 1;
+  let totalPages = 1;
+
+  try {
+    do {
+      const params = getEventQuery(filters, visibility, page, 500);
+      const response = await fetch(`${collectorUrl}/runs/${runId}/events?${params.toString()}`, {
+        cache: "no-store"
+      });
+
+      if (!response.ok) {
+        return {
+          error: locale === "zh" ? `调用树返回 ${response.status}` : `Trace tree returned ${response.status}`
+        };
+      }
+
+      const result = (await response.json()) as DashboardEventPage;
+      events.push(...result.events);
+      totalPages = result.pagination.totalPages;
+      page += 1;
+    } while (page <= totalPages);
+
+    return { events };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : copy[locale].common.unavailable };
+  }
+}
+
+function getEventQuery(
+  filters: EventFilters,
+  visibility: DashboardEventVisibility,
+  page: number,
+  pageSize: number
+) {
+  const params = new URLSearchParams({
+    visibility,
+    page: page.toString(),
+    pageSize: pageSize.toString()
+  });
+
+  if (filters.q) {
+    params.set("q", filters.q);
+  }
+
+  for (const key of ["status", "type", "category"] as const) {
+    if (filters[key] !== "all") {
+      params.set(key, filters[key]);
+    }
+  }
+
+  return params;
 }
 
 function MiniStat({
