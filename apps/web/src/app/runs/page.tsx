@@ -5,7 +5,7 @@ import type {
   DashboardRunPage,
   DashboardRunSummary
 } from "@agent-trace/schema";
-import { Activity, AlertCircle, ChevronLeft, ChevronRight, Cpu, ListFilter, Play, Server } from "lucide-react";
+import { Activity, AlertCircle, ChevronLeft, ChevronRight, Cpu, Eye, EyeOff, ListFilter, Play, Server } from "lucide-react";
 
 import {
   ConsoleHeader,
@@ -53,8 +53,11 @@ export const dynamic = "force-dynamic";
 type RunsSearchParams = Promise<{
   lang?: string | string[];
   page?: string | string[];
+  runs?: string | string[];
   scanner?: string | string[];
 }>;
+
+type RunMode = "tracked" | "all";
 
 const collectorUrl = process.env.AGENT_TRACE_API_URL ?? process.env.TOOLTRACE_API_URL ?? "http://localhost:4319";
 const runsBulkDeleteFormId = "runs-bulk-delete-form";
@@ -132,9 +135,10 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
   const locale = parseLocale(params.lang);
   const text = copy[locale];
   const requestedPage = parsePageParam(params.page);
+  const runMode = parseRunMode(params.runs);
   const scannerMode = parseScannerMode(params.scanner);
   const [{ page: runPage, error }, scannerStatus, exchangeRate] = await Promise.all([
-    getRunPage(locale, requestedPage),
+    getRunPage(locale, requestedPage, runMode),
     fetchScannerStatus(collectorUrl),
     getUsdCnyRate()
   ]);
@@ -155,7 +159,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
       <AutoRefresh />
       <ConsoleHeader
         locale={locale}
-        path={runsHref(locale, pagination.page, scannerMode)}
+        path={runsHref(locale, pagination.page, scannerMode, runMode)}
         actions={<DesktopCloseSettings locale={locale} />}
       />
 
@@ -204,6 +208,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
             diagnostics={scannerDiagnostics}
             hiddenCount={hiddenScannerCount}
             locale={locale}
+            runMode={runMode}
             showAll={scannerMode === "all"}
           />
         ) : null}
@@ -216,10 +221,30 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                 <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-border/80 bg-surface-muted px-1.5 text-xs text-muted-foreground tabular-nums">
                   {totalRuns.toLocaleString()}
                 </span>
+                <span className="text-xs text-muted-foreground tabular-nums">
+                  {formatCountLabel(text.runs.perPage, runsPageSize)}
+                </span>
               </div>
               <p className="mt-1 text-xs text-muted-foreground">{text.runs.latest}</p>
             </div>
             <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+              <Button variant="outline" size="sm" asChild>
+                <Link
+                  href={runsHref(
+                    locale,
+                    1,
+                    scannerMode,
+                    runMode === "all" ? "tracked" : "all"
+                  )}
+                >
+                  {runMode === "all" ? (
+                    <EyeOff className="h-4 w-4" aria-hidden />
+                  ) : (
+                    <Eye className="h-4 w-4" aria-hidden />
+                  )}
+                  {runMode === "all" ? text.runs.hideEmptyRuns : text.runs.showAllRuns}
+                </Link>
+              </Button>
               <BulkDeleteRunsButton
                 formId={runsBulkDeleteFormId}
                 label={text.runs.bulkDelete}
@@ -268,7 +293,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                       <col style={{ width: "var(--runs-col-duration)" }} />
                       <col className="w-[42px]" />
                     </colgroup>
-                    <TableHeader>
+                    <TableHeader sticky={false}>
                       <TableRow className="bg-surface-muted/90 hover:bg-surface-muted/90">
                         <TableHead className="h-11 pl-4 pr-0">
                           <SelectAllRunsCheckbox
@@ -415,6 +440,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                 <RunsPaginationControls
                   locale={locale}
                   pagination={pagination}
+                  runMode={runMode}
                   scannerMode={scannerMode}
                 />
               ) : null}
@@ -466,10 +492,20 @@ function ColumnResizeHandle({
 
 async function getRunPage(
   locale: Locale,
-  page: number
+  page: number,
+  runMode: RunMode
 ): Promise<{ page: DashboardRunPage; error?: string }> {
   try {
-    const response = await fetch(`${collectorUrl}/runs?page=${page}&pageSize=${runsPageSize}`, {
+    const query = new URLSearchParams({
+      page: String(page),
+      pageSize: String(runsPageSize)
+    });
+
+    if (runMode === "all") {
+      query.set("includeUntracked", "1");
+    }
+
+    const response = await fetch(`${collectorUrl}/runs?${query}`, {
       cache: "no-store"
     });
 
@@ -550,7 +586,18 @@ function parseScannerMode(value: string | string[] | undefined): "detected" | "a
   return raw === "all" ? "all" : "detected";
 }
 
-function runsHref(locale: Locale, page: number, scannerMode: "detected" | "all") {
+function parseRunMode(value: string | string[] | undefined): RunMode {
+  const raw = Array.isArray(value) ? value[0] : value;
+
+  return raw === "all" ? "all" : "tracked";
+}
+
+function runsHref(
+  locale: Locale,
+  page: number,
+  scannerMode: "detected" | "all",
+  runMode: RunMode
+) {
   const params = new URLSearchParams();
 
   if (page > 1) {
@@ -559,6 +606,10 @@ function runsHref(locale: Locale, page: number, scannerMode: "detected" | "all")
 
   if (scannerMode === "all") {
     params.set("scanner", "all");
+  }
+
+  if (runMode === "all") {
+    params.set("runs", "all");
   }
 
   const query = params.toString();
@@ -626,12 +677,14 @@ function ScannerStatus({
   currentPage,
   diagnostics,
   hiddenCount,
+  runMode,
   showAll,
   locale
 }: {
   currentPage: number;
   diagnostics: ScannerDiagnostic[];
   hiddenCount: number;
+  runMode: RunMode;
   showAll: boolean;
   locale: Locale;
 }) {
@@ -654,7 +707,7 @@ function ScannerStatus({
           </div>
         </div>
         <Button variant="outline" size="sm" asChild>
-          <Link href={runsHref(locale, currentPage, nextMode)}>
+          <Link href={runsHref(locale, currentPage, nextMode, runMode)}>
             <ListFilter className="h-4 w-4" aria-hidden />
             {toggleLabel}
           </Link>
@@ -731,10 +784,12 @@ function ScannerStatus({
 function RunsPaginationControls({
   locale,
   pagination,
+  runMode,
   scannerMode
 }: {
   locale: Locale;
   pagination: DashboardRunPage["pagination"];
+  runMode: RunMode;
   scannerMode: "detected" | "all";
 }) {
   const text = copy[locale];
@@ -744,12 +799,20 @@ function RunsPaginationControls({
   return (
     <div className="flex flex-col gap-3 border-t border-border/80 bg-surface-raised px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
       <div className="text-xs text-muted-foreground tabular-nums">
-        {pagination.page.toLocaleString()} / {pagination.totalPages.toLocaleString()}
+        {formatPaginationSummary(
+          text.runs.paginationSummary,
+          pagination.page,
+          pagination.totalPages,
+          pagination.pageSize,
+          pagination.page === pagination.totalPages
+            ? pagination.total - (pagination.page - 1) * pagination.pageSize
+            : pagination.pageSize
+        )}
       </div>
       <div className="flex items-center gap-2">
         {pagination.page > 1 ? (
           <Button variant="outline" size="sm" asChild>
-            <Link href={runsHref(locale, previousPage, scannerMode)}>
+            <Link href={runsHref(locale, previousPage, scannerMode, runMode)}>
               <ChevronLeft className="h-4 w-4" aria-hidden />
               {text.detail.previousPage}
             </Link>
@@ -762,7 +825,7 @@ function RunsPaginationControls({
         )}
         {pagination.page < pagination.totalPages ? (
           <Button variant="outline" size="sm" asChild>
-            <Link href={runsHref(locale, nextPage, scannerMode)}>
+            <Link href={runsHref(locale, nextPage, scannerMode, runMode)}>
               {text.detail.nextPage}
               <ChevronRight className="h-4 w-4" aria-hidden />
             </Link>
@@ -776,6 +839,24 @@ function RunsPaginationControls({
       </div>
     </div>
   );
+}
+
+function formatCountLabel(template: string, count: number) {
+  return template.replace("{count}", count.toLocaleString());
+}
+
+function formatPaginationSummary(
+  template: string,
+  page: number,
+  totalPages: number,
+  pageSize: number,
+  currentCount: number
+) {
+  return template
+    .replace("{page}", page.toLocaleString())
+    .replace("{totalPages}", totalPages.toLocaleString())
+    .replace("{currentCount}", Math.max(0, currentCount).toLocaleString())
+    .replace("{pageSize}", pageSize.toLocaleString());
 }
 
 function getAgentSourceSummary(

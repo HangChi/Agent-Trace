@@ -80,6 +80,8 @@ const createEventResponse = await app.request("/events", {
       turnId: "turn_smoke",
       toolUseId: "tool_smoke",
       hookEvent: "PostToolUse",
+      category: "tool",
+      toolName: "web_search",
       redactionLevel: "metadata"
     }
   })
@@ -865,8 +867,18 @@ await expectAccepted(
 
 const promptOnlyRunsResponse = await app.request("/runs");
 const promptOnlyRuns = await promptOnlyRunsResponse.json();
-const promptOnlyRun = Array.isArray(promptOnlyRuns)
+const filteredPromptOnlyRun = Array.isArray(promptOnlyRuns)
   ? promptOnlyRuns.find((run) => run.id === codexPromptOnlyRunId)
+  : undefined;
+
+if (filteredPromptOnlyRun !== undefined) {
+  throw new Error("Expected prompt-only runs with empty tracked content to be hidden by default.");
+}
+
+const allPromptOnlyRunsResponse = await app.request("/runs?includeUntracked=1");
+const allPromptOnlyRuns = await allPromptOnlyRunsResponse.json();
+const promptOnlyRun = Array.isArray(allPromptOnlyRuns)
+  ? allPromptOnlyRuns.find((run) => run.id === codexPromptOnlyRunId)
   : undefined;
 
 if (
@@ -875,7 +887,7 @@ if (
   promptOnlyRun.metadata.summary.commandCount !== 0 ||
   (promptOnlyRun.metadata.summary.tokenUsage?.total ?? 0) <= 0
 ) {
-  throw new Error("Expected prompt-only Codex hook runs to remain visible in the default runs list.");
+  throw new Error("Expected the all-runs view to retain prompt-only Codex hook runs.");
 }
 
 const codexExpansionSessionId = "codex_expansion_skill_smoke";
@@ -1603,7 +1615,7 @@ await expectAccepted(
   "Claude Code transcript-model Stop hook"
 );
 
-const claudeTranscriptRunsResponse = await app.request("/runs");
+const claudeTranscriptRunsResponse = await app.request("/runs?includeUntracked=1");
 const claudeTranscriptRuns = await claudeTranscriptRunsResponse.json();
 const claudeTranscriptRun = Array.isArray(claudeTranscriptRuns)
   ? claudeTranscriptRuns.find((run) => run.id === claudeTranscriptRunId)

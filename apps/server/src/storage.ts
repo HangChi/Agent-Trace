@@ -252,20 +252,11 @@ export async function listRuns(
 
   return rows
     .map((run) => {
-      const input = parseJson(run.inputJson);
       const summary = summaries.get(run.id);
-      const status = run.status;
 
       return {
         ...toDashboardRun(run, summary, usageBySession),
-        _include:
-          options.includeUntracked ||
-          shouldIncludeRunInList({
-            input,
-            summary,
-            isStale: isStaleClosedRun(run),
-            status
-          })
+        _include: options.includeUntracked || hasTrackedContent(summary)
       };
     })
     .filter((run) => run._include)
@@ -286,12 +277,7 @@ export async function listRunsPage(
   const visibleRows = runRows.filter((run) => {
     if (options.includeUntracked) return true;
 
-    return shouldIncludeRunInList({
-      input: parseJson(run.inputJson),
-      summary: summaries.get(run.id),
-      isStale: isStaleClosedRun(run),
-      status: run.status
-    });
+    return hasTrackedContent(summaries.get(run.id));
   });
   const pageSize = normalizeRunPageSize(options.pageSize);
   const totalPages = Math.max(1, Math.ceil(visibleRows.length / pageSize));
@@ -1089,34 +1075,8 @@ async function closeStaleRunningRuns(
   return reconciledRuns;
 }
 
-function shouldIncludeRunInList({
-  input,
-  isStale,
-  summary,
-  status
-}: {
-  input: unknown;
-  isStale: boolean;
-  summary: EventSummary | undefined;
-  status: string;
-}) {
-  const collectorSource = getCollectorSource(input);
-
-  if (!collectorSource) {
-    return true;
-  }
-
-  if (!summary) {
-    return !isStale && status === "error";
-  }
-
-  const visibleTotal = getSummaryDefaultVisibleTotal(summary, collectorSource);
-
-  if (isStale && visibleTotal === 0) {
-    return false;
-  }
-
-  return visibleTotal > 0 || summary.hasErrorEvent;
+function hasTrackedContent(summary: EventSummary | undefined) {
+  return summary !== undefined && getSummaryActionTotal(summary) > 0;
 }
 
 function getRunIdsWithSessionScan(eventRows: EventSummaryRow[]) {
@@ -1135,20 +1095,6 @@ function getRunIdsWithSessionScan(eventRows: EventSummaryRow[]) {
 
 function isScanSessionUsage(tokenUsage: Record<string, unknown>) {
   return tokenUsage.sourceKind === "scan" && tokenUsage.scope === "session";
-}
-
-function isStaleClosedRun(run: { status: string; error: string | null }) {
-  return (
-    run.status === "error" &&
-    typeof run.error === "string" &&
-    run.error.startsWith("No completion hook received after ")
-  );
-}
-
-function getCollectorSource(input: unknown) {
-  const source = getString(asRecord(input).source);
-
-  return source === "agent-hook" || source === "codex-otel" ? source : undefined;
 }
 
 function getRunEndedAt(
@@ -1173,22 +1119,6 @@ function getSummaryActionTotal(summary: EventSummary) {
     summary.toolCount +
     summary.mcpCount +
     summary.skillCount
-  );
-}
-
-function getSummaryDefaultVisibleTotal(
-  summary: EventSummary,
-  collectorSource: "agent-hook" | "codex-otel"
-) {
-  if (collectorSource === "codex-otel") {
-    return getSummaryActionTotal(summary);
-  }
-
-  return (
-    getSummaryActionTotal(summary) +
-    summary.promptCount +
-    summary.turnCount +
-    summary.tokenUsage.total
   );
 }
 

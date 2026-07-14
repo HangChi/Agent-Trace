@@ -1,3 +1,5 @@
+import { readFileSync } from "node:fs";
+
 import { fetchScannerStatus } from "./scanner-status.js";
 
 let requestedUrl = "";
@@ -25,6 +27,18 @@ if (
   result.diagnostics[1]?.client !== "codex"
 ) {
   throw new Error("Expected scanner diagnostics to be normalized and sorted by status.");
+}
+
+const runsPageSource = readFileSync(new URL("./page.tsx", import.meta.url), "utf8");
+
+if (
+  !runsPageSource.includes('query.set("includeUntracked", "1")') ||
+  !runsPageSource.includes("text.runs.showAllRuns") ||
+  !runsPageSource.includes("text.runs.hideEmptyRuns") ||
+  !runsPageSource.includes("<TableHeader sticky={false}>") ||
+  !runsPageSource.includes("text.runs.paginationSummary")
+) {
+  throw new Error("Expected the run list to expose visibility and unobscured pagination controls.");
 }
 
 console.log("Agent-Trace scanner status smoke test passed.");

@@ -19,12 +19,17 @@ function Table({ className, ...props }: React.ComponentProps<"table">) {
   )
 }
 
-function TableHeader({ className, ...props }: React.ComponentProps<"thead">) {
+function TableHeader({
+  className,
+  sticky = true,
+  ...props
+}: React.ComponentProps<"thead"> & { sticky?: boolean }) {
   return (
     <thead
       data-slot="table-header"
       className={cn(
-        "sticky top-14 z-20 bg-surface-raised/95 backdrop-blur-md [&_tr]:border-b [&_tr]:border-border/80",
+        "bg-surface-raised/95 [&_tr]:border-b [&_tr]:border-border/80",
+        sticky && "sticky top-14 z-20 backdrop-blur-md",
         className
       )}
       {...props}

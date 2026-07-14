@@ -89,6 +89,51 @@ try {
     );
   }
 
+  await storage.createRun(
+    {
+      id: "read-model-empty-content",
+      name: "empty tracked content",
+      status: "success",
+      startedAt: new Date(base + 6_000).toISOString(),
+      metadata: { agent: "codex" }
+    },
+    database
+  );
+  await storage.createRun(
+    {
+      id: "read-model-tracked-content",
+      name: "tracked content",
+      status: "success",
+      startedAt: new Date(base + 7_000).toISOString(),
+      metadata: { agent: "codex" }
+    },
+    database
+  );
+  await storage.createEvent(
+    {
+      id: "read-model-tracked-content-event",
+      runId: "read-model-tracked-content",
+      type: "tool_call",
+      name: "read file",
+      status: "success",
+      timestamp: new Date(base + 8_000).toISOString(),
+      metadata: { category: "tool", toolName: "read_file" }
+    },
+    database
+  );
+
+  const trackedContentPage = await storage.listRunsPage({ pageSize: 200 }, database);
+  assert.deepEqual(
+    trackedContentPage.runs.map((run) => run.id),
+    ["read-model-tracked-content"],
+    "default run listing must hide records whose tracked-content summary is empty"
+  );
+  const allContentPage = await storage.listRunsPage(
+    { includeUntracked: true, pageSize: 200 },
+    database
+  );
+  assert.ok(allContentPage.runs.some((run) => run.id === "read-model-empty-content"));
+
   const legacyRuns = await storage.listRuns({ includeUntracked: true }, database);
   queries.length = 0;
   const runPage = await storage.listRunsPage(
