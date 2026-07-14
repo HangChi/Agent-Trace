@@ -1,84 +1,42 @@
 # Agent-Trace
 
-[English](README.en.md)
+[English](README.en.md) · [完整文档](docs/README.md)
 
-本地优先的 AI Agent 调试 DevTools。
+Agent-Trace 是一套本地优先的 AI Agent 运行观测工具。它把 Agent 的模型调用、工具执行、Token 用量、耗时、错误和本地会话历史汇总到 SQLite，并通过 Web 或 Windows 桌面界面展示运行列表、执行时间线、调用树和诊断结果。
 
-Agent-Trace 会记录一次 Agent run 里的 LLM 调用、工具调用、token 使用量、耗时、输出和错误，并把执行过程展示成时间线。
+## 核心能力
 
-## 为什么做
-
-AI Agent 的失败经常很难定位：
-
-- 调错工具。
-- 重复执行同一个动作。
-- 超出 token 预算。
-- 隐藏了中间工具错误。
-- 最终答案看起来对，但推理过程其实错了。
-
-Agent-Trace 帮你看清楚一次 Agent run 到底发生了什么。
+- 使用 TypeScript SDK 为自定义 Agent 记录 run、LLM 调用和工具调用。
+- 通过全局 Hooks 接入 Codex 与 Claude Code 生命周期事件。
+- 接收 Codex OTel JSON 日志中的模型与官方 Token 用量。
+- 使用 `tokscale` 汇总本地 AI 编程客户端的会话、Token 和成本数据。
+- 展示运行摘要、事件筛选、时间线、父子调用树、失败分析和性能诊断。
+- 提供本地 Collector、双语 Dashboard 和 Windows 桌面封装。
 
 ## 快速开始
 
-安装依赖：
+仓库未声明 Node.js 最低版本。请准备可运行当前依赖的 Node.js，以及 `packageManager` 字段指定的 pnpm 11.0.7。
 
 ```bash
 pnpm install
-```
-
-启动本地 collector 和 dashboard：
-
-```bash
-pnpm --filter @agent-trace/cli build
+pnpm build
 node packages/cli/dist/index.js dev
 ```
 
-```bash
-node packages/cli/dist/index.js dev --usage-scan --usage-home C:\Users\song
-node packages/cli/dist/index.js dev --usage-scan --usage-sync --usage-home C:\Users\song
-node packages/cli/dist/index.js usage --once --home C:\Users\song
-node packages/cli/dist/index.js usage --once --sync --home C:\Users\song
-node packages/cli/dist/index.js usage clients --home C:\Users\song
-node packages/cli/dist/index.js usage sync --clients cursor,antigravity,trae,warp --home C:\Users\song
-```
+启动后访问：
 
-桌面应用和 `agent-trace dev` 会在 collector 启动后自动扫描一次本机全部 `tokscale` 客户端，
-并每 15 秒刷新。设置 `AGENT_TRACE_USAGE_SCAN=0`（也支持 `false` 或 `off`），或者向
-`agent-trace dev` 传入 `--usage-scan=false`，可关闭自动扫描。CLI 默认扫描 `tokscale` 支持的
-全部客户端；只有显式传入 `--clients` 时才会限制范围。
+- Dashboard：<http://localhost:3000/runs>
+- Collector：<http://127.0.0.1:4319>
 
-Codex 扫描会同时核对 `~/.codex/sessions` 和 `~/.codex/archived_sessions`。恢复或归档产生的
-重复 JSONL 会按模型/token 事件序列去重；`reasoning` 已包含在 output 中，只单独展示，不会
-重复加入 total。价格优先采用 `tokscale` 返回的 `costUsd`，并标记为等价 API 调用估算成本，
-不是 Codex 订阅账单；缺价且没有精确配置时显示未定价。
-
-开发时也可以直接从源码启动 CLI：
+另开终端生成一条示例运行：
 
 ```bash
-pnpm --filter @agent-trace/cli exec tsx src/index.ts dev
-```
-
-另开一个终端，运行示例 Agent：
-
-```bash
-pnpm --filter @agent-trace/schema build
-pnpm --filter @agent-trace/sdk build
 pnpm --filter simple-agent dev
 ```
 
-打开面板：
+首次在干净工作区运行测试前应先执行 `pnpm build`，确保示例包可以解析工作区 SDK 的构建产物。
 
-```text
-http://localhost:3000/runs
-```
-
-Collector API 默认运行在：
-
-```text
-http://localhost:4319
-```
-
-## SDK 示例
+## 最小 SDK 示例
 
 ```ts
 import { startRun } from "@agent-trace/sdk";
@@ -89,132 +47,48 @@ const run = startRun({
 });
 
 try {
-  const plan = await run.traceLLM(
-    "planner",
-    { prompt: "Research MCP ecosystem" },
-    () => callLLM(),
-    {
-      provider: "openai",
-      model: "gpt-4.1",
-      tokenUsage: { input: 120, output: 40, total: 160 }
-    }
-  );
-
-  const results = await run.traceTool(
+  const result = await run.traceTool(
     "web_search",
     { query: "MCP ecosystem" },
     () => webSearch("MCP ecosystem")
   );
 
-  await run.end({ plan, results });
+  await run.end(result);
 } catch (error) {
   await run.fail(error);
   throw error;
 }
 ```
 
-SDK 会吞掉 tracing 自身的失败，所以 collector 不可用时也不会改变用户 Agent 的主流程。
+SDK 默认向 `http://localhost:4319` 投递数据，单次投递默认超时为 1000 ms。投递失败不会改变被观测 Agent 的执行结果。
 
-## 全局 Tracing Hooks
+## 工作区
 
-无需手工编辑配置文件，Agent-Trace 可以为 Codex 和 Claude Code 安装全局 tracing hooks，把生命周期、prompt 和工具事件转发到本地 collector。
+| 路径 | 职责 |
+| --- | --- |
+| `apps/server` | Hono Collector、SQLite 存储、查询与集成入口 |
+| `apps/web` | Next.js Dashboard |
+| `apps/desktop` | Electron 桌面端与 Windows 打包 |
+| `packages/schema` | Zod 契约与共享 TypeScript 类型 |
+| `packages/sdk-js` | JavaScript/TypeScript Tracing SDK |
+| `packages/cli` | 开发编排、Hooks 管理和本地用量扫描 |
+| `examples` | SDK 与 Hook 冒烟示例 |
 
-```bash
-pnpm --filter @agent-trace/cli build
+## 数据与成本说明
 
-node packages/cli/dist/index.js install codex --scope user --redaction metadata --surface cli
-# 如果这份共享 Codex 配置当前用于 Codex 桌面端，请改用：
-# node packages/cli/dist/index.js install codex --scope user --redaction metadata --surface desktop
-node packages/cli/dist/index.js install claude-code --scope user --redaction metadata
-```
+Collector 默认仅监听回环地址，数据库保存在本机。SDK 会保存调用方主动传入的 input/output；Hooks 默认采用 metadata 脱敏；本地历史扫描默认可能保存清理后的 Prompt 预览。敏感环境应先阅读[隐私与安全](docs/privacy-security.md)。
 
-卸载：
+界面中的成本是按扫描结果或精确配置价格计算的 API 等价估算，不代表 Codex、Claude 或其他订阅产品的实际账单。
 
-```bash
-node packages/cli/dist/index.js uninstall codex
-node packages/cli/dist/index.js uninstall claude-code
-```
+## 文档
 
-- `install codex` 会在 `~/.codex/hooks.json` 写入 Agent-Trace 管理块。
-- `install claude-code` 会在 `~/.claude/settings.json` 写入 Agent-Trace 管理块。
-- 修改前会创建带时间戳的 `.agent-trace-backup.<timestamp>` 备份。
-- 重复执行 install 是幂等的；uninstall 只移除 Agent-Trace 管理块，不会动你自己的 hooks。
-- Codex 桌面端和 CLI 共用同一份 Codex 配置。使用 `install codex --surface cli` 或 `install codex --surface desktop`；最后一次安装的 surface 会作为 Agent-Trace 显示的来源，直到用另一个值重新安装。
-- `CODEX_HOME` 和 `CLAUDE_CONFIG_DIR` 可覆盖配置目录；`AGENT_TRACE_COLLECTOR_URL`（或 `--collector-url`）可覆盖 collector 地址。
-- 默认使用 metadata 脱敏级别。Agent-Trace 会保存事件名、工具名、执行过的 shell 命令、ID、状态、耗时、模型、来源提供的官方 token 用量、缺少官方用量时的本地 token 估算值，以及非命令工具输入/输出的 payload 大小；不会保存原始 prompt、非命令工具输入/输出全文、文件内容或隐藏推理。
-- 如需最准确的 Codex token，请把官方 Codex OTel JSON 日志导出到 `http://localhost:4319/integrations/codex/otel/v1/logs`；仅来自 Codex 或 Claude Code hook 的 prompt/output token 会在本地估算，并标记为估算值。
-
-不运行 Codex 或 Claude Code 也可以验证 hook ingestion。先启动本地 collector，再运行：
-
-```bash
-node examples/agent-hook-smoke.mjs
-```
-
-隐私默认值、smoke 验证和已知限制见 [Agent Tracing](docs/agent-tracing.md)。
-
-## 工作区结构
-
-```text
-apps/
-  server/          Hono collector API 和 SQLite 存储
-  web/             Next.js 调试面板
-packages/
-  schema/          共享 trace 契约和运行时校验
-  sdk-js/          JS/TS tracing SDK
-  cli/             agent-trace dev 命令
-examples/
-  simple-agent/    fake agent 示例
-  agent-hook-smoke.mjs  Codex/Claude Code hook ingestion smoke
-docs/
-  architecture.md  MVP 架构说明
-  agent-tracing.md Codex 和 Claude Code tracing 指南
-```
-
-## 常用命令
-
-```bash
-pnpm --filter @agent-trace/schema build
-pnpm --filter @agent-trace/server db:init
-pnpm --filter @agent-trace/server dev
-pnpm --filter @agent-trace/web dev
-pnpm --filter @agent-trace/cli exec tsx src/index.ts usage --once
-pnpm --filter @agent-trace/cli exec tsx src/index.ts usage clients --home C:\Users\song
-pnpm --filter @agent-trace/cli exec tsx src/index.ts usage sync --clients cursor,antigravity,trae,warp --home C:\Users\song
-pnpm --filter @agent-trace/sdk smoke
-pnpm --filter simple-agent dev
-node examples/agent-hook-smoke.mjs
-```
-
-生成一条失败示例 run，用来查看 Failure Inspector：
-
-```bash
-AGENT_TRACE_EXAMPLE_FAIL=1 pnpm --filter simple-agent dev
-```
-
-Windows PowerShell：
-
-```powershell
-$env:AGENT_TRACE_EXAMPLE_FAIL = "1"
-pnpm --filter simple-agent dev
-```
-
-## API
-
-- `GET /health`
-- `POST /runs`
-- `PATCH /runs/:id`
-- `POST /events`
-- `POST /integrations/codex/hook`
-- `POST /integrations/codex/otel/v1/logs`
-- `POST /integrations/claude-code/hook`
-- `POST /integrations/usage-scan`
-- `GET /runs`
-- `GET /runs/:id/events`
-- `DELETE /runs/:id`
-
-## 贡献流程
-
-- 保持有意义的 conventional commit，例如 `feat(sdk): add traceTool wrapper`。
-- PR 尽量小；一个 PR 只实现一个功能或修改一个行为。
-- PR 描述需要包含功能说明、实现思路和测试方式。
-- 不要提交 SQLite 数据库文件、构建产物、本地环境变量文件或 `.next` 缓存。
+- [产品需求文档](docs/product-requirements.md)
+- [需求规格说明](docs/requirements-specification.md)
+- [用户手册](docs/user-guide.md)
+- [系统架构](docs/architecture.md)
+- [API 参考](docs/api-reference.md)
+- [开发指南](docs/development-guide.md)
+- [测试文档](docs/testing.md)
+- [部署与运维](docs/deployment-operations.md)
+- [隐私与安全](docs/privacy-security.md)
+- [开发历史](docs/development-history.md)
