@@ -33,11 +33,15 @@ try {
 
   const tokscaleInvocation = resolveTokscaleCommand();
 
-  if (
+  if (process.platform === "win32") {
+    if (!tokscaleInvocation.executable.endsWith("tokscale.exe") || tokscaleInvocation.args.length !== 0) {
+      throw new Error("Expected Windows usage scans to launch the native tokscale binary without its console wrapper.");
+    }
+  } else if (
     tokscaleInvocation.executable !== process.execPath ||
-    !tokscaleInvocation.args.some((arg) => arg.endsWith("tokscale\\bin.js") || arg.endsWith("tokscale/bin.js"))
+    !tokscaleInvocation.args.some((arg) => arg.endsWith("tokscale/bin.js"))
   ) {
-    throw new Error("Expected bundled tokscale to run through the current Node runtime instead of a Windows CMD shim.");
+    throw new Error("Expected bundled tokscale to run through the current Node runtime.");
   }
 
   installHooks("codex", {

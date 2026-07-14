@@ -44,7 +44,6 @@ import {
   RefreshButton,
   SelectAllRunsCheckbox
 } from "./run-controls";
-import { DesktopCloseSettings } from "./desktop-close-settings";
 import { calculateRunCost, getUsdCnyRate, type RunCost } from "~/lib/cost";
 import { ResizableTableColumns } from "./resizable-table-columns";
 import { fetchScannerStatus, type ScannerDiagnostic } from "./scanner-status";
@@ -163,7 +162,6 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
       <ConsoleHeader
         locale={locale}
         path={runsHref(locale, pagination.page, scannerMode, runMode)}
-        actions={<DesktopCloseSettings locale={locale} />}
       />
 
       <section className="mx-auto w-full max-w-[1800px] px-4 py-6 sm:px-6 lg:px-8 2xl:px-10">

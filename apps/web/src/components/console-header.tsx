@@ -1,19 +1,15 @@
 import Link from "next/link";
-import type { ReactNode } from "react";
-import { Activity } from "lucide-react";
 
-import { LanguageSwitcher } from "~/components/language-switcher";
-import { ThemeToggle } from "~/components/theme-toggle";
+import { BrandMark } from "~/components/brand-mark";
+import { ConsoleSettings } from "~/components/console-settings";
 import { localizedHref, type Locale } from "~/lib/i18n";
 
 export function ConsoleHeader({
   locale,
-  path,
-  actions
+  path
 }: {
   locale: Locale;
   path: string;
-  actions?: ReactNode;
 }) {
   return (
     <header className="sticky top-0 z-40 border-b border-border/70 bg-background/80 backdrop-blur-xl">
@@ -23,9 +19,7 @@ export function ConsoleHeader({
           className="group inline-flex min-h-11 min-w-0 items-center gap-2.5 rounded-lg outline-none focus-visible:ring-[3px] focus-visible:ring-ring/25"
           aria-label="Agent-Trace"
         >
-          <span className="flex size-8 shrink-0 items-center justify-center rounded-lg border border-primary/25 bg-primary text-primary-foreground shadow-[0_1px_2px_rgb(15_23_42/0.12)] transition-colors duration-150 group-hover:bg-primary/90">
-            <Activity className="size-4" aria-hidden />
-          </span>
+          <BrandMark className="size-8 shrink-0 shadow-[0_1px_3px_rgb(15_23_42/0.18)] transition-transform duration-150 group-hover:scale-[1.03]" aria-hidden />
           <span className="hidden truncate text-sm font-semibold tracking-[-0.01em] text-foreground sm:inline">
             Agent-Trace
           </span>
@@ -35,9 +29,7 @@ export function ConsoleHeader({
         </Link>
 
         <div className="flex shrink-0 items-center gap-2">
-          {actions}
-          <LanguageSwitcher locale={locale} path={path} />
-          <ThemeToggle locale={locale} />
+          <ConsoleSettings locale={locale} path={path} />
         </div>
       </div>
     </header>

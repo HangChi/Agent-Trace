@@ -13,6 +13,11 @@ import {
   DialogTitle
 } from "~/components/ui/dialog";
 import { cn } from "~/lib/utils";
+import {
+  autoRefreshChangedEvent,
+  autoRefreshStorageKey,
+  readAutoRefreshPreference
+} from "~/lib/browser-preferences";
 import { deleteRunAction, deleteRunsAction } from "./actions";
 
 export function RefreshButton({
@@ -42,8 +47,31 @@ export function RefreshButton({
 
 export function AutoRefresh({ intervalMs = 2000 }: { intervalMs?: number }) {
   const router = useRouter();
+  const [enabled, setEnabled] = useState<boolean | null>(null);
 
   useEffect(() => {
+    const syncPreference = () => setEnabled(readAutoRefreshPreference());
+    const syncStoredPreference = (event: StorageEvent) => {
+      if (event.key === autoRefreshStorageKey) {
+        syncPreference();
+      }
+    };
+
+    syncPreference();
+    window.addEventListener(autoRefreshChangedEvent, syncPreference);
+    window.addEventListener("storage", syncStoredPreference);
+
+    return () => {
+      window.removeEventListener(autoRefreshChangedEvent, syncPreference);
+      window.removeEventListener("storage", syncStoredPreference);
+    };
+  }, []);
+
+  useEffect(() => {
+    if (!enabled) {
+      return;
+    }
+
     const timer = window.setInterval(() => {
       if (document.querySelector('input[data-run-checkbox="true"]:checked')) {
         return;
@@ -53,7 +81,7 @@ export function AutoRefresh({ intervalMs = 2000 }: { intervalMs?: number }) {
     }, intervalMs);
 
     return () => window.clearInterval(timer);
-  }, [intervalMs, router]);
+  }, [enabled, intervalMs, router]);
 
   return null;
 }

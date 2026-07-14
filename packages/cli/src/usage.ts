@@ -1,5 +1,5 @@
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync } from "node:fs";
+import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, resolve } from "node:path";
@@ -566,9 +566,42 @@ export function resolveTokscaleCommand() {
     "bin.js"
   );
 
+  const nativeExecutable = resolveNativeTokscaleExecutable(localBin);
+
+  if (nativeExecutable) {
+    return { executable: nativeExecutable, args: [] };
+  }
+
   return existsSync(localBin)
     ? { executable: process.execPath, args: [localBin] }
     : { executable: "tokscale", args: [] };
+}
+
+function resolveNativeTokscaleExecutable(localBin: string) {
+  if (process.platform !== "win32" || !existsSync(localBin)) {
+    return undefined;
+  }
+
+  const targetPackage = process.arch === "arm64"
+    ? "cli-win32-arm64-msvc"
+    : process.arch === "x64"
+      ? "cli-win32-x64-msvc"
+      : undefined;
+
+  if (!targetPackage) {
+    return undefined;
+  }
+
+  try {
+    const tokscaleRoot = dirname(realpathSync(localBin));
+    const cliEntry = resolve(tokscaleRoot, "../@tokscale/cli/dist/index.js");
+    const cliRoot = resolve(dirname(realpathSync(cliEntry)), "..");
+    const executable = resolve(cliRoot, "..", targetPackage, "bin", "tokscale.exe");
+
+    return existsSync(executable) ? executable : undefined;
+  } catch {
+    return undefined;
+  }
 }
 
 async function postCollectorJson(collectorUrl: string, path: string, body: unknown) {
