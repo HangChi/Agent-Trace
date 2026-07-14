@@ -38,6 +38,7 @@ export const copy = {
       unavailable: "Collector \u4e0d\u53ef\u7528\uff1a"
     },
     runs: {
+      consoleLabel: "\u8fd0\u884c\u63a7\u5236\u53f0",
       title: "Agent \u8ffd\u8e2a\u53f0",
       subtitle:
         "\u8ffd\u8e2a Codex\u3001Claude Code\u3001OpenCode\u3001Cursor\u3001Antigravity\u3001Trae\u3001Warp\u3001Cline\u3001Zed\u3001Kiro\u3001Grok\u3001Gemini \u548c\u672c\u5730 Agent \u7684\u547d\u4ee4\u3001\u5de5\u5177\u3001skill\u3001MCP \u548c token\u3002",
@@ -109,6 +110,7 @@ export const copy = {
         "\u542f\u52a8\u672c\u5730 collector \u540e\uff0c\u4f7f\u7528\u5df2\u63a5\u5165 hook \u7684 Agent \u5373\u53ef\u5728\u8fd9\u91cc\u770b\u5230\u8bb0\u5f55\u3002"
     },
     detail: {
+      title: "\u8ffd\u8e2a\u8be6\u60c5",
       back: "\u8fd4\u56de\u8fd0\u884c\u5217\u8868",
       backToTop: "\u8fd4\u56de\u9876\u90e8",
       steps: "\u6b65\u9aa4",
@@ -184,6 +186,7 @@ export const copy = {
       unavailable: "Collector unavailable: "
     },
     runs: {
+      consoleLabel: "Run console",
       title: "Agent Trace Console",
       subtitle:
         "Track Codex, Claude Code, OpenCode, Cursor, Antigravity, Trae, Warp, Cline, Zed, Kiro, Grok, Gemini, and local agent commands, tools, skills, MCP calls, and tokens.",
@@ -252,6 +255,7 @@ export const copy = {
       emptyBody: "Start the local collector and use an agent with hooks installed to populate this table."
     },
     detail: {
+      title: "Trace detail",
       back: "Back to runs",
       backToTop: "Back to top",
       steps: "Steps",

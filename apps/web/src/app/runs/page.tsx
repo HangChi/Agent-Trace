@@ -8,12 +8,11 @@ import type {
 import { Activity, AlertCircle, ChevronLeft, ChevronRight, Cpu, ListFilter, Play, Server } from "lucide-react";
 
 import {
+  ConsoleHeader,
   EmptyState,
   ErrorState,
-  LanguageSwitcher,
   SourceBadge,
-  StatusBadge,
-  ThemeToggle
+  StatusBadge
 } from "~/components";
 import { Card, CardContent } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
@@ -152,51 +151,41 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
   const hiddenScannerCount = allScannerDiagnostics.length - scannerDiagnostics.length;
 
   return (
-    <main id="main-content" className="min-h-screen bg-background text-foreground">
+    <main id="main-content" className="min-h-dvh bg-background text-foreground">
       <AutoRefresh />
-      <header className="sticky top-0 z-40 border-b border-border/80 bg-background/85 backdrop-blur-xl">
-        <div className="w-full px-4 py-3 sm:px-6 lg:px-8 2xl:px-10">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="min-w-0">
-              <div className="flex items-center gap-3">
-                <span className="flex h-10 w-10 items-center justify-center rounded-lg border border-primary/20 bg-primary text-primary-foreground shadow-xs">
-                  <Activity className="h-5 w-5" aria-hidden />
-                </span>
-                <div className="min-w-0">
-                  <p className="text-xs font-semibold text-primary">Agent-Trace</p>
-                  <h1 className="text-xl font-semibold leading-tight text-foreground">
-                    {text.runs.title}
-                  </h1>
-                </div>
-              </div>
-              <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
-                {text.runs.subtitle}
-              </p>
-            </div>
-            <div className="flex flex-col gap-3 sm:flex-row sm:items-center lg:justify-end">
-              <div className="flex items-center gap-2">
-                <DesktopCloseSettings locale={locale} />
-                <LanguageSwitcher locale={locale} path="/runs" />
-                <ThemeToggle locale={locale} />
-              </div>
-              <div
-                className="inline-flex h-8 max-w-full items-center gap-2 rounded-md border border-border/80 bg-surface-raised px-3 text-xs shadow-xs"
-                title={collectorUrl}
-              >
-                <span className="h-1.5 w-1.5 rounded-full bg-status-success shadow-[0_0_0_3px_var(--status-success-subtle)]" />
-                <Server className="h-3.5 w-3.5 text-muted-foreground" aria-hidden />
-                <span className="font-medium text-foreground">{text.common.collector}</span>
-                <span className="max-w-[220px] truncate font-mono text-muted-foreground">
-                  {collectorUrl}
-                </span>
-              </div>
-            </div>
+      <ConsoleHeader
+        locale={locale}
+        path={runsHref(locale, pagination.page, scannerMode)}
+        actions={<DesktopCloseSettings locale={locale} />}
+      />
+
+      <section className="mx-auto w-full max-w-[1800px] px-4 py-6 sm:px-6 lg:px-8 2xl:px-10">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+              {text.runs.consoleLabel}
+            </p>
+            <h1 className="mt-1.5 text-2xl font-semibold tracking-[-0.025em] text-foreground">
+              {text.runs.title}
+            </h1>
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+              {text.runs.subtitle}
+            </p>
+          </div>
+          <div
+            className="inline-flex h-9 max-w-full items-center gap-2 self-start rounded-lg border border-border/70 bg-surface-raised px-3 text-xs shadow-[0_1px_2px_rgb(15_23_42/0.04)] lg:self-auto"
+            title={collectorUrl}
+          >
+            <span className="size-1.5 rounded-full bg-status-success shadow-[0_0_0_3px_var(--status-success-subtle)]" />
+            <Server className="size-3.5 text-muted-foreground" aria-hidden />
+            <span className="font-medium text-foreground">{text.common.collector}</span>
+            <span className="max-w-[220px] truncate font-mono text-muted-foreground">
+              {collectorUrl}
+            </span>
           </div>
         </div>
-      </header>
 
-      <section className="w-full px-4 py-5 sm:px-6 lg:px-8 2xl:px-10">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           <MetricCard label={text.runs.allRuns} value={totalRuns} icon={Activity} accent="sky" />
           <MetricCard
             label={text.runs.agentSource}
@@ -220,7 +209,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
         ) : null}
 
         <Card className="mt-5 overflow-hidden py-0">
-          <div className="flex flex-col gap-3 border-b border-border/80 bg-surface-raised px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div className="flex flex-col gap-3 border-b border-border/70 bg-surface-raised px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div>
               <div className="flex items-center gap-2">
                 <h2 className="text-sm font-semibold text-foreground">{text.runs.recent}</h2>
@@ -280,7 +269,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                       <col className="w-[42px]" />
                     </colgroup>
                     <TableHeader>
-                      <TableRow className="bg-surface-muted/80 hover:bg-surface-muted/80">
+                      <TableRow className="bg-surface-muted/90 hover:bg-surface-muted/90">
                         <TableHead className="h-11 pl-4 pr-0">
                           <SelectAllRunsCheckbox
                             formId={runsBulkDeleteFormId}
@@ -307,11 +296,11 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                           {text.runs.tableTracked}
                           <ColumnResizeHandle column="tracked" label={text.runs.tableTracked} locale={locale} />
                         </TableHead>
-                        <TableHead className="relative h-11 pr-4">
+                        <TableHead className="relative h-11 pr-4 text-right">
                           {text.runs.tableTokens}
                           <ColumnResizeHandle column="tokens" label={text.runs.tableTokens} locale={locale} />
                         </TableHead>
-                        <TableHead className="relative h-11 pr-4">
+                        <TableHead className="relative h-11 pr-4 text-right">
                           {text.runs.tableCost}
                           <ColumnResizeHandle column="cost" label={text.runs.tableCost} locale={locale} />
                         </TableHead>
@@ -319,7 +308,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                           {text.runs.tableStarted}
                           <ColumnResizeHandle column="started" label={text.runs.tableStarted} locale={locale} />
                         </TableHead>
-                        <TableHead className="relative h-11 pr-4">
+                        <TableHead className="relative h-11 pr-4 text-right">
                           {text.runs.tableDuration}
                           <ColumnResizeHandle column="duration" label={text.runs.tableDuration} locale={locale} />
                         </TableHead>
@@ -333,14 +322,16 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                           className="group"
                         >
                         <TableCell className="py-4 pl-4 pr-0 align-top">
-                          <input
-                            type="checkbox"
-                            name="runIds"
-                            value={run.id}
-                            data-run-checkbox="true"
-                            className="mt-1 size-4 rounded border-border accent-primary"
-                            aria-label={`${text.runs.selectRun}: ${run.name}`}
-                          />
+                          <label className="-ml-2 inline-flex size-11 cursor-pointer items-center justify-center rounded-lg hover:bg-accent/60 md:size-9">
+                            <input
+                              type="checkbox"
+                              name="runIds"
+                              value={run.id}
+                              data-run-checkbox="true"
+                              className="size-4 cursor-pointer rounded border-border accent-primary"
+                              aria-label={`${text.runs.selectRun}: ${run.name}`}
+                            />
+                          </label>
                         </TableCell>
                         <TableCell className="py-4 whitespace-normal">
                           <div className="flex min-w-0 items-center gap-3">
@@ -378,10 +369,10 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                         <TableCell className="py-4 align-top whitespace-normal">
                           <SummaryCell summary={run.metadata?.summary} locale={locale} />
                         </TableCell>
-                        <TableCell className="py-4 align-top whitespace-normal">
+                        <TableCell className="py-4 text-right align-top whitespace-normal">
                           <TokenCell tokenUsage={run.metadata?.summary?.tokenUsage} locale={locale} />
                         </TableCell>
-                        <TableCell className="py-4 align-top whitespace-normal">
+                        <TableCell className="py-4 text-right align-top whitespace-normal">
                           <CostCell
                             cost={calculateRunCost(run.metadata?.summary, exchangeRate)}
                             locale={locale}
@@ -390,7 +381,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                         <TableCell className="py-4 align-top text-[13px] text-muted-foreground tabular-nums">
                           <div>{formatDateTime(run.startedAt, locale)}</div>
                         </TableCell>
-                        <TableCell className="py-4 align-top text-[12px] tabular-nums">
+                        <TableCell className="py-4 text-right align-top text-xs tabular-nums">
                           <div
                             className={cn(
                               "tabular-nums",
@@ -589,20 +580,26 @@ function MetricCard({
   accent: "sky" | "teal" | "amber" | "red";
 }) {
   const accents = {
-    sky: "bg-sky-50 text-sky-700 border-sky-200 dark:bg-sky-950/35 dark:text-sky-300 dark:border-sky-900",
-    teal: "bg-teal-50 text-teal-700 border-teal-200 dark:bg-teal-950/35 dark:text-teal-300 dark:border-teal-900",
+    sky: "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/35 dark:text-indigo-300 dark:border-indigo-900",
+    teal: "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950/35 dark:text-cyan-300 dark:border-cyan-900",
     amber:
       "bg-status-warning-subtle text-status-warning border-status-warning-border",
     red: "bg-status-error-subtle text-status-error border-status-error-border"
   };
 
   return (
-    <Card className="overflow-hidden py-0">
-      <CardContent className="p-4">
+    <Card className="group relative overflow-hidden py-0 transition-[border-color,box-shadow] duration-150 hover:border-border hover:shadow-[0_2px_8px_rgb(15_23_42/0.06),0_12px_32px_rgb(15_23_42/0.035)]">
+      <span className={cn("absolute inset-y-0 left-0 w-0.5", {
+        "bg-indigo-500": accent === "sky",
+        "bg-cyan-500": accent === "teal",
+        "bg-status-warning": accent === "amber",
+        "bg-status-error": accent === "red"
+      })} />
+      <CardContent className="p-4 pl-[18px]">
         <div className="flex items-start justify-between gap-3">
           <div className="min-w-0">
             <p className="text-xs font-medium text-muted-foreground">{label}</p>
-            <p className="mt-1 text-2xl font-semibold leading-none text-foreground tabular-nums">
+            <p className="mt-1.5 text-2xl font-semibold leading-none tracking-[-0.03em] text-foreground tabular-nums">
               {value}
             </p>
             {detail ? (
@@ -613,11 +610,11 @@ function MetricCard({
           </div>
           <span
             className={cn(
-              "flex h-9 w-9 items-center justify-center rounded-lg border shadow-xs",
+              "flex size-9 items-center justify-center rounded-lg border shadow-[0_1px_2px_rgb(15_23_42/0.04)]",
               accents[accent]
             )}
           >
-            <Icon className="h-4 w-4" />
+            <Icon className="size-4" />
           </span>
         </div>
       </CardContent>
@@ -646,9 +643,9 @@ function ScannerStatus({
 
   return (
     <Card className="mt-5 overflow-hidden py-0">
-      <div className="flex flex-col gap-3 border-b border-border/80 bg-surface-raised px-4 py-4 sm:flex-row sm:items-start sm:justify-between sm:px-5">
+      <div className="flex flex-col gap-3 border-b border-border/70 bg-surface-raised px-4 py-3.5 sm:flex-row sm:items-start sm:justify-between sm:px-5">
         <div className="flex min-w-0 items-start gap-3">
-          <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg border border-teal-200 bg-teal-50 text-teal-700 dark:border-teal-900 dark:bg-teal-950/35 dark:text-teal-300">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-lg border border-cyan-200 bg-cyan-50 text-cyan-700 dark:border-cyan-900 dark:bg-cyan-950/35 dark:text-cyan-300">
             <Server className="h-4 w-4" aria-hidden />
           </span>
           <div className="min-w-0">

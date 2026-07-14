@@ -25,7 +25,7 @@ export default function RootLayout({
           enableSystem
           disableTransitionOnChange
         >
-          <div id="main-content">{children}</div>
+          <div>{children}</div>
         </ThemeProvider>
       </body>
     </html>

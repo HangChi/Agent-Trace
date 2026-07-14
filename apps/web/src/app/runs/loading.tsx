@@ -3,25 +3,32 @@ import { Card, CardContent } from "~/components/ui/card";
 
 export default function RunsLoading() {
   return (
-    <main className="min-h-screen bg-background">
-      <header className="border-b border-border/80 bg-background/85">
-        <div className="w-full px-4 py-3 sm:px-6 lg:px-8 2xl:px-10">
-          <div className="flex flex-col gap-4 lg:flex-row lg:items-center lg:justify-between">
-            <div className="space-y-2">
-              <Skeleton className="h-9 w-48" />
-              <Skeleton className="h-4 w-full max-w-xl" />
-            </div>
-            <div className="flex gap-3">
-              <Skeleton className="h-8 w-28" />
-              <Skeleton className="h-8 w-8" />
-              <Skeleton className="h-8 w-64" />
-            </div>
+    <main id="main-content" className="min-h-dvh bg-background">
+      <header className="border-b border-border/70 bg-background/80">
+        <div className="mx-auto flex min-h-14 w-full max-w-[1800px] items-center justify-between gap-4 px-4 py-2 sm:px-6 lg:px-8 2xl:px-10">
+          <div className="flex items-center gap-2.5">
+            <Skeleton className="size-8 rounded-lg" />
+            <Skeleton className="h-4 w-24" />
+          </div>
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-9 w-9 rounded-lg" />
+            <Skeleton className="h-9 w-24 rounded-lg" />
+            <Skeleton className="h-9 w-9 rounded-lg" />
           </div>
         </div>
       </header>
 
-      <section className="w-full px-4 py-5 sm:px-6 lg:px-8 2xl:px-10">
-        <div className="grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
+      <section className="mx-auto w-full max-w-[1800px] px-4 py-6 sm:px-6 lg:px-8 2xl:px-10">
+        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-7 w-48" />
+            <Skeleton className="h-4 w-full max-w-xl" />
+          </div>
+          <Skeleton className="h-9 w-72 max-w-full rounded-lg" />
+        </div>
+
+        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
           {Array.from({ length: 4 }).map((_, i) => (
             <Card key={i} className="py-0">
               <CardContent className="space-y-2 p-4">
@@ -33,7 +40,7 @@ export default function RunsLoading() {
         </div>
 
         <Card className="mt-5 overflow-hidden py-0">
-          <div className="flex items-center justify-between border-b border-border/80 bg-surface-raised px-5 py-4">
+          <div className="flex items-center justify-between border-b border-border/70 bg-surface-raised px-5 py-3.5">
             <div className="space-y-2">
               <Skeleton className="h-4 w-28" />
               <Skeleton className="h-3 w-56" />

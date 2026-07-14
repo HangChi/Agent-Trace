@@ -20,12 +20,11 @@ import {
 } from "lucide-react";
 
 import {
+  ConsoleHeader,
   EmptyState,
   ErrorState,
-  LanguageSwitcher,
   SourceBadge,
-  StatusBadge,
-  ThemeToggle
+  StatusBadge
 } from "~/components";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
@@ -111,45 +110,41 @@ export default async function RunDetailPage({
   const sourceMetadata = summary.sourceMetadata;
 
   return (
-    <main id="main-content" className="min-h-screen bg-background text-foreground">
+    <main id="main-content" className="min-h-dvh bg-background text-foreground">
       <AutoRefresh />
-      <header className="sticky top-0 z-40 border-b border-border/80 bg-background/85 backdrop-blur-xl">
-        <div className="w-full px-4 py-3 sm:px-6 lg:px-8 2xl:px-10">
-          <div className="flex items-center justify-between gap-3">
-            <Button variant="ghost" size="sm" className="-ml-2" asChild>
-              <Link href={localizedHref("/runs", locale)}>
-                <ArrowLeft className="h-4 w-4" />
-                {text.detail.back}
-              </Link>
-            </Button>
-            <div className="flex items-center gap-2">
-              <LanguageSwitcher
-                locale={locale}
-                path={detailPath(id, filters, visibility, pagination.page, view)}
-              />
-              <ThemeToggle locale={locale} />
-            </div>
-          </div>
+      <ConsoleHeader
+        locale={locale}
+        path={detailPath(id, filters, visibility, pagination.page, view)}
+      />
 
-          <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="min-w-0">
-              <p className="text-xs font-semibold text-primary">Trace Detail</p>
-              <h1 className="mt-1 break-all font-mono text-base font-semibold leading-7 text-foreground sm:text-lg">
-                {id}
-              </h1>
-            </div>
-            <div className="grid grid-cols-3 gap-2 sm:flex sm:flex-wrap sm:justify-end">
-              <MiniStat icon={Hash} label={text.detail.steps} value={pagination.total} />
-              <MiniStat icon={Zap} label={text.common.tokens} value={totalTokens.toLocaleString()} />
-              <MiniStat icon={AlertTriangle} label={text.detail.errors} value={failedEvents} accent="danger" />
-            </div>
+      <section className="mx-auto w-full max-w-[1800px] px-4 py-6 sm:px-6 lg:px-8 2xl:px-10">
+        <Button variant="ghost" size="sm" className="-ml-3 text-muted-foreground" asChild>
+          <Link href={localizedHref("/runs", locale)}>
+            <ArrowLeft className="size-4" aria-hidden />
+            {text.detail.back}
+          </Link>
+        </Button>
+
+        <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="min-w-0">
+            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+              {text.detail.title}
+            </p>
+            <h1 className="mt-1.5 break-all font-mono text-lg font-semibold leading-7 tracking-[-0.02em] text-foreground sm:text-xl">
+              {id}
+            </h1>
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:flex lg:flex-wrap lg:justify-end">
+            <MiniStat icon={Hash} label={text.detail.steps} value={pagination.total} />
+            <MiniStat icon={Zap} label={text.common.tokens} value={totalTokens.toLocaleString()} />
+            <MiniStat icon={Clock3} label={text.detail.totalDuration} value={formatDuration(totalDurationMs)} />
+            <MiniStat icon={AlertTriangle} label={text.detail.errors} value={failedEvents} accent="danger" />
           </div>
         </div>
-      </header>
 
-      <section className="grid w-full gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:px-8 2xl:px-10">
+        <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <Card className="overflow-hidden py-0">
-          <div className="border-b border-border/80 bg-surface-raised px-4 py-4 sm:px-5">
+          <div className="border-b border-border/70 bg-surface-raised px-4 py-3.5 sm:px-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
                 <h2 className="text-sm font-semibold text-foreground">
@@ -160,7 +155,7 @@ export default async function RunDetailPage({
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                <div className="inline-flex rounded-md border border-border/80 bg-surface-muted p-0.5">
+                <div className="inline-flex rounded-lg border border-border/70 bg-surface-muted p-0.5 shadow-[0_1px_2px_rgb(15_23_42/0.04)]">
                   <Button variant={view === "timeline" ? "secondary" : "ghost"} size="xs" asChild>
                     <Link
                       href={detailHref(id, locale, filters, visibility, pagination.page, "timeline")}
@@ -245,7 +240,7 @@ export default async function RunDetailPage({
           ) : null}
         </Card>
 
-        <aside className="flex flex-col gap-4">
+        <aside className="flex flex-col gap-4 xl:sticky xl:top-20 xl:self-start">
           <Card className="py-0">
             <CardContent className="p-4">
               <h2 className="text-sm font-semibold text-foreground">{text.detail.summary}</h2>
@@ -314,8 +309,9 @@ export default async function RunDetailPage({
             </CardContent>
           </Card>
         </aside>
+        </div>
       </section>
-      <Button asChild size="icon" className="fixed right-5 bottom-5 z-50 rounded-full shadow-lg">
+      <Button asChild size="icon" className="fixed right-5 bottom-5 z-50 size-11 rounded-full shadow-lg sm:size-10">
         <a href="#main-content" aria-label={text.detail.backToTop} title={text.detail.backToTop}>
           <ArrowUp className="h-4 w-4" aria-hidden />
         </a>
@@ -388,14 +384,14 @@ function MiniStat({
   return (
     <div
       className={cn(
-        "flex min-w-0 items-center gap-2 rounded-lg border border-border/80 bg-surface-raised px-3 py-2 shadow-xs",
+        "flex min-h-14 min-w-0 items-center gap-2.5 rounded-xl border border-border/70 bg-surface-raised px-3 py-2 shadow-[0_1px_2px_rgb(15_23_42/0.04)]",
         accent === "danger" && "border-status-error-border bg-status-error-subtle"
       )}
     >
-      <Icon className={cn("h-4 w-4 shrink-0 text-muted-foreground", accent === "danger" && "text-status-error")} />
+      <Icon className={cn("size-4 shrink-0 text-muted-foreground", accent === "danger" && "text-status-error")} />
       <div className="min-w-0">
-        <div className="truncate text-[11px] font-medium text-muted-foreground">{label}</div>
-        <div className={cn("truncate text-sm font-semibold tabular-nums", accent === "danger" && "text-status-error")}>
+        <div className="truncate text-xs font-medium text-muted-foreground">{label}</div>
+        <div className={cn("mt-0.5 truncate text-sm font-semibold tabular-nums", accent === "danger" && "text-status-error")}>
           {value}
         </div>
       </div>
@@ -428,15 +424,15 @@ function FilterBar({
   return (
     <form
       action={localizedHref(`/runs/${runId}`, locale)}
-      className="mt-4 grid gap-3 rounded-lg border border-border/80 bg-surface-muted p-3 md:grid-cols-2 2xl:grid-cols-[minmax(220px,1fr)_150px_170px_150px_auto_auto]"
+      className="mt-4 grid gap-3 rounded-xl border border-border/70 bg-surface p-3 md:grid-cols-2 2xl:grid-cols-[minmax(220px,1fr)_150px_170px_150px_auto_auto]"
     >
       {locale === "en" ? <input type="hidden" name="lang" value="en" /> : null}
       {visibility !== "display" ? <input type="hidden" name="visibility" value={visibility} /> : null}
       {view !== "timeline" ? <input type="hidden" name="view" value={view} /> : null}
       <label className="min-w-0 text-xs font-medium text-muted-foreground md:col-span-2 2xl:col-span-1">
         {text.detail.filterSearch}
-        <span className="mt-1 flex h-9 items-center gap-2 rounded-md border border-input bg-surface-raised px-3 text-foreground shadow-xs">
-          <Search className="h-4 w-4 shrink-0 text-muted-foreground" aria-hidden />
+        <span className="mt-1 flex h-10 items-center gap-2 rounded-lg border border-input bg-surface-raised px-3 text-foreground shadow-[0_1px_2px_rgb(15_23_42/0.04)] transition-colors focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/20">
+          <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
           <input
             name="q"
             defaultValue={filters.q}
@@ -512,7 +508,7 @@ function FilterSelect({
       <select
         name={name}
         defaultValue={value}
-        className="mt-1 h-9 w-full rounded-md border border-input bg-surface-raised px-3 text-sm text-foreground shadow-xs outline-none transition-colors focus:border-ring focus:ring-[3px] focus:ring-ring/25"
+        className="mt-1 h-10 w-full cursor-pointer rounded-lg border border-input bg-surface-raised px-3 text-sm text-foreground shadow-[0_1px_2px_rgb(15_23_42/0.04)] outline-none transition-colors duration-150 focus:border-ring focus:ring-[3px] focus:ring-ring/20"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -544,7 +540,7 @@ function PaginationControls({
   const nextPage = Math.min(pagination.totalPages, pagination.page + 1);
 
   return (
-    <div className="flex flex-col gap-3 border-t border-border/80 bg-surface-raised px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+    <div className="flex flex-col gap-3 border-t border-border/70 bg-surface-raised px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
       <div className="text-xs text-muted-foreground tabular-nums">
         {pagination.page.toLocaleString()} / {pagination.totalPages.toLocaleString()}
       </div>
@@ -578,23 +574,23 @@ function PaginationControls({
 
 function Timeline({ events, locale }: { events: DashboardTraceEvent[]; locale: Locale }) {
   return (
-    <ol className="divide-y divide-border/70">
+    <ol className="divide-y divide-border/60">
       {events.map((event) => (
         <li
           key={event.id}
-          className="grid gap-4 px-4 py-4 transition-colors hover:bg-accent/25 sm:px-5 md:grid-cols-[138px_minmax(0,1fr)]"
+          className="grid gap-3 px-4 py-4 transition-colors duration-150 hover:bg-accent/30 sm:px-5 md:grid-cols-[128px_minmax(0,1fr)] md:gap-4"
         >
           <div className="text-xs text-muted-foreground">
-            <div className="inline-flex items-center gap-1.5 rounded-md border border-border/80 bg-surface-muted px-2 py-1 font-mono font-medium text-foreground shadow-xs">
+            <div className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-surface-muted px-2 py-1 font-mono font-medium text-foreground shadow-[0_1px_2px_rgb(15_23_42/0.04)]">
               <Clock3 className="h-3 w-3 text-muted-foreground" aria-hidden />
               {formatClockTime(event.timestamp, locale)}
             </div>
           </div>
 
-          <article className="relative min-w-0 border-l border-border/80 pl-5">
+          <article className="relative min-w-0 border-l border-border pl-5">
             <span
               className={cn(
-                "absolute -left-[6px] top-1 h-3 w-3 rounded-full border-2 border-card ring-2",
+                "absolute -left-[6px] top-1 size-3 rounded-full border-2 border-card ring-2",
                 dotClass(event.status)
               )}
             />
@@ -661,8 +657,8 @@ function TraceTreeItem({ node, locale }: { node: TraceTreeNode; locale: Locale }
 
   return (
     <li>
-      <details className="rounded-lg border border-border/80 bg-surface-raised shadow-xs">
-        <summary className="cursor-pointer px-3 py-3 transition-colors hover:bg-accent/25 sm:px-4">
+      <details className="overflow-hidden rounded-xl border border-border/70 bg-surface-raised shadow-[0_1px_2px_rgb(15_23_42/0.04)]">
+        <summary className="cursor-pointer px-3 py-3 transition-colors duration-150 hover:bg-accent/30 sm:px-4">
           <span className="ml-2 inline-flex max-w-[calc(100%-0.5rem)] flex-wrap items-center gap-2 align-middle">
             <span className="inline-flex items-center gap-1.5 font-mono text-xs font-medium text-muted-foreground">
               <Clock3 className="h-3 w-3" aria-hidden />
@@ -674,7 +670,7 @@ function TraceTreeItem({ node, locale }: { node: TraceTreeNode; locale: Locale }
         <div className="border-t border-border/70 px-4 py-4 sm:px-5">
           <EventDetails event={event} locale={locale} showSummary={false} />
           {node.children.length > 0 ? (
-            <ol className="mt-4 space-y-2 border-l border-border/80 pl-3 sm:pl-4">
+            <ol className="mt-4 space-y-2 border-l border-border/70 pl-3 sm:pl-4">
               {node.children.map((child) => (
                 <TraceTreeItem key={child.event.id} node={child} locale={locale} />
               ))}

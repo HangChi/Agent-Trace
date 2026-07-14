@@ -3,33 +3,37 @@ import { Card, CardContent } from "~/components/ui/card";
 
 export default function RunDetailLoading() {
   return (
-    <main className="min-h-screen bg-background">
-      <header className="border-b border-border/80 bg-background/85">
-        <div className="w-full px-4 py-3 sm:px-6 lg:px-8 2xl:px-10">
-          <div className="flex items-center justify-between gap-3">
-            <Skeleton className="h-8 w-32" />
-            <div className="flex items-center gap-2">
-              <Skeleton className="h-8 w-28" />
-              <Skeleton className="h-8 w-8" />
-            </div>
+    <main id="main-content" className="min-h-dvh bg-background">
+      <header className="border-b border-border/70 bg-background/80">
+        <div className="mx-auto flex min-h-14 w-full max-w-[1800px] items-center justify-between gap-4 px-4 py-2 sm:px-6 lg:px-8 2xl:px-10">
+          <div className="flex items-center gap-2.5">
+            <Skeleton className="size-8 rounded-lg" />
+            <Skeleton className="h-4 w-24" />
           </div>
-          <div className="mt-4 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-            <div className="space-y-2">
-              <Skeleton className="h-3 w-24" />
-              <Skeleton className="h-6 w-80 max-w-full" />
-            </div>
-            <div className="grid grid-cols-3 gap-2">
-              {Array.from({ length: 3 }).map((_, i) => (
-                <Skeleton key={i} className="h-12 w-24" />
-              ))}
-            </div>
+          <div className="flex items-center gap-2">
+            <Skeleton className="h-9 w-24 rounded-lg" />
+            <Skeleton className="h-9 w-9 rounded-lg" />
           </div>
         </div>
       </header>
 
-      <section className="grid w-full gap-5 px-4 py-5 sm:px-6 lg:grid-cols-[minmax(0,1fr)_380px] lg:px-8 2xl:px-10">
+      <section className="mx-auto w-full max-w-[1800px] px-4 py-6 sm:px-6 lg:px-8 2xl:px-10">
+        <Skeleton className="h-9 w-36 rounded-lg" />
+        <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+          <div className="space-y-2">
+            <Skeleton className="h-3 w-24" />
+            <Skeleton className="h-6 w-80 max-w-full" />
+          </div>
+          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4">
+            {Array.from({ length: 4 }).map((_, i) => (
+              <Skeleton key={i} className="h-14 w-full rounded-xl sm:w-24" />
+            ))}
+          </div>
+        </div>
+
+        <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
         <Card className="overflow-hidden py-0">
-          <div className="space-y-2 border-b border-border/80 bg-surface-raised px-5 py-4">
+          <div className="space-y-2 border-b border-border/70 bg-surface-raised px-5 py-3.5">
             <Skeleton className="h-4 w-32" />
             <Skeleton className="h-3 w-80 max-w-full" />
           </div>
@@ -47,7 +51,7 @@ export default function RunDetailLoading() {
           </div>
         </Card>
 
-        <aside className="space-y-4">
+        <aside className="space-y-4 xl:sticky xl:top-20 xl:self-start">
           <Card className="py-0">
             <CardContent className="space-y-3 p-4">
               <Skeleton className="h-4 w-24" />
@@ -66,6 +70,7 @@ export default function RunDetailLoading() {
             </CardContent>
           </Card>
         </aside>
+        </div>
       </section>
     </main>
   );

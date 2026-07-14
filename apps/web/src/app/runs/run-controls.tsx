@@ -77,17 +77,19 @@ export function SelectAllRunsCheckbox({
   }, [selectedCount, totalCount]);
 
   return (
-    <input
-      ref={checkboxRef}
-      type="checkbox"
-      className="size-4 rounded border-border accent-primary"
-      checked={allSelected}
-      aria-label={label}
-      title={label}
-      onChange={(event) => {
-        setRunCheckboxes(formId, event.currentTarget.checked);
-      }}
-    />
+    <label className="-ml-2 inline-flex size-11 cursor-pointer items-center justify-center rounded-lg hover:bg-accent/60 md:size-9">
+      <input
+        ref={checkboxRef}
+        type="checkbox"
+        className="size-4 cursor-pointer rounded border-border accent-primary"
+        checked={allSelected}
+        aria-label={label}
+        title={label}
+        onChange={(event) => {
+          setRunCheckboxes(formId, event.currentTarget.checked);
+        }}
+      />
+    </label>
   );
 }
 
