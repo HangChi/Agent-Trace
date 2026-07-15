@@ -4,11 +4,18 @@ import * as React from "react"
 
 import { cn } from "~/lib/utils"
 
-function Table({ className, ...props }: React.ComponentProps<"table">) {
+function Table({
+  className,
+  containerClassName,
+  ...props
+}: React.ComponentProps<"table"> & { containerClassName?: string }) {
   return (
     <div
       data-slot="table-container"
-      className="relative w-full overscroll-x-contain overflow-x-auto"
+      className={cn(
+        "relative w-full overscroll-contain overflow-x-auto",
+        containerClassName
+      )}
     >
       <table
         data-slot="table"
@@ -29,7 +36,7 @@ function TableHeader({
       data-slot="table-header"
       className={cn(
         "bg-surface-raised/95 [&_tr]:border-b [&_tr]:border-border/80",
-        sticky && "sticky top-14 z-20 backdrop-blur-md",
+        sticky && "sticky top-0 z-20 backdrop-blur-md",
         className
       )}
       {...props}
@@ -65,7 +72,7 @@ function TableRow({ className, ...props }: React.ComponentProps<"tr">) {
     <tr
       data-slot="table-row"
       className={cn(
-        "border-b border-border/60 transition-colors duration-150 hover:bg-accent/45 has-aria-expanded:bg-accent/45 data-[state=selected]:bg-accent/55",
+        "border-b border-border/70 transition-colors duration-150 hover:bg-accent/55 has-aria-expanded:bg-accent/55 data-[state=selected]:bg-accent/70",
         className
       )}
       {...props}

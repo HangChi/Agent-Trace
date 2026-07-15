@@ -13,6 +13,8 @@
   },
   "dependencies": {
     "@agent-trace/schema": "workspace:*",
+    "@fontsource-variable/ibm-plex-sans": "^5.2.8",
+    "@fontsource/ibm-plex-mono": "^5.2.7",
     "@radix-ui/react-dialog": "^1.1.17",
     "@radix-ui/react-slot": "^1.3.0",
     "class-variance-authority": "^0.7.1",

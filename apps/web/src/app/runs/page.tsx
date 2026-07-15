@@ -15,6 +15,7 @@ import {
   SourceBadge,
   StatusBadge
 } from "~/components";
+import { TelemetryStrip } from "~/components/telemetry-strip";
 import { Card, CardContent } from "~/components/ui/card";
 import { Button } from "~/components/ui/button";
 import {
@@ -162,65 +163,46 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
       <ConsoleHeader
         locale={locale}
         path={runsHref(locale, pagination.page, scannerMode, runMode)}
+        collectorUrl={collectorUrl}
       />
 
-      <section className="mx-auto w-full max-w-[1800px] px-4 py-6 sm:px-6 lg:px-8 2xl:px-10">
+      <section className="mx-auto w-full max-w-[1800px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8 2xl:px-10">
         <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+            <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
               {text.runs.consoleLabel}
             </p>
-            <h1 className="mt-1.5 text-2xl font-semibold tracking-[-0.025em] text-foreground">
+            <h1 className="mt-2 text-3xl font-semibold tracking-[-0.045em] text-foreground">
               {text.runs.title}
             </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground">
+            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground sm:text-[15px]">
               {text.runs.subtitle}
             </p>
           </div>
-          <div
-            className="inline-flex h-9 max-w-full items-center gap-2 self-start rounded-lg border border-border/70 bg-surface-raised px-3 text-xs shadow-[0_1px_2px_rgb(15_23_42/0.04)] lg:self-auto"
-            title={collectorUrl}
-          >
-            <span className="size-1.5 rounded-full bg-status-success shadow-[0_0_0_3px_var(--status-success-subtle)]" />
-            <Server className="size-3.5 text-muted-foreground" aria-hidden />
-            <span className="font-medium text-foreground">{text.common.collector}</span>
-            <span className="max-w-[220px] truncate font-mono text-muted-foreground">
-              {collectorUrl}
-            </span>
-          </div>
         </div>
 
-        <div className="mt-5 grid gap-3 sm:grid-cols-2 lg:grid-cols-4">
-          <MetricCard label={text.runs.allRuns} value={totalRuns} icon={Activity} accent="sky" />
-          <MetricCard
-            label={text.runs.agentSource}
-            value={agentSources.total}
-            detail={agentSources.detail}
-            icon={Cpu}
-            accent="teal"
-          />
-          <MetricCard label={text.runs.running} value={runningRuns} icon={Play} accent="amber" />
-          <MetricCard label={text.runs.errors} value={failedRuns} icon={AlertCircle} accent="red" />
-        </div>
-
-        <UsageLedger summary={usageResult.summary} error={usageResult.error} locale={locale} />
-
-        {allScannerDiagnostics.length > 0 ? (
-          <ScannerStatus
-            currentPage={pagination.page}
-            diagnostics={scannerDiagnostics}
-            hiddenCount={hiddenScannerCount}
-            locale={locale}
-            runMode={runMode}
-            showAll={scannerMode === "all"}
-          />
-        ) : null}
+        <TelemetryStrip
+          className="mt-6"
+          items={[
+            { label: text.runs.allRuns, value: totalRuns, icon: Activity },
+            {
+              label: text.runs.agentSource,
+              value: agentSources.total,
+              detail: agentSources.detail,
+              icon: Cpu,
+              tone: "trace"
+            },
+            { label: text.runs.running, value: runningRuns, icon: Play, tone: "running" },
+            { label: text.runs.errors, value: failedRuns, icon: AlertCircle, tone: "error" }
+          ]}
+        />
 
         <Card className="mt-5 overflow-hidden py-0">
-          <div className="flex flex-col gap-3 border-b border-border/70 bg-surface-raised px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
+          <div className="flex flex-col gap-3 border-b border-border bg-surface-raised px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div>
               <div className="flex items-center gap-2">
-                <h2 className="text-sm font-semibold text-foreground">{text.runs.recent}</h2>
+                <span className="h-4 w-0.5 rounded-full bg-primary" aria-hidden />
+                <h2 className="text-sm font-semibold tracking-[-0.01em] text-foreground">{text.runs.recent}</h2>
                 <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-border/80 bg-surface-muted px-1.5 text-xs text-muted-foreground tabular-nums">
                   {totalRuns.toLocaleString()}
                 </span>
@@ -230,7 +212,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
               </div>
               <p className="mt-1 text-xs text-muted-foreground">{text.runs.latest}</p>
             </div>
-            <div className="flex flex-col gap-2 sm:flex-row sm:items-center">
+            <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" size="sm" asChild>
                 <Link
                   href={runsHref(
@@ -270,6 +252,9 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
           ) : null}
           {!error && runs.length > 0 ? (
             <>
+              <p className="border-b border-border bg-surface-muted/70 px-4 py-2 font-mono text-[10px] text-muted-foreground md:hidden">
+                {text.runs.tableScrollHint}
+              </p>
               <form id={runsBulkDeleteFormId}>
                 <ResizableTableColumns
                   columns={runsTableColumns}
@@ -278,6 +263,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                 >
                   <Table
                     className="table-fixed"
+                    containerClassName="max-h-[72vh] overflow-auto"
                     style={{
                       minWidth: "var(--runs-table-width)",
                       width: "max(100%, var(--runs-table-width))"
@@ -296,7 +282,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                       <col style={{ width: "var(--runs-col-duration)" }} />
                       <col className="w-[42px]" />
                     </colgroup>
-                    <TableHeader sticky={false}>
+                    <TableHeader>
                       <TableRow className="bg-surface-muted/90 hover:bg-surface-muted/90">
                         <TableHead className="h-11 pl-4 pr-0">
                           <SelectAllRunsCheckbox
@@ -361,7 +347,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                             />
                           </label>
                         </TableCell>
-                        <TableCell className="py-4 whitespace-normal">
+                        <TableCell className="relative py-4 whitespace-normal before:absolute before:inset-y-3 before:left-0 before:w-px before:bg-border group-hover:before:bg-primary/45">
                           <div className="flex min-w-0 items-center gap-3">
                             <StatusDot status={run.status} />
                             <div className="min-w-0">
@@ -450,6 +436,19 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
             </>
           ) : null}
         </Card>
+
+        <UsageLedger summary={usageResult.summary} error={usageResult.error} locale={locale} />
+
+        {allScannerDiagnostics.length > 0 ? (
+          <ScannerStatus
+            currentPage={pagination.page}
+            diagnostics={scannerDiagnostics}
+            hiddenCount={hiddenScannerCount}
+            locale={locale}
+            runMode={runMode}
+            showAll={scannerMode === "all"}
+          />
+        ) : null}
       </section>
     </main>
   );
@@ -647,62 +646,6 @@ function runsHref(
   const query = params.toString();
 
   return localizedHref(query ? `/runs?${query}` : "/runs", locale);
-}
-
-function MetricCard({
-  label,
-  value,
-  detail,
-  icon: Icon,
-  accent
-}: {
-  label: string;
-  value: number;
-  detail?: string;
-  icon: React.ComponentType<{ className?: string }>;
-  accent: "sky" | "teal" | "amber" | "red";
-}) {
-  const accents = {
-    sky: "bg-indigo-50 text-indigo-700 border-indigo-200 dark:bg-indigo-950/35 dark:text-indigo-300 dark:border-indigo-900",
-    teal: "bg-cyan-50 text-cyan-700 border-cyan-200 dark:bg-cyan-950/35 dark:text-cyan-300 dark:border-cyan-900",
-    amber:
-      "bg-status-warning-subtle text-status-warning border-status-warning-border",
-    red: "bg-status-error-subtle text-status-error border-status-error-border"
-  };
-
-  return (
-    <Card className="group relative overflow-hidden py-0 transition-[border-color,box-shadow] duration-150 hover:border-border hover:shadow-[0_2px_8px_rgb(15_23_42/0.06),0_12px_32px_rgb(15_23_42/0.035)]">
-      <span className={cn("absolute inset-y-0 left-0 w-0.5", {
-        "bg-indigo-500": accent === "sky",
-        "bg-cyan-500": accent === "teal",
-        "bg-status-warning": accent === "amber",
-        "bg-status-error": accent === "red"
-      })} />
-      <CardContent className="p-4 pl-[18px]">
-        <div className="flex items-start justify-between gap-3">
-          <div className="min-w-0">
-            <p className="text-xs font-medium text-muted-foreground">{label}</p>
-            <p className="mt-1.5 text-2xl font-semibold leading-none tracking-[-0.03em] text-foreground tabular-nums">
-              {value}
-            </p>
-            {detail ? (
-              <p className="mt-2 max-w-[220px] truncate text-xs text-muted-foreground" title={detail}>
-                {detail}
-              </p>
-            ) : null}
-          </div>
-          <span
-            className={cn(
-              "flex size-9 items-center justify-center rounded-lg border shadow-[0_1px_2px_rgb(15_23_42/0.04)]",
-              accents[accent]
-            )}
-          >
-            <Icon className="size-4" />
-          </span>
-        </div>
-      </CardContent>
-    </Card>
-  );
 }
 
 function ScannerStatus({

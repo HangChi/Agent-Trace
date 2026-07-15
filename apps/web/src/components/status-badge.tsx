@@ -12,6 +12,12 @@ const statusStyles: Record<string, string> = {
 };
 
 export function StatusBadge({ status, locale }: { status: string; locale: Locale }) {
+  const dotStyles: Record<string, string> = {
+    success: "bg-status-success",
+    error: "bg-status-error",
+    running: "animate-pulse bg-status-warning"
+  };
+
   return (
     <Badge
       variant="outline"
@@ -20,6 +26,7 @@ export function StatusBadge({ status, locale }: { status: string; locale: Locale
         statusStyles[status] ?? "bg-muted text-muted-foreground border-border"
       )}
     >
+      <span className={cn("size-1.5 rounded-full", dotStyles[status] ?? "bg-muted-foreground")} aria-hidden />
       {formatStatus(status, locale)}
     </Badge>
   );

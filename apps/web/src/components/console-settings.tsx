@@ -60,7 +60,7 @@ export function ConsoleSettings({ locale, path }: { locale: Locale; path: string
           type="button"
           variant="outline"
           size="sm"
-          className="px-2.5"
+          className="px-2.5 text-muted-foreground hover:text-foreground"
           aria-label={text.settings}
           title={text.settings}
         >
@@ -70,18 +70,19 @@ export function ConsoleSettings({ locale, path }: { locale: Locale; path: string
       </DialogTrigger>
 
       <DialogContent className="gap-0 overflow-hidden p-0 sm:max-w-lg">
-        <DialogHeader className="border-b border-border/70 px-6 py-5 pr-12">
-          <DialogTitle>{text.settings}</DialogTitle>
+        <DialogHeader className="relative border-b border-border bg-surface-muted/55 px-6 py-5 pr-12">
+          <span className="absolute inset-y-0 left-0 w-0.5 bg-primary" aria-hidden />
+          <DialogTitle className="tracking-[-0.025em]">{text.settings}</DialogTitle>
           <DialogDescription>{text.settingsDescription}</DialogDescription>
         </DialogHeader>
 
-        <div className="divide-y divide-border/70">
+        <div className="divide-y divide-border">
           <SettingsRow
             icon={Sun}
             title={text.appearance}
             description={text.appearanceDescription}
           >
-            <div className="grid grid-cols-3 gap-1 rounded-lg border border-border/70 bg-surface-muted p-1">
+            <div className="grid grid-cols-3 gap-1 rounded-lg border border-border bg-surface-muted p-1">
               {themes.map((option) => {
                 const Icon = option.icon;
                 const selected = mounted && theme === option.value;
@@ -95,7 +96,7 @@ export function ConsoleSettings({ locale, path }: { locale: Locale; path: string
                     className={cn(
                       "inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors",
                       "hover:bg-surface-raised hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring disabled:opacity-50",
-                      selected && "bg-surface-raised text-foreground shadow-xs"
+                      selected && "bg-surface-raised text-primary shadow-[var(--shadow-control)]"
                     )}
                     onClick={() => setTheme(option.value)}
                   >
@@ -112,7 +113,7 @@ export function ConsoleSettings({ locale, path }: { locale: Locale; path: string
             title={text.language}
             description={text.languageDescription}
           >
-            <div className="grid grid-cols-2 gap-1 rounded-lg border border-border/70 bg-surface-muted p-1">
+            <div className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-surface-muted p-1">
               {(["zh", "en"] as const).map((entry) => {
                 const selected = entry === locale;
 
@@ -124,7 +125,7 @@ export function ConsoleSettings({ locale, path }: { locale: Locale; path: string
                     className={cn(
                       "inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors",
                       "hover:bg-surface-raised hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
-                      selected && "bg-surface-raised text-foreground shadow-xs"
+                      selected && "bg-surface-raised text-primary shadow-[var(--shadow-control)]"
                     )}
                     aria-current={selected ? "page" : undefined}
                   >
@@ -141,7 +142,7 @@ export function ConsoleSettings({ locale, path }: { locale: Locale; path: string
             title={text.liveRefresh}
             description={text.liveRefreshDescription}
           >
-            <div className="grid grid-cols-2 gap-1 rounded-lg border border-border/70 bg-surface-muted p-1">
+            <div className="grid grid-cols-2 gap-1 rounded-lg border border-border bg-surface-muted p-1">
               {[
                 { value: true, label: text.liveRefreshOn },
                 { value: false, label: text.liveRefreshOff }
@@ -153,7 +154,7 @@ export function ConsoleSettings({ locale, path }: { locale: Locale; path: string
                   className={cn(
                     "inline-flex h-9 items-center justify-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors",
                     "hover:bg-surface-raised hover:text-foreground focus-visible:ring-2 focus-visible:ring-ring",
-                    autoRefresh === option.value && "bg-surface-raised text-foreground shadow-xs"
+                    autoRefresh === option.value && "bg-surface-raised text-primary shadow-[var(--shadow-control)]"
                   )}
                   onClick={() => updateAutoRefresh(option.value)}
                 >
@@ -165,7 +166,7 @@ export function ConsoleSettings({ locale, path }: { locale: Locale; path: string
           </SettingsRow>
         </div>
 
-        <p className="border-t border-border/70 bg-surface-muted px-6 py-3 text-xs text-muted-foreground">
+        <p className="border-t border-border bg-surface-muted px-6 py-3 font-mono text-[11px] text-muted-foreground">
           {text.settingsLocalNote}
         </p>
       </DialogContent>
@@ -191,7 +192,7 @@ function SettingsRow({
           <Icon className="size-4" aria-hidden />
         </span>
         <div className="min-w-0">
-          <h3 className="text-sm font-medium text-foreground">{title}</h3>
+          <h3 className="text-sm font-semibold text-foreground">{title}</h3>
           <p className="mt-1 text-xs leading-5 text-muted-foreground">{description}</p>
         </div>
       </div>

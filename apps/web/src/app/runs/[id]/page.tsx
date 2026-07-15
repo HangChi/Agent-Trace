@@ -27,6 +27,7 @@ import {
   SourceBadge,
   StatusBadge
 } from "~/components";
+import { TelemetryStrip } from "~/components/telemetry-strip";
 import { Button } from "~/components/ui/button";
 import { Card, CardContent } from "~/components/ui/card";
 import {
@@ -127,9 +128,10 @@ export default async function RunDetailPage({
       <ConsoleHeader
         locale={locale}
         path={detailPath(id, filters, visibility, pagination.page, view)}
+        collectorUrl={collectorUrl}
       />
 
-      <section className="mx-auto w-full max-w-[1800px] px-4 py-6 sm:px-6 lg:px-8 2xl:px-10">
+      <section className="mx-auto w-full max-w-[1800px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8 2xl:px-10">
         <Button variant="ghost" size="sm" className="-ml-3 text-muted-foreground" asChild>
           <Link href={localizedHref("/runs", locale)}>
             <ArrowLeft className="size-4" aria-hidden />
@@ -137,38 +139,45 @@ export default async function RunDetailPage({
           </Link>
         </Button>
 
-        <div className="mt-3 flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
+        <div className="mt-3">
           <div className="min-w-0">
-            <p className="text-xs font-semibold uppercase tracking-[0.12em] text-primary">
+            <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
               {text.detail.title}
             </p>
-            <h1 className="mt-1.5 break-words text-lg font-semibold leading-7 tracking-[-0.02em] text-foreground sm:text-xl">
+            <h1 className="mt-2 break-words text-2xl font-semibold leading-8 tracking-[-0.04em] text-foreground">
               {run?.name ?? id}
             </h1>
-            {run ? <p className="mt-1 break-all font-mono text-[11px] text-muted-foreground">{id}</p> : null}
-          </div>
-          <div className="grid grid-cols-2 gap-2 sm:grid-cols-4 lg:flex lg:flex-wrap lg:justify-end">
-            <MiniStat icon={Hash} label={text.detail.steps} value={pagination.total} />
-            <MiniStat icon={Zap} label={text.common.tokens} value={totalTokens.toLocaleString()} />
-            <MiniStat icon={Clock3} label={text.detail.totalDuration} value={formatDuration(totalDurationMs)} />
-            <MiniStat icon={AlertTriangle} label={text.detail.errors} value={failedEvents} accent="danger" />
+            {run ? <p className="mt-1.5 break-all font-mono text-[11px] text-muted-foreground">{id}</p> : null}
           </div>
         </div>
 
-        <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_360px]">
+        <TelemetryStrip
+          className="mt-5"
+          items={[
+            { label: text.detail.steps, value: pagination.total, icon: Hash },
+            { label: text.common.tokens, value: totalTokens.toLocaleString(), icon: Zap, tone: "trace" },
+            { label: text.detail.totalDuration, value: formatDuration(totalDurationMs), icon: Clock3 },
+            { label: text.detail.errors, value: failedEvents, icon: AlertTriangle, tone: "error" }
+          ]}
+        />
+
+        <div className="mt-5 grid gap-5 xl:grid-cols-[minmax(0,1fr)_340px]">
         <Card className="overflow-hidden py-0">
-          <div className="border-b border-border/70 bg-surface-raised px-4 py-3.5 sm:px-5">
+          <div className="border-b border-border bg-surface-raised px-4 py-4 sm:px-5">
             <div className="flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
               <div>
-                <h2 className="text-sm font-semibold text-foreground">
-                  {view === "tree" ? text.detail.tree : text.detail.timeline}
-                </h2>
+                <div className="flex items-center gap-2">
+                  <span className="h-4 w-0.5 rounded-full bg-trace" aria-hidden />
+                  <h2 className="text-sm font-semibold tracking-[-0.01em] text-foreground">
+                    {view === "tree" ? text.detail.tree : text.detail.timeline}
+                  </h2>
+                </div>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
                   {view === "tree" ? text.detail.treeHelp : text.detail.timelineHelp}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
-                <div className="inline-flex rounded-lg border border-border/70 bg-surface-muted p-0.5 shadow-[0_1px_2px_rgb(15_23_42/0.04)]">
+                <div className="inline-flex rounded-lg border border-border bg-surface-muted p-0.5 shadow-[var(--shadow-control)]">
                   <Button variant={view === "timeline" ? "secondary" : "ghost"} size="xs" asChild>
                     <Link
                       href={detailHref(id, locale, filters, visibility, pagination.page, "timeline")}
@@ -253,10 +262,18 @@ export default async function RunDetailPage({
           ) : null}
         </Card>
 
-        <aside className="flex flex-col gap-4 xl:sticky xl:top-20 xl:self-start">
-          <Card className="py-0">
-            <CardContent className="p-4">
+        <aside className="flex flex-col gap-4 xl:sticky xl:top-24 xl:self-start">
+          <Card
+            className={cn(
+              "overflow-hidden py-0",
+              traceInsights.length > 0 || failureInsights.length > 0 ? "order-3" : "order-1"
+            )}
+          >
+            <div className="flex items-center gap-2 border-b border-border bg-surface-muted/60 px-4 py-3">
+              <span className="size-1.5 rounded-full bg-trace" aria-hidden />
               <h2 className="text-sm font-semibold text-foreground">{text.detail.summary}</h2>
+            </div>
+            <CardContent className="p-4 pt-1">
               <dl className="mt-4 divide-y divide-border/80 text-sm">
                 {run ? <SummaryRow label={text.detail.runStatus} value={formatStatus(run.status, locale)} /> : null}
                 {run ? <SummaryRow label={text.detail.startedAt} value={formatDateTime(run.startedAt, locale)} /> : null}
@@ -274,7 +291,7 @@ export default async function RunDetailPage({
           </Card>
 
           {run ? (
-            <Card className="py-0">
+            <Card className="order-4 py-0">
               <CardContent className="p-4">
                 <details className="group">
                   <summary className="flex cursor-pointer items-center gap-2 text-sm font-semibold text-foreground">
@@ -295,11 +312,14 @@ export default async function RunDetailPage({
           ) : null}
 
           {traceInsights.length > 0 ? (
-            <Card className="py-0">
+            <Card className="order-1 overflow-hidden py-0">
               <CardContent className="p-4">
-                <h2 className="text-sm font-semibold text-foreground">
-                  {text.detail.automaticDiagnostics}
-                </h2>
+                <div className="flex items-center gap-2">
+                  <Zap className="size-4 text-primary" aria-hidden />
+                  <h2 className="text-sm font-semibold text-foreground">
+                    {text.detail.automaticDiagnostics}
+                  </h2>
+                </div>
                 <div className="mt-3 space-y-3">
                   {traceInsights.map((insight) => (
                     <TraceInsight key={`${insight.kind}-${insight.eventIds.join("-")}`} insight={insight} locale={locale} />
@@ -309,9 +329,17 @@ export default async function RunDetailPage({
             </Card>
           ) : null}
 
-          <Card className="py-0">
+          <Card
+            className={cn(
+              "overflow-hidden py-0",
+              failureInsights.length > 0 || traceInsights.length > 0 ? "order-2" : "order-3"
+            )}
+          >
             <CardContent className="p-4">
-              <h2 className="text-sm font-semibold text-foreground">{text.detail.failureInspector}</h2>
+              <div className="flex items-center gap-2">
+                <AlertTriangle className={cn("size-4", failureInsights.length > 0 ? "text-status-error" : "text-status-success")} aria-hidden />
+                <h2 className="text-sm font-semibold text-foreground">{text.detail.failureInspector}</h2>
+              </div>
               {failureInsights.length > 0 ? (
                 <div className="mt-3 space-y-3">
                   {failureInsights.map((insight, index) => (
@@ -472,35 +500,6 @@ function getEventQuery(
   return params;
 }
 
-function MiniStat({
-  icon: Icon,
-  label,
-  value,
-  accent
-}: {
-  icon: React.ComponentType<{ className?: string }>;
-  label: string;
-  value: string | number;
-  accent?: "danger";
-}) {
-  return (
-    <div
-      className={cn(
-        "flex min-h-14 min-w-0 items-center gap-2.5 rounded-xl border border-border/70 bg-surface-raised px-3 py-2 shadow-[0_1px_2px_rgb(15_23_42/0.04)]",
-        accent === "danger" && "border-status-error-border bg-status-error-subtle"
-      )}
-    >
-      <Icon className={cn("size-4 shrink-0 text-muted-foreground", accent === "danger" && "text-status-error")} />
-      <div className="min-w-0">
-        <div className="truncate text-xs font-medium text-muted-foreground">{label}</div>
-        <div className={cn("mt-0.5 truncate text-sm font-semibold tabular-nums", accent === "danger" && "text-status-error")}>
-          {value}
-        </div>
-      </div>
-    </div>
-  );
-}
-
 function FilterBar({
   runId,
   locale,
@@ -526,14 +525,14 @@ function FilterBar({
   return (
     <form
       action={localizedHref(`/runs/${runId}`, locale)}
-      className="mt-4 grid gap-3 rounded-xl border border-border/70 bg-surface p-3 md:grid-cols-2 2xl:grid-cols-[minmax(220px,1fr)_150px_170px_150px_auto_auto]"
+      className="mt-4 grid gap-2 rounded-lg border border-border bg-surface-muted/70 p-2.5 md:grid-cols-2 2xl:grid-cols-[minmax(220px,1fr)_140px_160px_140px_auto_auto]"
     >
       {locale === "en" ? <input type="hidden" name="lang" value="en" /> : null}
       {visibility !== "display" ? <input type="hidden" name="visibility" value={visibility} /> : null}
       {view !== "timeline" ? <input type="hidden" name="view" value={view} /> : null}
-      <label className="min-w-0 text-xs font-medium text-muted-foreground md:col-span-2 2xl:col-span-1">
+      <label className="min-w-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground md:col-span-2 2xl:col-span-1">
         {text.detail.filterSearch}
-        <span className="mt-1 flex h-10 items-center gap-2 rounded-lg border border-input bg-surface-raised px-3 text-foreground shadow-[0_1px_2px_rgb(15_23_42/0.04)] transition-colors focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/20">
+        <span className="mt-1 flex h-9 items-center gap-2 rounded-md border border-input bg-surface-raised px-3 text-foreground shadow-[var(--shadow-control)] transition-colors focus-within:border-ring focus-within:ring-[3px] focus-within:ring-ring/20">
           <Search className="size-4 shrink-0 text-muted-foreground" aria-hidden />
           <input
             name="q"
@@ -605,12 +604,12 @@ function FilterSelect({
   options: Array<{ value: string; label: string }>;
 }) {
   return (
-    <label className="min-w-0 text-xs font-medium text-muted-foreground">
+    <label className="min-w-0 text-[10px] font-semibold uppercase tracking-[0.08em] text-muted-foreground">
       {label}
       <select
         name={name}
         defaultValue={value}
-        className="mt-1 h-10 w-full cursor-pointer rounded-lg border border-input bg-surface-raised px-3 text-sm text-foreground shadow-[0_1px_2px_rgb(15_23_42/0.04)] outline-none transition-colors duration-150 focus:border-ring focus:ring-[3px] focus:ring-ring/20"
+        className="mt-1 h-9 w-full cursor-pointer rounded-md border border-input bg-surface-raised px-3 text-sm font-normal normal-case tracking-normal text-foreground shadow-[var(--shadow-control)] outline-none transition-colors duration-150 focus:border-ring focus:ring-[3px] focus:ring-ring/20"
       >
         {options.map((option) => (
           <option key={option.value} value={option.value}>
@@ -676,23 +675,23 @@ function PaginationControls({
 
 function Timeline({ events, locale }: { events: DashboardTraceEvent[]; locale: Locale }) {
   return (
-    <ol className="divide-y divide-border/60">
+    <ol className="divide-y divide-border/70">
       {events.map((event) => (
         <li
           key={event.id}
-          className="grid gap-3 px-4 py-4 transition-colors duration-150 hover:bg-accent/30 sm:px-5 md:grid-cols-[128px_minmax(0,1fr)] md:gap-4"
+          className="relative grid gap-1 px-4 transition-colors duration-150 before:absolute before:inset-y-0 before:left-[25px] before:w-px before:bg-border hover:bg-accent/35 sm:px-5 sm:before:left-[29px] md:grid-cols-[112px_minmax(0,1fr)] md:gap-4 md:before:left-[153px]"
         >
-          <div className="text-xs text-muted-foreground">
-            <div className="inline-flex items-center gap-1.5 rounded-lg border border-border/70 bg-surface-muted px-2 py-1 font-mono font-medium text-foreground shadow-[0_1px_2px_rgb(15_23_42/0.04)]">
+          <div className="py-4 pl-9 text-xs text-muted-foreground md:pl-0">
+            <div className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-muted px-2 py-1 font-mono font-medium text-foreground shadow-[var(--shadow-control)]">
               <Clock3 className="h-3 w-3 text-muted-foreground" aria-hidden />
               {formatClockTime(event.timestamp, locale)}
             </div>
           </div>
 
-          <article className="relative min-w-0 border-l border-border pl-5">
+          <article className="relative min-w-0 pb-5 pl-9 md:py-4 md:pl-8">
             <span
               className={cn(
-                "absolute -left-[6px] top-1 size-3 rounded-full border-2 border-card ring-2",
+                "absolute left-[1px] top-[3px] size-3 rounded-full border-2 border-card ring-2 md:-left-[21px] md:top-[21px]",
                 dotClass(event.status)
               )}
             />
@@ -759,8 +758,8 @@ function TraceTreeItem({ node, locale }: { node: TraceTreeNode; locale: Locale }
 
   return (
     <li>
-      <details className="overflow-hidden rounded-xl border border-border/70 bg-surface-raised shadow-[0_1px_2px_rgb(15_23_42/0.04)]">
-        <summary className="cursor-pointer px-3 py-3 transition-colors duration-150 hover:bg-accent/30 sm:px-4">
+      <details className="overflow-hidden rounded-lg border border-border bg-surface-raised shadow-[var(--shadow-control)]">
+        <summary className="cursor-pointer px-3 py-3 transition-colors duration-150 hover:bg-accent/40 sm:px-4">
           <span className="ml-2 inline-flex max-w-[calc(100%-0.5rem)] flex-wrap items-center gap-2 align-middle">
             <span className="inline-flex items-center gap-1.5 font-mono text-xs font-medium text-muted-foreground">
               <Clock3 className="h-3 w-3" aria-hidden />
