@@ -156,6 +156,8 @@ export const copy = {
       failedSteps: "\u5931\u8d25\u6b65\u9aa4",
       tokenUsage: "Token \u7528\u91cf",
       automaticDiagnostics: "\u81ea\u52a8\u8bca\u65ad",
+      locateEvent: "\u5b9a\u4f4d",
+      locateFirstEvent: "\u5b9a\u4f4d\u9996\u4e2a",
       insightTitles: {
         repeated_action: "\u91cd\u590d\u64cd\u4f5c",
         retry_loop: "\u91cd\u8bd5\u5faa\u73af",
@@ -317,6 +319,8 @@ export const copy = {
       failedSteps: "Failed steps",
       tokenUsage: "Token usage",
       automaticDiagnostics: "Automatic diagnostics",
+      locateEvent: "Locate",
+      locateFirstEvent: "Locate first",
       insightTitles: {
         repeated_action: "Repeated action",
         retry_loop: "Retry loop",

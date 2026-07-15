@@ -27,7 +27,7 @@ pnpm test
 | SDK | `pnpm --filter @agent-trace/sdk test` | Run 创建、步骤成功/失败、父 ID、metadata、投递超时与不干扰主流程。 |
 | CLI | `pnpm --filter @agent-trace/cli test` | Hooks 安装/卸载、帮助/参数、usage 规范化、历史协调、transcript 解析。 |
 | Server | `pnpm --filter @agent-trace/server test` | 迁移、API、启动、读模型、诊断、usage 和 transcript 存储。 |
-| Web | `pnpm --filter @agent-trace/web test` | 成本、Scanner 状态和 trace tree。 |
+| Web | `pnpm --filter @agent-trace/web test` | 成本、Scanner 状态、trace tree 和诊断定位。 |
 | Desktop | `pnpm --filter @agent-trace/desktop test` | 主进程与打包脚本所需静态结构。 |
 | Example | `pnpm --filter simple-agent test` | 示例 TypeScript 类型检查。 |
 
@@ -63,6 +63,7 @@ pnpm test
 - Scanner 状态的 stale、missing、needs sync 和提示文案。
 - Trace tree 的父子排序、孤儿、环、自引用和所有事件不丢失。
 - 五类确定性诊断的中英文标题与证据格式。
+- 诊断位置锚点的稳定性，以及定位链接对事件 ID、全部可见范围、当前视图和语言的保留。
 
 ## 需求覆盖
 
@@ -74,7 +75,7 @@ pnpm test
 | Usage 与 transcript | CLI transcript、Server usage/transcript smoke |
 | 分页、筛选、树形展示 | Server read-model、Web trace tree smoke |
 | Token 与成本 | Server read-model、Web cost smoke |
-| 确定性诊断 | Server trace insights、Web trace tree smoke |
+| 确定性诊断 | Server trace insights、Web trace tree 与 trace navigation smoke |
 | 桌面编排和打包约束 | Desktop check |
 | 根脚本真实性 | `workspace-scripts.smoke.mjs` 与 `.test.mjs` |
 

@@ -16,6 +16,7 @@ import {
   Filter,
   FileJson,
   Hash,
+  LocateFixed,
   Search,
   Zap
 } from "lucide-react";
@@ -48,6 +49,8 @@ import {
 import { cn } from "~/lib/utils";
 import { AutoRefresh } from "../run-controls";
 import { inspectFailures } from "./failure-inspector";
+import { TraceLocationFocus } from "./trace-location-focus";
+import { traceEventTargetId, traceInsightLocationHref } from "./trace-navigation";
 import { buildTraceForest, type TraceTreeNode } from "./trace-tree";
 
 export const dynamic = "force-dynamic";
@@ -64,6 +67,7 @@ type DetailSearchParams = Promise<{
   visibility?: SearchParamValue;
   page?: SearchParamValue;
   view?: SearchParamValue;
+  focus?: SearchParamValue;
 }>;
 
 type EventFilters = {
@@ -92,6 +96,7 @@ export default async function RunDetailPage({
   const visibility = parseVisibility(query);
   const page = parsePage(query.page);
   const view = parseDetailView(query.view);
+  const focusedEventId = getSearchParam(query.focus).trim();
   const [eventRequest, runRequest, treeRequest] = await Promise.all([
     getEventPage(id, locale, filters, visibility, page),
     getRun(id, locale),
@@ -125,6 +130,10 @@ export default async function RunDetailPage({
   return (
     <main id="main-content" className="min-h-dvh bg-background text-foreground">
       <AutoRefresh />
+      <TraceLocationFocus
+        key={focusedEventId}
+        targetId={focusedEventId ? traceEventTargetId(focusedEventId) : undefined}
+      />
       <ConsoleHeader
         locale={locale}
         path={detailPath(id, filters, visibility, pagination.page, view)}
@@ -322,7 +331,13 @@ export default async function RunDetailPage({
                 </div>
                 <div className="mt-3 space-y-3">
                   {traceInsights.map((insight) => (
-                    <TraceInsight key={`${insight.kind}-${insight.eventIds.join("-")}`} insight={insight} locale={locale} />
+                    <TraceInsight
+                      key={`${insight.kind}-${insight.eventIds.join("-")}`}
+                      insight={insight}
+                      locale={locale}
+                      runId={id}
+                      view={view}
+                    />
                   ))}
                 </div>
               </CardContent>
@@ -679,7 +694,9 @@ function Timeline({ events, locale }: { events: DashboardTraceEvent[]; locale: L
       {events.map((event) => (
         <li
           key={event.id}
-          className="relative grid gap-1 px-4 transition-colors duration-150 before:absolute before:inset-y-0 before:left-[25px] before:w-px before:bg-border hover:bg-accent/35 sm:px-5 sm:before:left-[29px] md:grid-cols-[112px_minmax(0,1fr)] md:gap-4 md:before:left-[153px]"
+          id={traceEventTargetId(event.id)}
+          tabIndex={-1}
+          className="relative grid scroll-mt-28 gap-1 px-4 outline-none transition-[background-color,box-shadow] duration-150 before:absolute before:inset-y-0 before:left-[25px] before:w-px before:bg-border hover:bg-accent/35 target:bg-primary/[0.08] target:shadow-[inset_3px_0_0_var(--primary)] focus-visible:bg-primary/[0.08] focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-primary/60 sm:px-5 sm:before:left-[29px] md:grid-cols-[112px_minmax(0,1fr)] md:gap-4 md:before:left-[153px]"
         >
           <div className="py-4 pl-9 text-xs text-muted-foreground md:pl-0">
             <div className="inline-flex items-center gap-1.5 rounded-md border border-border bg-surface-muted px-2 py-1 font-mono font-medium text-foreground shadow-[var(--shadow-control)]">
@@ -703,9 +720,20 @@ function Timeline({ events, locale }: { events: DashboardTraceEvent[]; locale: L
   );
 }
 
-function TraceInsight({ insight, locale }: { insight: DashboardTraceInsight; locale: Locale }) {
+function TraceInsight({
+  insight,
+  locale,
+  runId,
+  view
+}: {
+  insight: DashboardTraceInsight;
+  locale: Locale;
+  runId: string;
+  view: DetailView;
+}) {
   const text = copy[locale];
   const Icon = insight.severity === "info" ? Zap : AlertTriangle;
+  const firstEventId = insight.eventIds[0];
 
   return (
     <div className={cn("rounded-lg border px-3 py-3 shadow-xs", traceInsightContainerClass(insight.severity))}>
@@ -721,6 +749,40 @@ function TraceInsight({ insight, locale }: { insight: DashboardTraceInsight; loc
       <p className="mt-2 text-sm leading-6 text-foreground">
         {formatTraceInsightEvidence(insight, locale)}
       </p>
+      {firstEventId ? (
+        <div className="mt-3 border-t border-current/10 pt-2.5">
+          <Link
+            href={traceInsightLocationHref({ runId, eventId: firstEventId, locale, view })}
+            className="inline-flex min-h-8 items-center gap-1.5 rounded-md px-2 text-xs font-semibold text-primary transition-colors duration-150 hover:bg-primary/10 focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+          >
+            <LocateFixed className="size-3.5" aria-hidden />
+            {insight.eventIds.length > 1
+              ? text.detail.locateFirstEvent
+              : text.detail.locateEvent}
+          </Link>
+          {insight.eventIds.length > 1 ? (
+            <details className="group mt-1">
+              <summary className="inline-flex min-h-8 cursor-pointer list-none items-center gap-1.5 rounded-md px-2 text-xs font-medium text-muted-foreground transition-colors duration-150 hover:bg-background/60 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50 [&::-webkit-details-marker]:hidden">
+                {formatDiagnosticLocationCount(insight.eventIds.length, locale)}
+                <ChevronDown className="size-3.5 transition-transform duration-150 group-open:rotate-180" aria-hidden />
+              </summary>
+              <div className="mt-1.5 grid grid-cols-4 gap-1.5 border-l-2 border-primary/30 pl-2">
+                {insight.eventIds.map((eventId, index) => (
+                  <Link
+                    key={eventId}
+                    href={traceInsightLocationHref({ runId, eventId, locale, view })}
+                    className="inline-flex min-h-8 items-center justify-center rounded-md border border-border/80 bg-background/65 px-2 font-mono text-[11px] font-semibold text-muted-foreground transition-colors duration-150 hover:border-primary/40 hover:bg-primary/10 hover:text-primary focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-primary/50"
+                    title={eventId}
+                    aria-label={formatDiagnosticLocationLabel(index + 1, insight.eventIds.length, locale)}
+                  >
+                    #{(index + 1).toString().padStart(2, "0")}
+                  </Link>
+                ))}
+              </div>
+            </details>
+          ) : null}
+        </div>
+      ) : null}
     </div>
   );
 }
@@ -757,7 +819,11 @@ function TraceTreeItem({ node, locale }: { node: TraceTreeNode; locale: Locale }
   const event = node.event;
 
   return (
-    <li>
+    <li
+      id={traceEventTargetId(event.id)}
+      tabIndex={-1}
+      className="scroll-mt-28 rounded-lg outline-none transition-[background-color,box-shadow] duration-150 target:bg-primary/[0.08] target:shadow-[0_0_0_2px_color-mix(in_oklab,var(--primary)_60%,transparent)] focus-visible:bg-primary/[0.08] focus-visible:ring-2 focus-visible:ring-primary/60"
+    >
       <details className="overflow-hidden rounded-lg border border-border bg-surface-raised shadow-[var(--shadow-control)]">
         <summary className="cursor-pointer px-3 py-3 transition-colors duration-150 hover:bg-accent/40 sm:px-4">
           <span className="ml-2 inline-flex max-w-[calc(100%-0.5rem)] flex-wrap items-center gap-2 align-middle">
@@ -1150,6 +1216,16 @@ function formatDuration(ms: number) {
   }
 
   return `${(ms / 1000).toFixed(1)}s`;
+}
+
+function formatDiagnosticLocationCount(count: number, locale: Locale) {
+  return locale === "zh" ? `${count} 个关联位置` : `${count} related locations`;
+}
+
+function formatDiagnosticLocationLabel(index: number, count: number, locale: Locale) {
+  return locale === "zh"
+    ? `定位到第 ${index} 个关联位置，共 ${count} 个`
+    : `Locate related position ${index} of ${count}`;
 }
 
 function formatFailureTitle(value: string, locale: Locale) {

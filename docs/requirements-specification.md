@@ -15,7 +15,7 @@
 | FR-09 | 本地会话内容 | Claude、Codex 和 OpenCode 会话可生成 Prompt/Turn 事件；用户可选择 `preview` 或 `metadata`。 |
 | FR-10 | Run 列表 | Dashboard 展示 Run 分页、状态、来源、时间、模型、Token、耗时和成本，并支持刷新与选择。 |
 | FR-11 | Run 详情 | Dashboard 展示摘要、事件分页、筛选、可见性、时间线、调用树和原始事件字段。 |
-| FR-12 | 诊断 | 系统识别重复动作、重试循环、慢步骤、Token 热点和失败级联，并提供失败检查结果。 |
+| FR-12 | 诊断 | 系统识别重复动作、重试循环、慢步骤、Token 热点和失败级联，提供失败检查结果，并可从诊断定位到任一关联事件。 |
 | FR-13 | 用量与成本 | Dashboard 汇总客户端和模型 Token；优先显示扫描成本，否则使用精确配置价格。 |
 | FR-14 | 数据删除 | 用户可删除一个或多个 Run；删除 Run 时级联删除其 Event。 |
 | FR-15 | 桌面端编排 | Windows 桌面端启动 Collector、Scanner 和 Dashboard，管理运行时文件、端口和子进程。 |
@@ -67,6 +67,6 @@
 | FR-04、FR-05、FR-08 | `packages/cli/src/hooks.ts`、`index.ts` | `packages/cli/src/smoke.ts` |
 | FR-07、FR-09、FR-18 | CLI scanner、Server usage/transcript 存储 | CLI transcript smoke、Server usage/transcript API smoke |
 | FR-10、FR-11、FR-17 | `apps/web/src/app/runs` | Web cost、scanner status、trace tree smoke |
-| FR-12 | Server trace insights、Web failure inspector | `trace-insights.smoke.ts`、`trace-tree.smoke.ts` |
+| FR-12 | Server trace insights、Web failure inspector 与诊断定位 | `trace-insights.smoke.ts`、`trace-tree.smoke.ts`、`trace-navigation.smoke.ts` |
 | FR-15、FR-16 | `apps/desktop/main.cjs` | `apps/desktop/scripts/check.mjs` |
 | NFR-04、NFR-05、NFR-08 | migrations、分页读模型、兼容环境变量 | migrations、read-model、startup smoke |

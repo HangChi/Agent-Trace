@@ -101,6 +101,7 @@ Dashboard 不直接访问 SQLite，而是调用 Collector：
 
 - Run 列表读模型聚合 Event 与 usage snapshot，生成来源、模型、Token、成本、命令和工具摘要。
 - Event 读模型先区分 display/hidden，再筛选、排序和分页，并计算摘要与确定性诊断。
+- 确定性诊断返回关联 `eventIds`；Web 端使用事件 ID 精确查询并生成 Trace Rail 锚点，实现跨分页、筛选和 display/hidden 范围的定位，不增加新的 Collector API 或持久化字段。
 - 存在会话级 scan snapshot 时，Run Token/成本摘要优先使用该快照，避免和事件估算重复相加。
 - 列表默认每页 50 条、最大 200；Event 默认每页 100 条、最大 500。
 
