@@ -35,7 +35,7 @@ flowchart LR
 | 模块 | 职责 | 主要依赖 |
 | --- | --- | --- |
 | `packages/schema` | 定义 Run、Event、Token、Dashboard 和 transcript 类型及 Zod 校验。 | Zod |
-| `packages/sdk-js` | 创建 Run，包装 LLM/工具异步调用，有界投递数据。 | Schema、Fetch API |
+| `packages/sdk-js` | 创建 Run，包装通用/LLM/工具异步步骤，使用异步上下文维护嵌套父子关系并有界投递数据。 | Schema、Fetch API、AsyncLocalStorage |
 | `packages/cli` | 编排开发服务，安装 Hooks，运行 `tokscale`，协调历史和 transcript。 | tokscale、Node.js |
 | `apps/server` | HTTP 接入、规范化、SQLite 迁移/存储、分页读模型和诊断。 | Hono、Drizzle、better-sqlite3 |
 | `apps/web` | 运行列表、详情、筛选、树形追踪、成本和 Scanner 状态界面。 | Next.js、React、共享 Schema |
@@ -74,6 +74,10 @@ Event 表示 Run 内的步骤：
 
 保存用户已删除的 Run ID、删除时间和原因。它是 Scanner 替换语义与用户删除意图之间的持久 Seam：上游历史仍存在时也不会重建 Run，除非用户显式解除墓碑。
 
+### settings
+
+保存 Collector 本地设置的键、JSON 值和更新时间。当前 `privacy` 键保存写入前敏感字段名与替换文本；配置由 Storage Module 缓存，并在设置更新后失效。
+
 ## 写入数据流
 
 ### SDK
@@ -105,10 +109,11 @@ Event 表示 Run 内的步骤：
 
 Dashboard 不直接访问 SQLite，而是调用 Collector：
 
-- Run 列表的搜索、状态、来源、模型、日期、成本、排序、计数和分页下推到 SQLite；只为当前页 Run 读取 Event 摘要和 usage snapshot。
+- Run 列表的搜索、状态、来源、模型、项目、环境、标签、收藏、日期、成本、排序、计数和分页下推到 SQLite；只为当前页 Run 读取 Event 摘要和 usage snapshot。
 - Event 读模型在 SQL 内完成 display/hidden、筛选、facet、汇总、排序和分页；完整 Trace 诊断通过独立 `/runs/:id/insights` Interface 计算。
 - Run Comparison 将查询限制为 2–5 个 ID，复用相同的 Event/Usage 摘要语义；Run Trend 通过日期窗口 SQL CTE 聚合 Event 与 Usage Snapshot，并只在内存中补齐最多 90 个日期点。
 - Redacted Export Module 集中维护允许导出的 metadata 字段和稳定化名规则；路由与 Dashboard 不接触原始脱敏实现。
+- Storage Module 在 Run、Event 和 Transcript 序列化前应用持久化隐私字段规则；组织信息继续保存在 Run metadata 中，避免增加只服务单一来源的列。
 - Collector 通过 `/changes` 发布 SSE 修改通知，Dashboard 仅在有数据变化时刷新，连接失败才启用低频轮询。
 - 确定性诊断返回关联 `eventIds`；Web 端使用事件 ID 精确查询并生成 Trace Rail 锚点，实现跨分页、筛选和 display/hidden 范围的定位，不增加新的 Collector API 或持久化字段。
 - 存在会话级 scan snapshot 时，Run Token/成本摘要优先使用该快照，避免和事件估算重复相加。

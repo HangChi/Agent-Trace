@@ -22,6 +22,7 @@ Agent-Trace collects model calls, tool execution, tokens, API-equivalent cost, l
 - Codex OTLP/HTTP JSON ingestion for model and official token telemetry.
 - Local `tokscale` scanning for multi-client sessions, tokens, and cost.
 - Event filters, timelines, parent-child trace trees, failure inspection, and performance diagnostics.
+- Local governance with Run projects/tags, retention maintenance, tombstone recovery, and configurable pre-storage field redaction.
 - Local Hono collector, bilingual Next.js dashboard, and Windows Electron packaging.
 
 ## Requirements

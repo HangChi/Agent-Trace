@@ -51,6 +51,18 @@ paths:
         - name: model
           in: query
           schema: { type: string }
+        - name: project
+          in: query
+          schema: { type: string }
+        - name: environment
+          in: query
+          schema: { type: string }
+        - name: tag
+          in: query
+          schema: { type: string }
+        - name: favorite
+          in: query
+          schema: { type: boolean }
         - name: startedAfter
           in: query
           schema: { type: string, format: date-time }
@@ -176,6 +188,33 @@ paths:
           $ref: "#/components/responses/Ok"
         "404":
           $ref: "#/components/responses/NotFound"
+  /runs/{id}/organization:
+    patch:
+      tags: [Runs]
+      summary: Update Run project metadata and annotations
+      operationId: updateRunOrganization
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              properties:
+                project: { type: [string, "null"], maxLength: 120 }
+                environment: { type: [string, "null"], maxLength: 120 }
+                version: { type: [string, "null"], maxLength: 120 }
+                tags:
+                  type: array
+                  maxItems: 20
+                  items: { type: string, minLength: 1, maxLength: 64 }
+                note: { type: [string, "null"], maxLength: 2000 }
+                favorite: { type: boolean }
+      responses:
+        "200": { $ref: "#/components/responses/Ok" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /runs/{id}/events:
     get:
       tags: [Events]
@@ -487,6 +526,48 @@ paths:
           content:
             text/event-stream:
               schema: { type: string }
+  /maintenance/tombstones:
+    get:
+      tags: [Maintenance]
+      summary: List deleted Run tombstones
+      operationId: listRunTombstones
+      parameters:
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        "200":
+          description: Bounded tombstone list
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+  /maintenance/privacy:
+    get:
+      tags: [Maintenance]
+      summary: Get pre-storage redaction settings
+      operationId: getPrivacySettings
+      responses:
+        "200":
+          description: Sensitive keys and replacement text
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrivacySettings" }
+    put:
+      tags: [Maintenance]
+      summary: Replace pre-storage redaction settings
+      operationId: updatePrivacySettings
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema: { $ref: "#/components/schemas/PrivacySettings" }
+      responses:
+        "200":
+          description: Persisted privacy settings
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/PrivacySettings" }
+        "400": { $ref: "#/components/responses/ValidationError" }
   /maintenance/storage:
     get:
       tags: [Maintenance]
@@ -626,6 +707,15 @@ components:
                 type: string
             additionalProperties: true
   schemas:
+    PrivacySettings:
+      type: object
+      required: [sensitiveKeys, replacement]
+      properties:
+        sensitiveKeys:
+          type: array
+          maxItems: 100
+          items: { type: string, minLength: 1, maxLength: 120 }
+        replacement: { type: string, minLength: 1, maxLength: 120 }
     Health:
       type: object
       required: [ok, service]

@@ -49,6 +49,12 @@ export const traceMetadataSchema = z
     redactionLevel: z.string().optional(),
     provider: z.string().optional(),
     model: z.string().optional(),
+    project: z.string().optional(),
+    environment: z.string().optional(),
+    version: z.string().optional(),
+    tags: z.array(z.string()).optional(),
+    note: z.string().optional(),
+    favorite: z.boolean().optional(),
     tokenUsage: tokenUsageSchema.optional(),
     costUsd: z.number().nonnegative().optional(),
     messageCount: z.number().int().nonnegative().optional()
@@ -98,6 +104,22 @@ export const updateRunSchema = z.object({
   error: z.string().optional()
 });
 
+const organizationTextSchema = z.string().trim().max(120).nullable().optional();
+
+export const runOrganizationSchema = z.object({
+  project: organizationTextSchema,
+  environment: organizationTextSchema,
+  version: organizationTextSchema,
+  tags: z.array(z.string().trim().min(1).max(64)).max(20).optional(),
+  note: z.string().trim().max(2000).nullable().optional(),
+  favorite: z.boolean().optional()
+});
+
+export const privacySettingsSchema = z.object({
+  sensitiveKeys: z.array(z.string().trim().min(1).max(120)).max(100),
+  replacement: z.string().min(1).max(120)
+});
+
 export type TraceStatus = z.infer<typeof traceStatusSchema>;
 export type TraceEventType = z.infer<typeof traceEventTypeSchema>;
 export type TraceError = z.infer<typeof traceErrorSchema>;
@@ -108,6 +130,8 @@ export type CreateTraceEvent = z.infer<typeof createTraceEventSchema>;
 export type Run = z.infer<typeof runSchema>;
 export type CreateRun = z.infer<typeof createRunSchema>;
 export type UpdateRun = z.infer<typeof updateRunSchema>;
+export type RunOrganization = z.infer<typeof runOrganizationSchema>;
+export type PrivacySettings = z.infer<typeof privacySettingsSchema>;
 
 export type DashboardModelUsage = {
   model: string;
@@ -167,6 +191,10 @@ export type DashboardRunFilters = {
   status?: string;
   source?: string;
   model?: string;
+  project?: string;
+  environment?: string;
+  tag?: string;
+  favorite?: boolean;
   startedAfter?: string;
   startedBefore?: string;
   minCostUsd?: number;

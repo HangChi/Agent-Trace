@@ -80,6 +80,14 @@ CLI 周期或单次调用 `tokscale`，协调客户端历史并向 Collector 提
 
 Collector 为 Dashboard 生成的有界查询结果，包括分页、筛选、汇总、Facet 和 Trace Insight。共享 Schema 中的 Dashboard 类型是其 Interface。
 
+### Run Organization
+
+用于长期整理 Run 的项目、环境、版本、标签、备注和收藏状态。组织字段属于 Run metadata，不改变来源、状态或 Event 拓扑；用户可通过 Dashboard 显式编辑。
+
+### Privacy Settings
+
+保存在本地 SQLite settings 表中的写入前字段脱敏配置，包括不区分大小写的敏感字段名和替换文本。配置只作用于后续写入，不追溯修改已有数据。
+
 ### Redacted Export
 
 用于分享或提交诊断材料的单 Run JSON 快照。它保留状态、时间、调用结构、Token、成本和安全元数据；Run/Event ID 使用稳定化名，Prompt、输入输出、命令、路径、会话 ID 与错误正文不进入导出文件。当前唯一脱敏级别为 `metadata`。

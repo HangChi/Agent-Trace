@@ -124,10 +124,17 @@ pnpm --filter simple-agent dev
 - 重复动作、重试循环、慢步骤、Token 热点、失败级联和错误建议。
 - 从自动诊断直接定位到关联事件；存在多个关联事件时，可展开位置列表并选择任一位置。
 - 下载单个 Run 的脱敏 JSON；导出不会包含 Prompt、输入输出、命令、路径、会话 ID 或错误正文。
+- 编辑项目、环境、版本、标签、备注与收藏状态；这些字段保存在 Run metadata 中，不改变采集来源。
 
 调用树会保留孤立节点和循环引用中的事件，避免因异常父子关系丢失数据。
 
 点击诊断中的“定位”后，详情页会临时使用事件 ID 精确筛选，并将可见范围切换为“全部”，因此目标不会被当前分页、筛选条件或隐藏状态遮挡。目标事件会滚动到工作区中央并高亮；查看完成后点击查询栏中的“清除”即可恢复完整轨迹。
+
+### 维护与隐私
+
+从顶部“维护”进入控制中心，可以查看数据库体积和 Run/Event/Usage/墓碑数量，按日期与状态清理历史、执行 SQLite 压缩、恢复删除墓碑，以及配置写入前字段脱敏。
+
+敏感字段名支持逗号或换行分隔，不区分大小写。规则保存后只作用于后续 Run、Event 和 Transcript 写入；不会追溯修改现有记录。清理与压缩属于本地数据操作，执行前应先备份数据库及对应 WAL/SHM 文件。
 
 ## 接入 TypeScript SDK
 
@@ -146,6 +153,7 @@ import { startRun } from "@agent-trace/sdk";
 const run = startRun({
   name: "research-agent",
   input: { task: "Research MCP ecosystem" },
+  metadata: { project: "agent-trace", environment: "test", version: "0.4.0", tags: ["sdk"] },
   endpoint: "http://localhost:4319",
   deliveryTimeoutMs: 1000
 });
@@ -174,6 +182,10 @@ try {
     () => webSearch("MCP ecosystem")
   );
 
+  await run.traceStep("retrieval", "load-documents", { query: "MCP ecosystem" }, async () => {
+    await run.traceTool("read-document", { id: "doc-1" }, () => readDocument("doc-1"));
+  });
+
   await run.end({ plan, results });
 } catch (error) {
   await run.fail(error);
@@ -185,6 +197,7 @@ try {
 
 - `traceLLM` 的第四个参数是 `TraceMetadata`。
 - `traceTool` 的第四个参数是包含 `parentId` 和 `metadata` 的选项对象。
+- `traceStep` 接受共享 Schema 中的任意 Event 类型；嵌套 `traceStep`、`traceTool` 或 `traceLLM` 会自动使用当前 Event 作为父节点，显式 `parentId` 优先。
 - SDK 会保存调用方传入的 input 和成功 output；不要传入不希望落盘的秘密。
 - Collector 不可用或超时时，SDK 忽略投递错误；被包装函数本身的异常仍会重新抛出。
 

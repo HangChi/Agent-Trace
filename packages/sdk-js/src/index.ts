@@ -1,8 +1,11 @@
+import { AsyncLocalStorage } from "node:async_hooks";
+
 import type { TraceEventType, TraceMetadata } from "@agent-trace/schema";
 
 export type StartRunOptions = {
   name: string;
   input?: unknown;
+  metadata?: TraceMetadata;
   endpoint?: string;
   deliveryTimeoutMs?: number;
 };
@@ -14,6 +17,13 @@ export type TraceStepOptions = {
 
 export type TraceRun = {
   id: string;
+  traceStep<T>(
+    type: TraceEventType,
+    name: string,
+    input: unknown,
+    fn: () => Promise<T>,
+    options?: TraceStepOptions
+  ): Promise<T>;
   traceLLM<T>(
     name: string,
     input: unknown,
@@ -37,12 +47,14 @@ export function startRun(options: StartRunOptions): TraceRun {
   const endpoint = trimTrailingSlash(options.endpoint ?? defaultEndpoint);
   const deliveryTimeoutMs = normalizeDeliveryTimeout(options.deliveryTimeoutMs);
   const runId = createId("run");
+  const activeEvent = new AsyncLocalStorage<string>();
   const startPromise = post(endpoint, "/runs", {
     id: runId,
     name: options.name,
     status: "running",
     startedAt: new Date().toISOString(),
-    input: options.input
+    input: options.input,
+    metadata: options.metadata
   }, deliveryTimeoutMs);
 
   async function traceStep<T>(
@@ -53,17 +65,18 @@ export function startRun(options: StartRunOptions): TraceRun {
     options?: TraceStepOptions
   ): Promise<T> {
     const eventId = createId("evt");
+    const parentId = options?.parentId ?? activeEvent.getStore();
     const started = Date.now();
 
     await startPromise;
 
     try {
-      const output = await fn();
+      const output = await activeEvent.run(eventId, fn);
 
       await post(endpoint, "/events", {
         id: eventId,
         runId,
-        parentId: options?.parentId,
+        parentId,
         type,
         name,
         status: "success",
@@ -79,7 +92,7 @@ export function startRun(options: StartRunOptions): TraceRun {
       await post(endpoint, "/events", {
         id: eventId,
         runId,
-        parentId: options?.parentId,
+        parentId,
         type,
         name,
         status: "error",
@@ -96,6 +109,7 @@ export function startRun(options: StartRunOptions): TraceRun {
 
   return {
     id: runId,
+    traceStep,
     traceLLM<T>(
       name: string,
       input: unknown,

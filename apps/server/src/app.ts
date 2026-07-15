@@ -1,4 +1,10 @@
-import { createRunSchema, createTraceEventSchema, updateRunSchema } from "@agent-trace/schema";
+import {
+  createRunSchema,
+  createTraceEventSchema,
+  privacySettingsSchema,
+  runOrganizationSchema,
+  updateRunSchema
+} from "@agent-trace/schema";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
 import { streamSSE } from "hono/streaming";
@@ -18,16 +24,20 @@ import {
   deleteRuns,
   exportRedactedRun,
   getDashboardRunById,
+  getPrivacySettings,
   getStorageStats,
   getRunTrends,
   getTraceInsights,
   listEventsByRunId,
   listEventsPageByRunId,
+  listRunTombstones,
   listRuns,
   listRunsPage,
   pruneRuns,
   restoreDeletedRun,
-  updateRun
+  updatePrivacySettings,
+  updateRun,
+  updateRunOrganization
 } from "./storage.js";
 import { getScannerStatus, getUsageSummary } from "./usage-storage.js";
 import { getCurrentRevision, subscribeToChanges } from "./change-feed.js";
@@ -169,6 +179,10 @@ export function createApp() {
         status: c.req.query("status"),
         source: c.req.query("source"),
         model: c.req.query("model"),
+        project: c.req.query("project"),
+        environment: c.req.query("environment"),
+        tag: c.req.query("tag"),
+        favorite: parseBoolean(c.req.query("favorite")),
         startedAfter: parseDate(c.req.query("startedAfter")),
         startedBefore: parseDate(c.req.query("startedBefore"), true),
         minCostUsd: parseNumber(c.req.query("minCostUsd")),
@@ -233,6 +247,17 @@ export function createApp() {
     return c.json(run);
   });
 
+  app.patch("/runs/:id/organization", async (c) => {
+    const parsed = runOrganizationSchema.safeParse(await readJson(c.req));
+
+    if (!parsed.success) {
+      return c.json({ error: "invalid_run_organization", issues: parsed.error.issues }, 400);
+    }
+    const updated = await updateRunOrganization(c.req.param("id"), parsed.data);
+
+    return updated ? c.json({ ok: true }) : c.json({ error: "run_not_found" }, 404);
+  });
+
   app.get("/runs/:id/insights", async (c) => {
     return c.json({ insights: await getTraceInsights(c.req.param("id")) });
   });
@@ -256,6 +281,22 @@ export function createApp() {
   });
 
   app.get("/maintenance/storage", async (c) => c.json(await getStorageStats()));
+
+  app.get("/maintenance/tombstones", async (c) => {
+    return c.json({ tombstones: await listRunTombstones(parseNumber(c.req.query("limit"))) });
+  });
+
+  app.get("/maintenance/privacy", (c) => c.json(getPrivacySettings()));
+
+  app.put("/maintenance/privacy", async (c) => {
+    const parsed = privacySettingsSchema.safeParse(await readJson(c.req));
+
+    if (!parsed.success) {
+      return c.json({ error: "invalid_privacy_settings", issues: parsed.error.issues }, 400);
+    }
+
+    return c.json(await updatePrivacySettings(parsed.data));
+  });
 
   app.post("/maintenance/prune", async (c) => {
     const body = asRecord(await readJson(c.req));
@@ -284,6 +325,12 @@ export function createApp() {
 
 function isLegacyQuery(value: string | undefined) {
   return value === "1" || value === "true";
+}
+
+function parseBoolean(value: string | undefined) {
+  if (value === "1" || value === "true") return true;
+  if (value === "0" || value === "false") return false;
+  return undefined;
 }
 
 function parseComparisonIds(value: string | undefined) {

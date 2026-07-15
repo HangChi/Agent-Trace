@@ -25,6 +25,8 @@ SDK 是显式埋点接口，会原样序列化调用方交给它的 input/output
 
 当前 CLI 只接受 `metadata` 脱敏级别。它保留执行过的 Shell 命令，因为命令本身用于诊断；命令可能包含路径、参数或秘密，使用者应避免把凭据直接写入命令行。
 
+Dashboard 的“维护”页面可配置写入前敏感字段名和替换文本。Collector 会递归检查后续 Run、Event 与 Transcript payload 的对象字段名，不区分大小写；命中字段在写入 SQLite 前替换。该规则不会追溯清理已有数据，也不会检查普通字符串内容中的秘密。
+
 Dashboard 的“脱敏导出”是独立的分享安全层：它不会导出 Run/Event 名称、Prompt、input/output、命令、路径、会话 ID、错误正文或堆栈，并使用稳定化名替换原始 ID。导出前仍应根据接收方和项目策略检查 agent、model、tool、MCP、Skill 名称是否适合分享。
 
 对于普通工具和 MCP 调用，Collector 保存工具名及 input/output 的 JSON 字节数，不递归采集任意字段中的 Token 数据。只有受信任的协议位置可贡献官方 Token 用量，避免把命令输出里的 `totalTokens` 等普通数字误识别为模型用量。

@@ -3,6 +3,7 @@ import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type SqliteDatabase from "better-sqlite3";
 import { existsSync, statSync } from "node:fs";
 
+import { privacySettingsSchema, type PrivacySettings } from "@agent-trace/schema";
 import type {
   CreateRun,
   CreateTraceEvent,
@@ -20,13 +21,14 @@ import type {
   DashboardTraceEvent,
   DashboardTraceMetadata,
   Run,
+  RunOrganization,
   TokenUsage,
   UpdateRun
 } from "@agent-trace/schema";
 
 import { createSqliteDatabase, db as defaultDb, getDatabasePath } from "./db.js";
 import { migrateDatabase } from "./migrations.js";
-import { events, runs, runTombstones, usageSessions } from "./schema.js";
+import { events, runs, runTombstones, settings, usageSessions } from "./schema.js";
 import { publishChange } from "./change-feed.js";
 import { analyzeTraceInsights } from "./trace-insights.js";
 import { createRedactedRunExport } from "./run-export.js";
@@ -67,6 +69,12 @@ const maxEventPageSize = 500;
 const defaultRunPageSize = 50;
 const maxRunPageSize = 200;
 const noEventTimestampSentinel = "<no-events>";
+const privacySettingsKey = "privacy";
+const defaultPrivacySettings: PrivacySettings = {
+  sensitiveKeys: [],
+  replacement: "[REDACTED]"
+};
+const privacySettingsCache = new WeakMap<object, PrivacySettings>();
 
 function stringifyJson(value: unknown) {
   return value === undefined ? null : JSON.stringify(value);
@@ -74,6 +82,76 @@ function stringifyJson(value: unknown) {
 
 function parseJson(value: string | null) {
   return value === null ? undefined : JSON.parse(value);
+}
+
+export function getPrivacySettings(database: Database = defaultDb): PrivacySettings {
+  const cached = privacySettingsCache.get(database);
+
+  if (cached) return cached;
+  const row = database
+    .select({ valueJson: settings.valueJson })
+    .from(settings)
+    .where(eq(settings.key, privacySettingsKey))
+    .limit(1)
+    .get();
+  const parsed = privacySettingsSchema.safeParse(row ? parseJson(row.valueJson) : undefined);
+  const value = parsed.success ? parsed.data : defaultPrivacySettings;
+
+  privacySettingsCache.set(database, value);
+  return value;
+}
+
+export async function updatePrivacySettings(
+  input: PrivacySettings,
+  database: Database = defaultDb
+) {
+  const parsed = privacySettingsSchema.parse(input);
+  const seen = new Set<string>();
+  const value = {
+    sensitiveKeys: parsed.sensitiveKeys.filter((key) => {
+      const normalized = key.toLowerCase();
+      if (seen.has(normalized)) return false;
+      seen.add(normalized);
+      return true;
+    }),
+    replacement: parsed.replacement
+  };
+  const updatedAt = new Date().toISOString();
+
+  await database
+    .insert(settings)
+    .values({ key: privacySettingsKey, valueJson: JSON.stringify(value), updatedAt })
+    .onConflictDoUpdate({
+      target: settings.key,
+      set: { valueJson: JSON.stringify(value), updatedAt }
+    });
+  privacySettingsCache.set(database, value);
+  publishChange("maintenance");
+  return value;
+}
+
+function redactSensitiveValue(value: unknown, privacy: PrivacySettings): unknown {
+  if (privacy.sensitiveKeys.length === 0) return value;
+  const sensitiveKeys = new Set(privacy.sensitiveKeys.map((key) => key.toLowerCase()));
+
+  return redactValue(value, sensitiveKeys, privacy.replacement);
+}
+
+function redactValue(value: unknown, sensitiveKeys: Set<string>, replacement: string): unknown {
+  if (value === null || typeof value !== "object") return value;
+
+  if (Array.isArray(value)) {
+    return value.map((entry) => redactValue(entry, sensitiveKeys, replacement));
+  }
+
+  return Object.fromEntries(
+    Object.entries(value as Record<string, unknown>).map(([key, entry]) => [
+      key,
+      sensitiveKeys.has(key.toLowerCase())
+        ? replacement
+        : redactValue(entry, sensitiveKeys, replacement)
+    ])
+  );
 }
 
 export function initializeDatabase(path?: string) {
@@ -110,16 +188,17 @@ export async function createRun(run: CreateRun, database: Database = defaultDb) 
   if (tombstone) {
     return false;
   }
+  const privacy = getPrivacySettings(database);
 
   await database.insert(runs).values({
     id: run.id,
     name: run.name,
     status: run.status,
     startedAt: run.startedAt ?? new Date().toISOString(),
-    inputJson: stringifyJson(run.input),
-    outputJson: stringifyJson(run.output),
+    inputJson: stringifyJson(redactSensitiveValue(run.input, privacy)),
+    outputJson: stringifyJson(redactSensitiveValue(run.output, privacy)),
     error: run.error,
-    metadataJson: stringifyJson(run.metadata)
+    metadataJson: stringifyJson(redactSensitiveValue(run.metadata, privacy))
   });
 
   publishChange("run");
@@ -154,6 +233,7 @@ export async function updateRun(
   run: UpdateRun,
   database: Database = defaultDb
 ) {
+  const privacy = getPrivacySettings(database);
   const values: {
     status: UpdateRun["status"];
     endedAt?: string | null;
@@ -172,7 +252,7 @@ export async function updateRun(
   }
 
   if (run.output !== undefined) {
-    values.outputJson = stringifyJson(run.output);
+    values.outputJson = stringifyJson(redactSensitiveValue(run.output, privacy));
   }
 
   if (run.error !== undefined) {
@@ -193,16 +273,53 @@ export async function updateRunMetadata(
   metadata: unknown,
   database: Database = defaultDb
 ) {
+  const privacy = getPrivacySettings(database);
   await database
     .update(runs)
-    .set({ metadataJson: stringifyJson(metadata) })
+    .set({ metadataJson: stringifyJson(redactSensitiveValue(metadata, privacy)) })
     .where(eq(runs.id, id));
+}
+
+export async function updateRunOrganization(
+  id: string,
+  organization: RunOrganization,
+  database: Database = defaultDb
+) {
+  const row = await database
+    .select({ metadataJson: runs.metadataJson })
+    .from(runs)
+    .where(eq(runs.id, id))
+    .limit(1)
+    .get();
+
+  if (!row) return false;
+  const metadata = asRecord(parseJson(row.metadataJson));
+
+  for (const key of ["project", "environment", "version", "note"] as const) {
+    const value = organization[key];
+    if (value === undefined) continue;
+    if (value === null || value.trim() === "") delete metadata[key];
+    else metadata[key] = value.trim();
+  }
+  if (organization.tags !== undefined) {
+    metadata.tags = [...new Set(organization.tags.map((tag) => tag.trim()).filter(Boolean))];
+  }
+  if (organization.favorite !== undefined) metadata.favorite = organization.favorite;
+
+  const privacy = getPrivacySettings(database);
+  await database
+    .update(runs)
+    .set({ metadataJson: stringifyJson(redactSensitiveValue(metadata, privacy)) })
+    .where(eq(runs.id, id));
+  publishChange("run");
+  return true;
 }
 
 export async function createEvent(
   event: CreateTraceEvent,
   database: Database = defaultDb
 ) {
+  const privacy = getPrivacySettings(database);
   await database.insert(events).values({
     id: event.id,
     runId: event.runId,
@@ -212,10 +329,10 @@ export async function createEvent(
     status: event.status,
     timestamp: event.timestamp ?? new Date().toISOString(),
     durationMs: event.durationMs,
-    inputJson: stringifyJson(event.input),
-    outputJson: stringifyJson(event.output),
-    errorJson: stringifyJson(event.error),
-    metadataJson: stringifyJson(event.metadata)
+    inputJson: stringifyJson(redactSensitiveValue(event.input, privacy)),
+    outputJson: stringifyJson(redactSensitiveValue(event.output, privacy)),
+    errorJson: stringifyJson(redactSensitiveValue(event.error, privacy)),
+    metadataJson: stringifyJson(redactSensitiveValue(event.metadata, privacy))
   });
   publishChange("event");
 }
@@ -225,6 +342,7 @@ export async function upsertEvent(
   database: Database = defaultDb
 ) {
   const existing = await database.select().from(events).where(eq(events.id, event.id)).limit(1).get();
+  const privacy = getPrivacySettings(database);
   const values = {
     runId: event.runId,
     parentId: event.parentId,
@@ -233,10 +351,10 @@ export async function upsertEvent(
     status: event.status,
     timestamp: event.timestamp ?? new Date().toISOString(),
     durationMs: event.durationMs,
-    inputJson: stringifyJson(event.input),
-    outputJson: stringifyJson(event.output),
-    errorJson: stringifyJson(event.error),
-    metadataJson: stringifyJson(event.metadata)
+    inputJson: stringifyJson(redactSensitiveValue(event.input, privacy)),
+    outputJson: stringifyJson(redactSensitiveValue(event.output, privacy)),
+    errorJson: stringifyJson(redactSensitiveValue(event.error, privacy)),
+    metadataJson: stringifyJson(redactSensitiveValue(event.metadata, privacy))
   };
 
   if (!existing) {
@@ -522,6 +640,9 @@ function getRunListWhere(options: ListRunsPageOptions) {
   const status = normalizeFilter(options.status);
   const source = normalizeFilter(options.source);
   const model = normalizeFilter(options.model);
+  const project = normalizeFilter(options.project).toLowerCase();
+  const environment = normalizeFilter(options.environment).toLowerCase();
+  const tag = normalizeFilter(options.tag).toLowerCase();
 
   if (!options.includeUntracked) {
     conditions.push(sql`exists (
@@ -539,6 +660,14 @@ function getRunListWhere(options: ListRunsPageOptions) {
       or lower(coalesce(json_extract(${runs.metadataJson}, '$.agent'), '')) like ${pattern}
       or lower(coalesce(json_extract(${runs.metadataJson}, '$.sessionId'), '')) like ${pattern}
       or lower(coalesce(json_extract(${runs.metadataJson}, '$.model'), '')) like ${pattern}
+      or lower(coalesce(json_extract(${runs.metadataJson}, '$.project'), '')) like ${pattern}
+      or lower(coalesce(json_extract(${runs.metadataJson}, '$.environment'), '')) like ${pattern}
+      or lower(coalesce(json_extract(${runs.metadataJson}, '$.version'), '')) like ${pattern}
+      or lower(coalesce(json_extract(${runs.metadataJson}, '$.note'), '')) like ${pattern}
+      or exists (
+        select 1 from json_each(coalesce(json_extract(${runs.metadataJson}, '$.tags'), '[]'))
+        where lower(cast(value as text)) like ${pattern}
+      )
     )`);
   }
 
@@ -565,6 +694,21 @@ function getRunListWhere(options: ListRunsPageOptions) {
           and ${usageSessions.model} = ${model}
       )
     )`);
+  }
+  if (project !== "all") {
+    conditions.push(sql`lower(coalesce(json_extract(${runs.metadataJson}, '$.project'), '')) = ${project}`);
+  }
+  if (environment !== "all") {
+    conditions.push(sql`lower(coalesce(json_extract(${runs.metadataJson}, '$.environment'), '')) = ${environment}`);
+  }
+  if (tag !== "all") {
+    conditions.push(sql`exists (
+      select 1 from json_each(coalesce(json_extract(${runs.metadataJson}, '$.tags'), '[]'))
+      where lower(cast(value as text)) = ${tag}
+    )`);
+  }
+  if (options.favorite !== undefined) {
+    conditions.push(sql`coalesce(json_extract(${runs.metadataJson}, '$.favorite'), 0) = ${options.favorite ? 1 : 0}`);
   }
   if (options.startedAfter) conditions.push(sql`${runs.startedAt} >= ${options.startedAfter}`);
   if (options.startedBefore) conditions.push(sql`${runs.startedAt} <= ${options.startedBefore}`);
@@ -990,6 +1134,16 @@ export async function restoreDeletedRun(id: string, database: Database = default
   return result.changes > 0;
 }
 
+export async function listRunTombstones(limit: number | undefined = 50, database: Database = defaultDb) {
+  const boundedLimit = Math.max(1, Math.min(200, Math.floor(limit ?? 50)));
+
+  return database
+    .select()
+    .from(runTombstones)
+    .orderBy(desc(runTombstones.deletedAt))
+    .limit(boundedLimit);
+}
+
 export async function pruneRuns(
   options: { before: string; statuses?: string[]; keepTombstones?: boolean },
   database: Database = defaultDb
@@ -1078,6 +1232,7 @@ export function replaceTranscriptSnapshot(
   currentSessionKeys: string[],
   database: Database = defaultDb
 ) {
+  const privacy = getPrivacySettings(database);
   return database.transaction((transaction) => {
     const currentKeys = new Set(currentSessionKeys);
 
@@ -1097,10 +1252,10 @@ export function replaceTranscriptSnapshot(
         status: trace.run.status,
         startedAt: trace.run.startedAt ?? new Date().toISOString(),
         endedAt: trace.run.endedAt,
-        inputJson: stringifyJson(trace.run.input),
-        outputJson: stringifyJson(trace.run.output),
+        inputJson: stringifyJson(redactSensitiveValue(trace.run.input, privacy)),
+        outputJson: stringifyJson(redactSensitiveValue(trace.run.output, privacy)),
         error: trace.run.error,
-        metadataJson: stringifyJson(trace.run.metadata)
+        metadataJson: stringifyJson(redactSensitiveValue(trace.run.metadata, privacy))
       };
 
       if (!existingRun) {
@@ -1140,10 +1295,10 @@ export function replaceTranscriptSnapshot(
           status: event.status,
           timestamp: event.timestamp ?? new Date().toISOString(),
           durationMs: event.durationMs,
-          inputJson: stringifyJson(event.input),
-          outputJson: stringifyJson(event.output),
-          errorJson: stringifyJson(event.error),
-          metadataJson: stringifyJson(event.metadata)
+          inputJson: stringifyJson(redactSensitiveValue(event.input, privacy)),
+          outputJson: stringifyJson(redactSensitiveValue(event.output, privacy)),
+          errorJson: stringifyJson(redactSensitiveValue(event.error, privacy)),
+          metadataJson: stringifyJson(redactSensitiveValue(event.metadata, privacy))
         };
         transaction
           .insert(events)

@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { Server } from "lucide-react";
+import { HardDrive, Server } from "lucide-react";
 
 import { BrandMark } from "~/components/brand-mark";
 import { ConsoleSettings } from "~/components/console-settings";
@@ -50,6 +50,13 @@ export function ConsoleHeader({
               </span>
             </div>
           ) : null}
+          <Link
+            href={localizedHref("/maintenance", locale)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface-raised px-2.5 text-xs font-medium text-muted-foreground shadow-[var(--shadow-control)] transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <HardDrive className="size-3.5" aria-hidden />
+            <span className="hidden sm:inline">{locale === "zh" ? "维护" : "Maintenance"}</span>
+          </Link>
           <ConsoleSettings locale={locale} path={path} />
         </div>
       </div>

@@ -26,7 +26,7 @@ function testFreshDatabase() {
     assert.equal(getUserVersion(sqlite), currentSchemaVersion);
     assert.deepEqual(
       getNames(sqlite, "table"),
-      ["events", "run_tombstones", "runs", "usage_scan_state", "usage_sessions"]
+      ["events", "run_tombstones", "runs", "settings", "usage_scan_state", "usage_sessions"]
     );
     assert.deepEqual(getColumnNames(sqlite, "runs"), [
       "id",

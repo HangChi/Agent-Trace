@@ -49,6 +49,7 @@ import {
 } from "~/lib/i18n";
 import { cn } from "~/lib/utils";
 import { AutoRefresh } from "../run-controls";
+import { updateRunOrganizationAction } from "./actions";
 import { inspectFailures } from "./failure-inspector";
 import { getEventVisibilityPresentation } from "./event-visibility";
 import { TraceLocationFocus } from "./trace-location-focus";
@@ -311,6 +312,37 @@ export default async function RunDetailPage({
           </Card>
 
           {run ? (
+            <Card className="order-4 overflow-hidden py-0">
+              <div className="border-b border-border bg-surface-muted/60 px-4 py-3">
+                <h2 className="text-sm font-semibold text-foreground">
+                  {locale === "zh" ? "组织与标注" : "Organization"}
+                </h2>
+              </div>
+              <CardContent className="p-4">
+                <form action={updateRunOrganizationAction.bind(null, id)} className="space-y-3">
+                  <OrganizationInput label={locale === "zh" ? "项目" : "Project"} name="project" defaultValue={run.metadata?.project} />
+                  <div className="grid grid-cols-2 gap-3">
+                    <OrganizationInput label={locale === "zh" ? "环境" : "Environment"} name="environment" defaultValue={run.metadata?.environment} />
+                    <OrganizationInput label={locale === "zh" ? "版本" : "Version"} name="version" defaultValue={run.metadata?.version} />
+                  </div>
+                  <OrganizationInput label={locale === "zh" ? "标签（逗号分隔）" : "Tags (comma-separated)"} name="tags" defaultValue={run.metadata?.tags?.join(", ")} />
+                  <label className="block text-xs font-medium text-muted-foreground">
+                    {locale === "zh" ? "备注" : "Note"}
+                    <textarea name="note" defaultValue={run.metadata?.note} rows={3} maxLength={2000} className="mt-1 w-full resize-y rounded-md border border-input bg-background px-3 py-2 text-sm text-foreground" />
+                  </label>
+                  <label className="flex items-center gap-2 text-sm text-foreground">
+                    <input type="checkbox" name="favorite" defaultChecked={run.metadata?.favorite === true} className="size-4 rounded border-border accent-primary" />
+                    {locale === "zh" ? "收藏此 Run" : "Favorite this Run"}
+                  </label>
+                  <Button type="submit" size="sm" className="w-full">
+                    {locale === "zh" ? "保存组织信息" : "Save organization"}
+                  </Button>
+                </form>
+              </CardContent>
+            </Card>
+          ) : null}
+
+          {run ? (
             <Card className="order-4 py-0">
               <CardContent className="p-4">
                 <details className="group">
@@ -445,6 +477,23 @@ async function getEventPage(
             : "Collector is unreachable"
     };
   }
+}
+
+function OrganizationInput({
+  label,
+  name,
+  defaultValue
+}: {
+  label: string;
+  name: string;
+  defaultValue?: string;
+}) {
+  return (
+    <label className="block text-xs font-medium text-muted-foreground">
+      {label}
+      <input name={name} defaultValue={defaultValue} maxLength={120} className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" />
+    </label>
+  );
 }
 
 async function getRun(

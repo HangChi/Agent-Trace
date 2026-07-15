@@ -20,6 +20,7 @@ The Collector must not be exposed directly to an untrusted network. CORS restric
 | GET | `/changes` | SSE change notifications |
 | POST | `/runs` | Create a Run |
 | PATCH | `/runs/:id` | Update a Run |
+| PATCH | `/runs/:id/organization` | Update project metadata and annotations |
 | POST | `/events` | Create an Event |
 | POST | `/integrations/codex/hook` | Ingest Codex Hook data |
 | POST | `/integrations/claude-code/hook` | Ingest Claude Code Hook data |
@@ -36,6 +37,9 @@ The Collector must not be exposed directly to an untrusted network. CORS restric
 | DELETE | `/runs/:id` | Delete one Run |
 | DELETE | `/runs/:id/tombstone` | Allow a deleted Run id to be collected again |
 | GET | `/maintenance/storage` | Database size and row counts |
+| GET | `/maintenance/tombstones` | List deleted Run tombstones |
+| GET | `/maintenance/privacy` | Read pre-storage redaction settings |
+| PUT | `/maintenance/privacy` | Update pre-storage redaction settings |
 | POST | `/maintenance/prune` | Retention cleanup by date and status |
 | POST | `/maintenance/compact` | Checkpoint WAL and vacuum SQLite |
 
@@ -70,7 +74,7 @@ This behavior prevents observability failures from blocking the upstream Agent.
 - `includeUntracked=1|true`
 - `page` (minimum 1)
 - `pageSize` (default 50, maximum 200)
-- `q`, `status`, `source`, and `model`
+- `q`, `status`, `source`, `model`, `project`, `environment`, `tag`, and `favorite`
 - `startedAfter`, `startedBefore`, `minCostUsd`, and `maxCostUsd`
 - `sort=startedAt|name|status|duration|tokens|cost`
 - `order=asc|desc`
@@ -86,7 +90,7 @@ Default responses are bounded page objects. `legacy=1|true` returns old, unbound
 
 Event pagination performs filtering, facets, aggregates, ordering, and pagination in SQLite. Full-Trace diagnostics use the separate `/runs/:id/insights` route. Dashboard live refresh listens to `/changes`; it falls back to a 15-second poll only when SSE is unavailable.
 
-Deleting a Run creates a tombstone, preventing Hook, OTel, and Transcript Scanner ingestion from recreating it. Delete `/runs/:id/tombstone` before intentionally collecting that id again. Maintenance routes expose capacity, retention cleanup, and compaction.
+Deleting a Run creates a tombstone, preventing Hook, OTel, and Transcript Scanner ingestion from recreating it. Delete `/runs/:id/tombstone` before intentionally collecting that id again. Maintenance routes expose capacity, retention cleanup, compaction, tombstone listing, and persistent field-name redaction for subsequent writes.
 
 ## Examples
 

@@ -22,6 +22,7 @@ Agent-Trace 把模型调用、工具执行、Token、成本、耗时、错误和
 - Codex OTel：接收 OTLP/HTTP JSON 日志中的模型与官方 Token 用量。
 - 本地 Usage Scanner：通过 `tokscale` 汇总多客户端会话、Token 与 API 等价成本。
 - Trace 分析：事件筛选、时间线、父子调用树、失败检查、重试/慢步骤/Token 热点诊断。
+- 本地治理：Run 项目与标签、维护中心、保留期清理、墓碑恢复和可配置写入前字段脱敏。
 - 本地交付：Hono Collector、双语 Next.js Dashboard 和 Windows Electron 桌面包。
 
 ## 运行要求

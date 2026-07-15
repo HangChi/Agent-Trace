@@ -63,3 +63,9 @@ export const runTombstones = sqliteTable("run_tombstones", {
   deletedAt: text("deleted_at").notNull(),
   reason: text("reason")
 });
+
+export const settings = sqliteTable("settings", {
+  key: text("key").primaryKey(),
+  valueJson: text("value_json").notNull(),
+  updatedAt: text("updated_at").notNull()
+});

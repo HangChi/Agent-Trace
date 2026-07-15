@@ -18,11 +18,48 @@ sqlite.pragma("foreign_keys = ON");
 const database = drizzle(sqlite);
 
 try {
+  const privacyResponse = await createApp().request("/maintenance/privacy", {
+    method: "PUT",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ sensitiveKeys: ["apiKey"], replacement: "[HIDDEN]" })
+  });
+  assert.equal(privacyResponse.status, 200);
+  assert.deepEqual(await privacyResponse.json(), {
+    sensitiveKeys: ["apiKey"],
+    replacement: "[HIDDEN]"
+  });
+  assert.equal(
+    await storage.createRun(
+      { ...run("private-run"), input: { apiKey: "secret", nested: { safe: "value" } } },
+      database
+    ),
+    true
+  );
+  const privateRun = await storage.getRunById("private-run", database);
+  assert.deepEqual(privateRun?.input, { apiKey: "[HIDDEN]", nested: { safe: "value" } });
+  await storage.createEvent(
+    {
+      ...event("private-run", "private-event"),
+      input: { apiKey: "event-secret" },
+      metadata: { category: "tool", source: "sdk" }
+    },
+    database
+  );
+  const [privateEvent] = await storage.listEventsByRunId("private-run", database);
+  assert.deepEqual(privateEvent?.input, { apiKey: "[HIDDEN]" });
+
   assert.equal(await storage.createRun(run("deleted-run"), database), true);
   await storage.createEvent(event("deleted-run", "deleted-event"), database);
   assert.equal(await storage.deleteRun("deleted-run", database), true);
   assert.equal(await storage.createRun(run("deleted-run"), database), false);
   assert.equal(await storage.getRunById("deleted-run", database), undefined);
+  const tombstonesResponse = await createApp().request("/maintenance/tombstones");
+  assert.equal(tombstonesResponse.status, 200);
+  assert.ok(
+    (await tombstonesResponse.json()).tombstones.some(
+      (entry: { runId?: string }) => entry.runId === "deleted-run"
+    )
+  );
   const recreateResponse = await createApp().request("/runs", {
     method: "POST",
     headers: { "content-type": "application/json" },
@@ -55,8 +92,8 @@ try {
   assert.equal(await storage.createRun(run("old-success"), database), false);
 
   const stats = await storage.getStorageStats(database);
-  assert.equal(stats.runs, 2);
-  assert.equal(stats.events, 0);
+  assert.equal(stats.runs, 3);
+  assert.equal(stats.events, 1);
   assert.equal(stats.tombstones, 1);
 } finally {
   sqlite.close();

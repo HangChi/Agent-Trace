@@ -84,6 +84,7 @@ await serverErrorRun.end(serverErrorResult);
 const run = startRun({
   name: "sdk-smoke",
   input: { task: "exercise sdk" },
+  metadata: { project: "agent-trace", environment: "test", version: "0.4.0", tags: ["p0"] },
   endpoint: "http://collector.test/"
 });
 
@@ -96,6 +97,18 @@ const result = await run.traceTool(
 
 if (result !== wrappedResult) {
   throw new Error("Expected traceTool to return the wrapped result.");
+}
+
+await run.traceStep("retrieval", "load-documents", { query: "agent trace" }, async () => {
+  await run.traceTool("read-document", { id: "doc-1" }, async () => ({ text: "content" }));
+  return { documents: 1 };
+});
+
+const retrievalEvent = findEvent("load-documents");
+const nestedToolEvent = findEvent("read-document");
+
+if (nestedToolEvent.parentId !== retrievalEvent.id) {
+  throw new Error("Expected nested SDK steps to inherit the active parent event id.");
 }
 
 const wrappedError = new Error("timeout");
@@ -127,6 +140,14 @@ await run.fail(new Error("agent failed"));
 assertCall("POST", "http://collector.test/runs");
 assertCall("POST", "http://collector.test/events");
 assertCall("PATCH", `http://collector.test/runs/${run.id}`);
+
+const createdRun = calls.find(
+  (call) => call.method === "POST" && call.url === "http://collector.test/runs"
+)?.body as { metadata?: { project?: string } } | undefined;
+
+if (createdRun?.metadata?.project !== "agent-trace") {
+  throw new Error("Expected SDK Run organization metadata to be delivered.");
+}
 
 const failedEvent = calls.find(
   (call) =>
@@ -190,4 +211,22 @@ function assertCall(method: string, url: string) {
   if (!matched) {
     throw new Error(`Expected ${method} ${url} to be called.`);
   }
+}
+
+function findEvent(name: string): Record<string, unknown> {
+  const event = calls.find(
+    (call) =>
+      call.method === "POST" &&
+      call.url.endsWith("/events") &&
+      typeof call.body === "object" &&
+      call.body !== null &&
+      "name" in call.body &&
+      call.body.name === name
+  )?.body;
+
+  if (!event || typeof event !== "object") {
+    throw new Error(`Expected SDK event ${name}.`);
+  }
+
+  return event as Record<string, unknown>;
 }

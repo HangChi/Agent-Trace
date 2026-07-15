@@ -64,6 +64,11 @@ Deleting a Run removes it from Agent-Trace SQLite and cascades to its Events. It
 - Failure inspection and deterministic insights for repeated actions, retry loops, slow steps, token hotspots, and failure cascades.
 - Direct navigation from an insight to any related Event, including across pagination and hidden visibility.
 - Metadata-redacted JSON export without prompts, input/output, commands, paths, session ids, or error text.
+- Project, environment, version, tags, note, and favorite editing.
+
+### Maintenance and privacy
+
+Use **Maintenance** in the header to inspect capacity, prune or compact local data, allow tombstoned Run ids to be collected again, and configure case-insensitive sensitive field names that are replaced before subsequent Run, Event, and Transcript writes.
 
 ## TypeScript SDK
 
@@ -72,7 +77,8 @@ import { startRun } from "@agent-trace/sdk";
 
 const run = startRun({
   name: "research-agent",
-  input: { task: "Research MCP" }
+  input: { task: "Research MCP" },
+  metadata: { project: "agent-trace", environment: "test", tags: ["sdk"] }
 });
 
 try {
@@ -81,6 +87,9 @@ try {
     { prompt: "Create a plan" },
     () => callModel()
   );
+  await run.traceStep("retrieval", "load-documents", {}, async () => {
+    await run.traceTool("read-document", { id: "doc-1" }, () => readDocument("doc-1"));
+  });
   await run.end(result);
 } catch (error) {
   await run.fail(error);
@@ -88,7 +97,7 @@ try {
 }
 ```
 
-`startRun` accepts an optional `endpoint` and `timeoutMs`. The default endpoint is `http://localhost:4319`; the default timeout is 1000 ms. Delivery errors are swallowed so instrumentation does not change the Agent result.
+`startRun` accepts optional Run metadata, `endpoint`, and `deliveryTimeoutMs`. `traceStep` accepts any shared Event type, and nested SDK steps automatically inherit the active parent Event unless `parentId` is explicit. The default endpoint is `http://localhost:4319`; the default timeout is 1000 ms. Delivery errors are swallowed so instrumentation does not change the Agent result.
 
 ## Install global Hooks
 

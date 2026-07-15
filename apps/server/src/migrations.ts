@@ -84,6 +84,15 @@ const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS usage_sessions_session_id_idx
         ON usage_sessions(session_id);
     `);
+  },
+  (sqlite) => {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS settings (
+        key TEXT PRIMARY KEY,
+        value_json TEXT NOT NULL,
+        updated_at TEXT NOT NULL
+      );
+    `);
   }
 ];
 

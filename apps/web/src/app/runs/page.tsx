@@ -64,6 +64,10 @@ type RunsSearchParams = Promise<{
   status?: string | string[];
   source?: string | string[];
   model?: string | string[];
+  project?: string | string[];
+  environment?: string | string[];
+  tag?: string | string[];
+  favorite?: string | string[];
   startedAfter?: string | string[];
   startedBefore?: string | string[];
   sort?: string | string[];
@@ -76,6 +80,10 @@ type RunFilterState = {
   status: string;
   source: string;
   model: string;
+  project: string;
+  environment: string;
+  tag: string;
+  favorite: string;
   startedAfter: string;
   startedBefore: string;
   sort: SortableRunColumn | null;
@@ -413,6 +421,13 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                               <p className="mt-1 break-all font-mono text-[11px] leading-4 text-muted-foreground">
                                 {run.id}
                               </p>
+                              {run.metadata?.project || run.metadata?.tags?.length ? (
+                                <div className="mt-2 flex flex-wrap gap-1">
+                                  {run.metadata.favorite ? <span className="rounded border border-primary/25 bg-accent px-1.5 py-0.5 text-[10px] text-primary">★</span> : null}
+                                  {run.metadata.project ? <span className="rounded border border-border bg-surface-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">{run.metadata.project}</span> : null}
+                                  {run.metadata.tags?.slice(0, 3).map((tag) => <span key={tag} className="rounded border border-border bg-surface-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">#{tag}</span>)}
+                                </div>
+                              ) : null}
                             </div>
                           </div>
                         </TableCell>
@@ -783,6 +798,10 @@ function parseRunFilters(params: Awaited<RunsSearchParams>): RunFilterState {
     status: value(params.status),
     source: value(params.source),
     model: value(params.model),
+    project: value(params.project),
+    environment: value(params.environment),
+    tag: value(params.tag),
+    favorite: value(params.favorite),
     startedAfter: value(params.startedAfter),
     startedBefore: value(params.startedBefore),
     sort: parsedSort,
@@ -791,7 +810,7 @@ function parseRunFilters(params: Awaited<RunsSearchParams>): RunFilterState {
 }
 
 function appendRunFilters(params: URLSearchParams, filters: RunFilterState) {
-  for (const key of ["q", "status", "source", "model", "startedAfter", "startedBefore"] as const) {
+  for (const key of ["q", "status", "source", "model", "project", "environment", "tag", "favorite", "startedAfter", "startedBefore"] as const) {
     if (filters[key]) params.set(key, filters[key]);
   }
   if (filters.sort && filters.order) {

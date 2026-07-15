@@ -875,6 +875,50 @@ if (filteredPromptOnlyRun !== undefined) {
   throw new Error("Expected prompt-only runs with empty tracked content to be hidden by default.");
 }
 
+const organizationResponse = await app.request(`/runs/${metadataRunId}/organization`, {
+  method: "PATCH",
+  headers: { "content-type": "application/json" },
+  body: JSON.stringify({
+    project: "agent-trace",
+    environment: "test",
+    version: "0.4.0",
+    tags: ["p0", "sdk"],
+    note: "P0 acceptance run",
+    favorite: true
+  })
+});
+
+if (organizationResponse.status !== 200) {
+  throw new Error(`Expected Run organization update to return 200, got ${organizationResponse.status}`);
+}
+
+const organizedRunResponse = await app.request(`/runs/${metadataRunId}`);
+const organizedRun = await organizedRunResponse.json();
+
+if (
+  organizedRun.metadata?.project !== "agent-trace" ||
+  organizedRun.metadata?.environment !== "test" ||
+  organizedRun.metadata?.version !== "0.4.0" ||
+  !organizedRun.metadata?.tags?.includes("p0") ||
+  organizedRun.metadata?.note !== "P0 acceptance run" ||
+  organizedRun.metadata?.favorite !== true
+) {
+  throw new Error("Expected Run organization fields to be persisted and returned.");
+}
+
+const organizedRunsResponse = await app.request(
+  "/runs?project=agent-trace&environment=test&tag=p0&favorite=true"
+);
+const organizedRuns = await organizedRunsResponse.json();
+
+if (
+  !Array.isArray(organizedRuns.runs) ||
+  organizedRuns.runs.length !== 1 ||
+  organizedRuns.runs[0]?.id !== metadataRunId
+) {
+  throw new Error("Expected Run organization filters to return the matching tracked Run.");
+}
+
 const allPromptOnlyRunsResponse = await app.request("/runs?includeUntracked=1&legacy=1");
 const allPromptOnlyRuns = await allPromptOnlyRunsResponse.json();
 const promptOnlyRun = Array.isArray(allPromptOnlyRuns)

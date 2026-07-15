@@ -12,6 +12,9 @@
 - Run 分页、事件筛选、时间线、父子调用树、失败检查和确定性 Trace Insight。
 - Windows Electron 桌面编排、托盘关闭偏好和 NSIS 打包。
 - 文档一致性检查、OpenAPI、英文使用/接口/部署/安全文档与 CI。
+- SDK 通用 Step、异步自动父子链路和 Run 级组织 metadata。
+- Run 项目/环境/版本/标签/备注/收藏编辑与筛选。
+- Dashboard 维护与隐私中心、墓碑列表和持久化写入前字段脱敏。
 
 ### Changed
 
