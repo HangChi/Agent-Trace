@@ -18,6 +18,7 @@ import {
   TableRow
 } from "~/components/ui/table";
 import { formatDateTime, localizedHref, parseLocale, type Locale } from "~/lib/i18n";
+import { eventChangeLabel, eventRegressionLabel, traceEventTypeLabel } from "~/lib/p1-labels";
 
 export const dynamic = "force-dynamic";
 
@@ -121,16 +122,16 @@ function EventDiffTable({
                 <TableCell>
                   <div className="font-medium">{diff.name}</div>
                   <div className="font-mono text-[10px] text-muted-foreground">
-                    {diff.type} · #{diff.occurrence}
+                    {traceEventTypeLabel(locale, diff.type)} · #{diff.occurrence}
                   </div>
                 </TableCell>
                 <TableCell className="text-xs text-muted-foreground">
-                  {diff.changes.join(", ")}
+                  {diff.changes.map((change) => eventChangeLabel(locale, change)).join(locale === "zh" ? "、" : ", ")}
                 </TableCell>
                 <TableCell>
                   {diff.regressions.length > 0 ? (
                     <span className="rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive">
-                      {diff.regressions.join(", ")}
+                      {diff.regressions.map((regression) => eventRegressionLabel(locale, regression)).join(locale === "zh" ? "、" : ", ")}
                     </span>
                   ) : (
                     <span className="text-xs text-muted-foreground">—</span>
@@ -171,7 +172,7 @@ function ComparisonTable({ runs, locale }: { runs: DashboardRunMetric[]; locale:
       render: (run: DashboardRunMetric) => metricValue(run.failedEventCount.toLocaleString(), run.failedEventCount, baseline.failedEventCount)
     },
     {
-      label: "Tokens",
+      label: locale === "zh" ? "Token 数" : "Tokens",
       render: (run: DashboardRunMetric) => metricValue(run.totalTokens.toLocaleString(), run.totalTokens, baseline.totalTokens)
     },
     {
