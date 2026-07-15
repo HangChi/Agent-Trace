@@ -72,7 +72,7 @@ try {
     throw new Error("Expected scanner diagnostics from the dedicated endpoint.");
   }
 
-  const runs = await json(app.request("/runs?includeUntracked=1"));
+  const runs = await json(app.request("/runs?includeUntracked=1&legacy=1"));
   if (!Array.isArray(runs) || runs.some((run) => run.input?.source === "usage-scan")) {
     throw new Error("Expected /runs to exclude every scanner-only record.");
   }
@@ -91,7 +91,7 @@ try {
     throw new Error("Expected a matching usage snapshot to authoritatively enrich a real run.");
   }
 
-  const events = await json(app.request(`/runs/run_codex_${sessionId}/events`));
+  const events = await json(app.request(`/runs/run_codex_${sessionId}/events?legacy=1`));
   if (!Array.isArray(events) || events.some((event) => event.metadata?.source === "usage-scan")) {
     throw new Error("Expected usage snapshots to avoid creating trace events.");
   }

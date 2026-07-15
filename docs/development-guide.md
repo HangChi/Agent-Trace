@@ -2,10 +2,10 @@
 
 ## 环境准备
 
-仓库未在 `engines` 中声明 Node.js 最低版本，不应从文档推断一个版本下限。需要：
+仓库要求：
 
-- 能运行当前 TypeScript、Next.js、Electron 和 better-sqlite3 依赖的 Node.js。
-- pnpm 11.0.7，版本来自根 `package.json` 的 `packageManager`。
+- Node.js `>=22.12.0`。该基线来自当前 Electron 依赖的最高最低要求；`.nvmrc` 选择 Node.js 22。
+- pnpm `>=11.0.7 <12`；`packageManager` 和 CI 固定使用 11.0.7。
 - Windows 桌面打包需要 Windows 环境及 electron-builder 所需工具。
 
 安装依赖：
@@ -106,7 +106,9 @@ pnpm desktop:dev
 | `pnpm dev` | 递归并行执行各包 `dev`；通常优先使用 CLI 一体化启动。 |
 | `pnpm test` | 构建 Schema，审计工作区脚本，运行根 Node 测试和各包测试。 |
 | `pnpm typecheck` | 递归执行各包类型检查。 |
-| `pnpm lint` | 审计脚本、递归 Lint，并执行 `git diff --check`。 |
+| `pnpm docs:check` | 校验 Markdown 链接、Collector/API/OpenAPI、环境变量和 CLI 文档一致性。 |
+| `pnpm lint` | 审计脚本、文档一致性、递归 Lint，并执行 `git diff --check`。 |
+| `pnpm verify` | 依次运行 build、test、typecheck 和 lint。 |
 | `pnpm format` | 递归调用各包 `format`；当前工作区包没有声明该脚本，不作为常规验证入口。 |
 | `pnpm desktop:dev` | 启动 Electron 开发应用。 |
 | `pnpm desktop:pack:win` | 生成未安装的 Windows 目录包。 |
@@ -138,10 +140,7 @@ pnpm --filter @agent-trace/desktop build
 ## 提交前检查
 
 ```bash
-pnpm build
-pnpm test
-pnpm typecheck
-pnpm lint
+pnpm verify
 git diff --check
 ```
 

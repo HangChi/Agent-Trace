@@ -2,6 +2,11 @@
 
 本目录描述 Agent-Trace 当前实现的产品能力、使用方式、架构、接口、开发流程和运行边界。若文档与代码不一致，以共享 Schema、服务端路由、CLI 帮助和测试为准。
 
+[English documentation](en/README.md)
+
+> [!NOTE]
+> 文档最后完成代码交叉校验的日期为 2026-07-15。`pnpm docs:check` 会检查相对链接、Collector 路由、OpenAPI、环境变量和 CLI 命令的一致性。
+
 ## 按角色阅读
 
 ### 使用者
@@ -23,6 +28,15 @@
 3. [开发指南](development-guide.md)：工作区、首次初始化和常用命令。
 4. [测试文档](testing.md)：测试层次、执行方法和需求覆盖关系。
 
+### 维护与治理
+
+1. [领域词汇表](../CONTEXT.md)：Run、Event、Snapshot、Read Model 等统一语言。
+2. [架构决策记录](adr/README.md)：本地优先、统一模型、Usage 分离和分页契约。
+3. [参与贡献](../CONTRIBUTING.md)：开发流程、变更边界和 PR 检查清单。
+4. [安全策略](../SECURITY.md)：安全模型、漏洞报告和敏感数据响应。
+5. [变更记录](../CHANGELOG.md)：用户可见变化。
+6. [发布与版本策略](release-policy.md)：版本来源、发布检查和许可证状态。
+
 ## 快速导航
 
 | 目标 | 文档 |
@@ -33,8 +47,10 @@
 | 理解本地历史与 Token 扫描 | [用户手册](user-guide.md#扫描本地用量与会话) |
 | 检查会采集哪些内容 | [隐私与安全](privacy-security.md#采集边界) |
 | 调用 Collector API | [API 参考](api-reference.md) |
+| 使用机器可读接口契约 | [OpenAPI](openapi.yaml) |
 | 开发或验证代码 | [开发指南](development-guide.md) · [测试文档](testing.md) |
 | 构建 Windows 桌面包 | [部署与运维](deployment-operations.md#windows-桌面构建) |
+| 理解长期架构决定 | [ADR 索引](adr/README.md) |
 
 ## 术语
 
@@ -44,3 +60,5 @@
 - **Dashboard**：读取 Collector 数据的 Next.js 界面。
 - **Usage snapshot**：由 `tokscale` 扫描得到的本地会话 Token 与成本快照。
 - **Transcript event**：从支持的本地历史中提取的 Prompt/Turn 元数据或清理后预览。
+
+完整定义及不变量见[领域词汇表](../CONTEXT.md)。

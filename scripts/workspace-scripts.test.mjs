@@ -17,10 +17,19 @@ test("web runs its TypeScript smokes directly", async () => {
     await readFile(new URL("../apps/web/package.json", import.meta.url), "utf8"),
   );
 
-  assert.equal(
-    manifest.scripts?.test,
-    "tsx src/lib/cost.smoke.ts && tsx src/lib/i18n.smoke.ts && tsx src/app/runs/pagination.smoke.ts && tsx src/app/runs/scanner-status.smoke.ts && tsx src/app/runs/[id]/trace-tree.smoke.ts",
-  );
+  const testScript = manifest.scripts?.test ?? "";
+  const requiredSmokes = [
+    "src/lib/cost.smoke.ts",
+    "src/lib/i18n.smoke.ts",
+    "src/app/runs/pagination.smoke.ts",
+    "src/app/runs/scanner-status.smoke.ts",
+    "src/app/runs/[id]/trace-tree.smoke.ts",
+    "src/app/runs/[id]/trace-navigation.smoke.ts",
+  ];
+
+  for (const smoke of requiredSmokes) {
+    assert.match(testScript, new RegExp(`(?:^|&&\\s*)tsx ${escapeRegExp(smoke)}(?:\\s*&&|$)`));
+  }
 });
 
 test("server runs the trace insights smoke", async () => {
@@ -136,3 +145,7 @@ test("fails clearly when workspace globs find no manifests", async (t) => {
     /No workspace package manifests found.*apps\/\*/,
   );
 });
+
+function escapeRegExp(value) {
+  return value.replace(/[.*+?^${}()|[\]\\]/g, "\\$&");
+}

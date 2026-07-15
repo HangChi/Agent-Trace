@@ -12,10 +12,10 @@ Agent-Trace 可以通过三条路径产生数据：
 
 ## 从源码启动
 
-仓库没有声明 Node.js 最低版本。准备兼容当前依赖的 Node.js 和 pnpm 11.0.7 后执行：
+准备 Node.js `>=22.12.0` 和 pnpm `>=11.0.7 <12` 后执行；使用 Node 版本管理器时可读取仓库 `.nvmrc`：
 
 ```bash
-pnpm install
+pnpm install --frozen-lockfile
 pnpm build
 node packages/cli/dist/index.js dev
 ```

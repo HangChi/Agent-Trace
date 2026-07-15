@@ -122,7 +122,7 @@ if (createMetadataEventResponse.status !== 201) {
   );
 }
 
-const runsResponse = await app.request("/runs");
+const runsResponse = await app.request("/runs?legacy=1");
 const runs = await runsResponse.json();
 
 if (!Array.isArray(runs) || !runs.some((run) => run.id === runId)) {
@@ -156,7 +156,7 @@ if (oldPayloadRun?.metadata?.agent !== undefined) {
   throw new Error("Expected old run payload without agent metadata to remain valid.");
 }
 
-const eventsResponse = await app.request(`/runs/${runId}/events`);
+const eventsResponse = await app.request(`/runs/${runId}/events?legacy=1`);
 const events = await eventsResponse.json();
 
 if (!Array.isArray(events) || events[0]?.id !== eventId) {
@@ -231,7 +231,7 @@ if (batchDeleteResponse.status !== 200 || batchDeleteResult.deleted !== 2) {
   throw new Error("Expected batch delete to remove both selected runs.");
 }
 
-const afterBatchDeleteRunsResponse = await app.request("/runs?includeUntracked=1");
+const afterBatchDeleteRunsResponse = await app.request("/runs?includeUntracked=1&legacy=1");
 const afterBatchDeleteRuns = await afterBatchDeleteRunsResponse.json();
 
 if (
@@ -241,7 +241,7 @@ if (
   throw new Error("Expected batch deleted runs to be absent from /runs.");
 }
 
-const batchDeletedEventsResponse = await app.request(`/runs/${batchRunAId}/events`);
+const batchDeletedEventsResponse = await app.request(`/runs/${batchRunAId}/events?legacy=1`);
 const batchDeletedEvents = await batchDeletedEventsResponse.json();
 
 if (Array.isArray(batchDeletedEvents) && batchDeletedEvents.length > 0) {
@@ -299,14 +299,14 @@ if (createUntrackedEventResponse.status !== 201) {
 
 await reconcileStaleRuns();
 
-const filteredRunsResponse = await app.request("/runs");
+const filteredRunsResponse = await app.request("/runs?legacy=1");
 const filteredRuns = await filteredRunsResponse.json();
 
 if (Array.isArray(filteredRuns) && filteredRuns.some((run) => run.id === untrackedRunId)) {
   throw new Error("Expected untracked collector-only runs to be hidden by default.");
 }
 
-const allRunsResponse = await app.request("/runs?includeUntracked=1");
+const allRunsResponse = await app.request("/runs?includeUntracked=1&legacy=1");
 const allRuns = await allRunsResponse.json();
 const untrackedRun = Array.isArray(allRuns)
   ? allRuns.find((run) => run.id === untrackedRunId)
@@ -339,7 +339,7 @@ if (createRecoveredRunResponse.status !== 201) {
 }
 
 await reconcileStaleRuns();
-const staleRecoveredRunsResponse = await app.request("/runs?includeUntracked=1");
+const staleRecoveredRunsResponse = await app.request("/runs?includeUntracked=1&legacy=1");
 const staleRecoveredRuns = await staleRecoveredRunsResponse.json();
 const staleRecoveredRun = Array.isArray(staleRecoveredRuns)
   ? staleRecoveredRuns.find((run) => run.id === recoveredRunId)
@@ -362,7 +362,7 @@ if (recoverRunResponse.status !== 200) {
   throw new Error(`Expected recovered run update to return 200, got ${recoverRunResponse.status}`);
 }
 
-const recoveredRunsResponse = await app.request("/runs?includeUntracked=1");
+const recoveredRunsResponse = await app.request("/runs?includeUntracked=1&legacy=1");
 const recoveredRuns = await recoveredRunsResponse.json();
 const recoveredRun = Array.isArray(recoveredRuns)
   ? recoveredRuns.find((run) => run.id === recoveredRunId)
@@ -372,7 +372,7 @@ if (recoveredRun?.status !== "success" || recoveredRun.error !== undefined) {
   throw new Error("Expected success updates to clear stale run errors.");
 }
 
-const metadataEventsResponse = await app.request(`/runs/${metadataRunId}/events`);
+const metadataEventsResponse = await app.request(`/runs/${metadataRunId}/events?legacy=1`);
 const metadataEvents = await metadataEventsResponse.json();
 
 if (!Array.isArray(metadataEvents) || metadataEvents[0]?.id !== metadataEventId) {
@@ -448,7 +448,7 @@ for (const item of modelEvents) {
   }
 }
 
-const modelRunsResponse = await app.request("/runs?includeUntracked=1");
+const modelRunsResponse = await app.request("/runs?includeUntracked=1&legacy=1");
 const modelRuns = await modelRunsResponse.json();
 const modelRun = Array.isArray(modelRuns)
   ? modelRuns.find((run) => run.id === modelRunId)
@@ -678,7 +678,7 @@ await expectAccepted(
   "codex Stop hook"
 );
 
-const codexRunsResponse = await app.request("/runs");
+const codexRunsResponse = await app.request("/runs?legacy=1");
 const codexRuns = await codexRunsResponse.json();
 const codexRun = Array.isArray(codexRuns)
   ? codexRuns.find((run) => run.id === codexRunId)
@@ -715,7 +715,7 @@ if (
   throw new Error("Expected Codex hook ingestion to summarize commands, tools, MCP, and skills.");
 }
 
-const codexEventsResponse = await app.request(`/runs/${codexRunId}/events`);
+const codexEventsResponse = await app.request(`/runs/${codexRunId}/events?legacy=1`);
 const codexEvents = await codexEventsResponse.json();
 const codexEventsJson = JSON.stringify(codexEvents);
 
@@ -806,7 +806,7 @@ await expectAccepted(
 );
 
 const codexTokenLikeToolEventsResponse = await app.request(
-  `/runs/${codexTokenLikeToolRunId}/events`
+  `/runs/${codexTokenLikeToolRunId}/events?legacy=1`
 );
 const codexTokenLikeToolEvents = await codexTokenLikeToolEventsResponse.json();
 const tokenLikeToolEvent = Array.isArray(codexTokenLikeToolEvents)
@@ -865,7 +865,7 @@ await expectAccepted(
   "codex prompt-only Stop hook"
 );
 
-const promptOnlyRunsResponse = await app.request("/runs");
+const promptOnlyRunsResponse = await app.request("/runs?legacy=1");
 const promptOnlyRuns = await promptOnlyRunsResponse.json();
 const filteredPromptOnlyRun = Array.isArray(promptOnlyRuns)
   ? promptOnlyRuns.find((run) => run.id === codexPromptOnlyRunId)
@@ -875,7 +875,7 @@ if (filteredPromptOnlyRun !== undefined) {
   throw new Error("Expected prompt-only runs with empty tracked content to be hidden by default.");
 }
 
-const allPromptOnlyRunsResponse = await app.request("/runs?includeUntracked=1");
+const allPromptOnlyRunsResponse = await app.request("/runs?includeUntracked=1&legacy=1");
 const allPromptOnlyRuns = await allPromptOnlyRunsResponse.json();
 const promptOnlyRun = Array.isArray(allPromptOnlyRuns)
   ? allPromptOnlyRuns.find((run) => run.id === codexPromptOnlyRunId)
@@ -925,7 +925,7 @@ await expectAccepted(
   "codex named UserPromptExpansion hook"
 );
 
-const codexExpansionEventsResponse = await app.request(`/runs/${codexExpansionRunId}/events`);
+const codexExpansionEventsResponse = await app.request(`/runs/${codexExpansionRunId}/events?legacy=1`);
 const codexExpansionEvents = await codexExpansionEventsResponse.json();
 
 if (
@@ -945,7 +945,7 @@ await expectAccepted(
   "unknown Codex hook payload"
 );
 
-const unknownCodexEventsResponse = await app.request("/runs/run_codex_unknown/events");
+const unknownCodexEventsResponse = await app.request("/runs/run_codex_unknown/events?legacy=1");
 const unknownCodexEvents = await unknownCodexEventsResponse.json();
 
 if (
@@ -1041,7 +1041,7 @@ await expectAccepted(
   "Codex OTel log ingestion"
 );
 
-const codexOtelEventsResponse = await app.request(`/runs/${codexOtelRunId}/events`);
+const codexOtelEventsResponse = await app.request(`/runs/${codexOtelRunId}/events?legacy=1`);
 const codexOtelEvents = await codexOtelEventsResponse.json();
 
 if (
@@ -1092,14 +1092,14 @@ if (
   throw new Error("Expected Codex OTel explicit totals to remain authoritative.");
 }
 
-const codexOtelRunsResponse = await app.request("/runs");
+const codexOtelRunsResponse = await app.request("/runs?legacy=1");
 const codexOtelRuns = await codexOtelRunsResponse.json();
 
 if (Array.isArray(codexOtelRuns) && codexOtelRuns.some((run) => run.id === codexOtelRunId)) {
   throw new Error("Expected token-only Codex OTel runs to be hidden by default.");
 }
 
-const allCodexOtelRunsResponse = await app.request("/runs?includeUntracked=1");
+const allCodexOtelRunsResponse = await app.request("/runs?includeUntracked=1&legacy=1");
 const allCodexOtelRuns = await allCodexOtelRunsResponse.json();
 const listedCodexOtelRun = Array.isArray(allCodexOtelRuns)
   ? allCodexOtelRuns.find((run) => run.id === codexOtelRunId)
@@ -1151,7 +1151,7 @@ await expectAccepted(
   "Codex desktop OTel log ingestion"
 );
 
-const desktopOtelEventsResponse = await app.request(`/runs/${codexDesktopOtelRunId}/events`);
+const desktopOtelEventsResponse = await app.request(`/runs/${codexDesktopOtelRunId}/events?legacy=1`);
 const desktopOtelEvents = await desktopOtelEventsResponse.json();
 
 if (
@@ -1299,7 +1299,7 @@ for (const item of mainstreamUsageFixtures) {
   );
 }
 
-const mainstreamRunsResponse = await app.request("/runs?includeUntracked=1");
+const mainstreamRunsResponse = await app.request("/runs?includeUntracked=1&legacy=1");
 const mainstreamRuns = await mainstreamRunsResponse.json();
 
 for (const item of mainstreamUsageFixtures) {
@@ -1487,7 +1487,7 @@ await expectAccepted(
   "Claude Code Stop hook"
 );
 
-const claudeRunsResponse = await app.request("/runs");
+const claudeRunsResponse = await app.request("/runs?legacy=1");
 const claudeRuns = await claudeRunsResponse.json();
 const claudeRun = Array.isArray(claudeRuns)
   ? claudeRuns.find((run) => run.id === claudeRunId)
@@ -1501,7 +1501,7 @@ if (claudeRun?.status !== "success") {
   throw new Error("Expected Claude Code Stop to mark the run successful.");
 }
 
-const claudeEventsResponse = await app.request(`/runs/${claudeRunId}/events`);
+const claudeEventsResponse = await app.request(`/runs/${claudeRunId}/events?legacy=1`);
 const claudeEvents = await claudeEventsResponse.json();
 const claudeEventsJson = JSON.stringify(claudeEvents);
 
@@ -1615,14 +1615,14 @@ await expectAccepted(
   "Claude Code transcript-model Stop hook"
 );
 
-const claudeTranscriptRunsResponse = await app.request("/runs?includeUntracked=1");
+const claudeTranscriptRunsResponse = await app.request("/runs?includeUntracked=1&legacy=1");
 const claudeTranscriptRuns = await claudeTranscriptRunsResponse.json();
 const claudeTranscriptRun = Array.isArray(claudeTranscriptRuns)
   ? claudeTranscriptRuns.find((run) => run.id === claudeTranscriptRunId)
   : undefined;
 const claudeTranscriptSummary = claudeTranscriptRun?.metadata?.summary;
 const claudeTranscriptModelUsage = claudeTranscriptSummary?.modelUsage?.[0];
-const claudeTranscriptEventsResponse = await app.request(`/runs/${claudeTranscriptRunId}/events`);
+const claudeTranscriptEventsResponse = await app.request(`/runs/${claudeTranscriptRunId}/events?legacy=1`);
 const claudeTranscriptEvents = await claudeTranscriptEventsResponse.json();
 const claudeTranscriptStopEvent = Array.isArray(claudeTranscriptEvents)
   ? claudeTranscriptEvents.find((event) => event.name === "turn")
@@ -1731,7 +1731,7 @@ await expectAccepted(
   "duplicate usage scan ingestion"
 );
 
-const usageScanRunsResponse = await app.request("/runs?includeUntracked=1");
+const usageScanRunsResponse = await app.request("/runs?includeUntracked=1&legacy=1");
 const usageScanRuns = await usageScanRunsResponse.json();
 const scannerStatusResponse = await app.request("/usage/scanner");
 const scannerStatus = await scannerStatusResponse.json();
@@ -1817,7 +1817,7 @@ await expectAccepted(
   "usage scan precedence scan"
 );
 
-const scanPrecedenceRunsResponse = await app.request("/runs?includeUntracked=1");
+const scanPrecedenceRunsResponse = await app.request("/runs?includeUntracked=1&legacy=1");
 const scanPrecedenceRuns = await scanPrecedenceRunsResponse.json();
 const scanPrecedenceRun = Array.isArray(scanPrecedenceRuns)
   ? scanPrecedenceRuns.find((run) => run.id === scanPrecedenceRunId)
@@ -1835,7 +1835,7 @@ if (
   throw new Error("Expected usage scan snapshots to replace same-session hook estimates.");
 }
 
-const scanPrecedenceEventsResponse = await app.request(`/runs/${scanPrecedenceRunId}/events`);
+const scanPrecedenceEventsResponse = await app.request(`/runs/${scanPrecedenceRunId}/events?legacy=1`);
 const scanPrecedenceEvents = await scanPrecedenceEventsResponse.json();
 const scanSnapshotEvents = Array.isArray(scanPrecedenceEvents)
   ? scanPrecedenceEvents.filter((event) => event.name === "token_usage")
@@ -1873,7 +1873,7 @@ await expectAccepted(
   "zero-token usage scan"
 );
 
-const zeroTokenRunsResponse = await app.request("/runs?includeUntracked=1");
+const zeroTokenRunsResponse = await app.request("/runs?includeUntracked=1&legacy=1");
 const zeroTokenRuns = await zeroTokenRunsResponse.json();
 
 if (
@@ -1928,7 +1928,7 @@ await expectAccepted(
   "Codex rollout usage scan"
 );
 
-const codexRolloutScanRunsResponse = await app.request("/runs?includeUntracked=1");
+const codexRolloutScanRunsResponse = await app.request("/runs?includeUntracked=1&legacy=1");
 const codexRolloutScanRuns = await codexRolloutScanRunsResponse.json();
 const codexRolloutScanRun = Array.isArray(codexRolloutScanRuns)
   ? codexRolloutScanRuns.find((run) => run.id === codexRolloutScanRunId)
@@ -2012,9 +2012,9 @@ await expectAccepted(
   "updated complete usage replacement"
 );
 
-const replacementRunsResponse = await app.request("/runs?includeUntracked=1");
+const replacementRunsResponse = await app.request("/runs?includeUntracked=1&legacy=1");
 const replacementRuns = await replacementRunsResponse.json();
-const replacementKeepEventsResponse = await app.request(`/runs/${replacementKeepRunId}/events`);
+const replacementKeepEventsResponse = await app.request(`/runs/${replacementKeepRunId}/events?legacy=1`);
 const replacementKeepEvents = await replacementKeepEventsResponse.json();
 
 if (
@@ -2041,7 +2041,7 @@ await expectAccepted(
   "incomplete usage replacement"
 );
 
-const afterIncompleteRunsResponse = await app.request("/runs?includeUntracked=1");
+const afterIncompleteRunsResponse = await app.request("/runs?includeUntracked=1&legacy=1");
 const afterIncompleteRuns = await afterIncompleteRunsResponse.json();
 const afterIncompleteRun = Array.isArray(afterIncompleteRuns)
   ? afterIncompleteRuns.find((run) => run.id === replacementKeepRunId)

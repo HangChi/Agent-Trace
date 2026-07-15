@@ -23,6 +23,7 @@ pnpm test
 | 范围 | 命令 | 覆盖内容 |
 | --- | --- | --- |
 | 根目录 | `pnpm test` | Schema 构建、工作区脚本审计、根 Node 测试、全部包测试。 |
+| 文档 | `pnpm docs:check` | 相对链接、API 路由、OpenAPI、环境变量和 CLI 命令。 |
 | Schema | `pnpm --filter @agent-trace/schema test` | TypeScript 与 Zod 契约类型检查。 |
 | SDK | `pnpm --filter @agent-trace/sdk test` | Run 创建、步骤成功/失败、父 ID、metadata、投递超时与不干扰主流程。 |
 | CLI | `pnpm --filter @agent-trace/cli test` | Hooks 安装/卸载、帮助/参数、usage 规范化、历史协调、transcript 解析。 |
@@ -119,18 +120,16 @@ pnpm test
 ## 完整验证
 
 ```bash
-pnpm build
-pnpm test
-pnpm typecheck
-pnpm lint
-pnpm build
+pnpm verify
 git diff --check
 ```
 
-最后一次 `pnpm build` 用于确认测试与检查没有依赖偶然残留产物。文档变更还应验证：
+`pnpm verify` 按 build、test、typecheck、lint 顺序执行；lint 会运行 `pnpm docs:check`。文档变更还应验证：
 
 - 所有相对 Markdown 链接可解析。
 - 不存在指向已删除过程产物或旧追踪指南的链接。
 - API 路由与 `apps/server/src/app.ts` 一致。
 - CLI 命令与 `packages/cli/src/index.ts` 的 help 一致。
 - `git status --short` 只包含预期文档变更。
+
+CI 工作流在 push 和 pull request 中使用 Node.js 22、pnpm 11.0.7，并执行相同的 `pnpm verify`。

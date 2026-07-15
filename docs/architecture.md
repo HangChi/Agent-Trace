@@ -1,5 +1,7 @@
 # Agent-Trace 系统架构
 
+领域术语以[领域词汇表](../CONTEXT.md)为准，长期设计理由见[架构决策记录](adr/README.md)。
+
 ## 总体结构
 
 Agent-Trace 使用本地单机架构。多个采集入口写入同一个 Collector，Collector 规范化并持久化数据，Dashboard 通过只读查询接口展示结果，Desktop 负责把这些进程组织为一个 Windows 应用。
@@ -120,3 +122,10 @@ Dashboard 不直接访问 SQLite，而是调用 Collector：
 - 数据库使用版本化迁移；高于当前迁移版本的数据库会被拒绝，防止旧程序破坏新结构。
 - `TOOLTRACE_*` 作为项目旧名称的兼容环境变量仍在关键路径生效。
 - 成本解析不使用模糊模型匹配；未找到扫描成本或精确价格时保留为未定价。
+
+对应决策：
+
+- [ADR-0001：本地优先与回环 Collector](adr/0001-local-first-loopback-collector.md)
+- [ADR-0002：统一 Run/Event 模型](adr/0002-unified-run-event-model.md)
+- [ADR-0003：Usage Snapshot 与 Trace Event 分离](adr/0003-separate-usage-snapshots-from-traces.md)
+- [ADR-0004：Dashboard 默认使用有界分页 Read Model](adr/0004-bounded-dashboard-read-model.md)

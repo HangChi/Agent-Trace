@@ -11,6 +11,8 @@ Collector 没有认证，不提供面向公网的部署配置。
 
 ## 源码运行
 
+要求 Node.js `>=22.12.0` 和 pnpm `>=11.0.7 <12`；可复现安装与 CI 固定使用 11.0.7。使用 Node 版本管理器时可读取仓库 `.nvmrc`。
+
 ```bash
 pnpm install --frozen-lockfile
 pnpm build
@@ -107,6 +109,7 @@ pnpm desktop:build:win
 | `PORT` | Server/Next 进程端口；Server 中优先级高于专用变量 | 由启动器设置 |
 | `AGENT_TRACE_WEB_PORT` | Dashboard 端口 | `3000` |
 | `AGENT_TRACE_API_URL` | Web 访问的 Collector 地址 | `http://localhost:4319` |
+| `AGENT_TRACE_ENDPOINT` | CLI、Scanner 和示例的通用 Collector 地址覆盖；优先级低于显式命令参数 | 未设置时使用对应 `*_COLLECTOR_URL` 或默认地址 |
 | `AGENT_TRACE_DESKTOP_PREFERENCES_PATH` | Web 更新桌面偏好的文件 | 仅桌面注入 |
 | `AGENT_TRACE_RUNNING_STALE_MINUTES` | running Run 的 stale 阈值 | `30` |
 | `AGENT_TRACE_STALE_RUN_MINUTES` | stale 阈值的备用名称 | `30` |
@@ -118,6 +121,7 @@ pnpm desktop:build:win
 | `AGENT_TRACE_USAGE_SCAN` | `0`、`false`、`off` 禁用自动扫描 | 启用 |
 | `AGENT_TRACE_USAGE_CLIENTS` | 逗号分隔的客户端限制 | 自动发现可用客户端 |
 | `AGENT_TRACE_USAGE_HOME` | 传给 `tokscale` 的用户主目录 | 当前用户 home |
+| `TOKSCALE_HOME` | `AGENT_TRACE_USAGE_HOME` 未设置时的兼容 home | 当前用户 home |
 | `AGENT_TRACE_HISTORY_CONTENT` | `preview` 或 `metadata` | `preview` |
 | `AGENT_TRACE_TOKSCALE_BIN` | `tokscale` 可执行文件覆盖 | 包内入口或 PATH |
 | `AGENT_TRACE_COLLECTOR_URL` | CLI/Hooks/Scanner 的 Collector 地址 | `http://localhost:4319` |
@@ -137,7 +141,32 @@ pnpm desktop:build:win
 | `CODEX_HOME` | 覆盖 Codex 配置目录。 |
 | `CLAUDE_CONFIG_DIR` | 覆盖 Claude Code 配置目录。 |
 
-多个路径仍接受相应 `TOOLTRACE_*` 旧变量；新部署应使用 `AGENT_TRACE_*`。
+### 示例程序
+
+| 变量 | 用途 | 默认值 |
+| --- | --- | --- |
+| `AGENT_TRACE_EXAMPLE_TASK` | `simple-agent` 示例任务文本 | 示例内置任务 |
+| `AGENT_TRACE_EXAMPLE_FAIL` | 设置为 `1` 时让示例生成失败 Run | 未设置 |
+
+### 旧名称兼容
+
+新部署应使用 `AGENT_TRACE_*`。以下旧名称仍在对应路径生效：
+
+| 当前名称 | 兼容名称 |
+| --- | --- |
+| `AGENT_TRACE_API_URL` | `TOOLTRACE_API_URL` |
+| `AGENT_TRACE_COLLECTOR_URL` / `AGENT_TRACE_ENDPOINT` | `TOOLTRACE_COLLECTOR_URL` / `TOOLTRACE_ENDPOINT` |
+| `AGENT_TRACE_DB_PATH` | `TOOLTRACE_DB_PATH` |
+| `AGENT_TRACE_SERVER_HOST` | `TOOLTRACE_SERVER_HOST` |
+| `AGENT_TRACE_SERVER_PORT` | `TOOLTRACE_SERVER_PORT` |
+| `AGENT_TRACE_WEB_PORT` | `TOOLTRACE_WEB_PORT` |
+| `AGENT_TRACE_MODEL_PRICES_JSON` | `TOOLTRACE_MODEL_PRICES_JSON` |
+| `AGENT_TRACE_USD_CNY_RATE` | `TOOLTRACE_USD_CNY_RATE` |
+| `AGENT_TRACE_EXCHANGE_RATE_URL` | `TOOLTRACE_EXCHANGE_RATE_URL` |
+| `AGENT_TRACE_RUNNING_STALE_MINUTES` / `AGENT_TRACE_STALE_RUN_MINUTES` | 对应 `TOOLTRACE_*` 名称 |
+| `AGENT_TRACE_EXAMPLE_TASK` / `AGENT_TRACE_EXAMPLE_FAIL` | 对应 `TOOLTRACE_*` 名称 |
+
+兼容变量用于迁移旧配置，不保证在未来正式稳定版本中永久保留。
 
 ## 数据库运维
 

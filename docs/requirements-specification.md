@@ -37,6 +37,7 @@
 | NFR-08 | 向后兼容 | 关键路径继续接受 `TOOLTRACE_*` 旧环境变量，并迁移旧 usage-scan 记录。 |
 | NFR-09 | 故障隔离 | Scanner 故障不阻止桌面 Collector 与 Dashboard 启动；周期扫描不重叠。 |
 | NFR-10 | 可维护性 | Schema、SDK、Server、Web、CLI 和 Desktop 均提供构建、类型检查或测试入口。 |
+| NFR-11 | 文档一致性 | 相对链接可解析；Collector 路由与 API/OpenAPI 一致；运行时环境变量和 CLI 主命令均有文档。 |
 
 ## 数据约束
 
@@ -70,3 +71,4 @@
 | FR-12 | Server trace insights、Web failure inspector 与诊断定位 | `trace-insights.smoke.ts`、`trace-tree.smoke.ts`、`trace-navigation.smoke.ts` |
 | FR-15、FR-16 | `apps/desktop/main.cjs` | `apps/desktop/scripts/check.mjs` |
 | NFR-04、NFR-05、NFR-08 | migrations、分页读模型、兼容环境变量 | migrations、read-model、startup smoke |
+| NFR-10、NFR-11 | 根脚本、文档检查和 CI | `workspace-scripts.*`、`docs-check.mjs`、`.github/workflows/ci.yml` |

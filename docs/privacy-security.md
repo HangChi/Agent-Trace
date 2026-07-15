@@ -1,5 +1,7 @@
 # Agent-Trace 隐私与安全
 
+安全漏洞报告和敏感数据响应流程见仓库根目录的 [SECURITY.md](../SECURITY.md)。
+
 ## 安全模型
 
 Agent-Trace 面向单机开发环境。Collector 默认监听 `127.0.0.1`，Dashboard 通过本地 HTTP 访问它，数据写入本机 SQLite。Collector 没有认证、授权或多租户隔离，不应直接暴露到公网或不可信局域网。

@@ -4,6 +4,10 @@
   "private": true,
   "type": "module",
   "packageManager": "pnpm@11.0.7",
+  "engines": {
+    "node": ">=22.12.0",
+    "pnpm": ">=11.0.7 <12"
+  },
   "scripts": {
     "build": "pnpm -r build",
     "desktop:build:win": "node apps/desktop/scripts/package-win.mjs nsis",
@@ -11,11 +15,13 @@
     "desktop:pack:win": "node apps/desktop/scripts/package-win.mjs dir",
     "dev": "pnpm -r --parallel dev",
     "format": "pnpm -r format",
-    "lint": "node scripts/workspace-scripts.smoke.mjs && pnpm -r lint && git diff --check",
+    "docs:check": "node scripts/docs-check.mjs",
+    "lint": "node scripts/workspace-scripts.smoke.mjs && node scripts/docs-check.mjs && pnpm -r lint && git diff --check",
     "prepare": "pnpm --filter @agent-trace/schema build",
     "pretest": "pnpm --filter @agent-trace/schema build",
     "test": "node scripts/workspace-scripts.smoke.mjs && node --test scripts/workspace-scripts.test.mjs && pnpm -r test",
-    "typecheck": "pnpm -r typecheck"
+    "typecheck": "pnpm -r typecheck",
+    "verify": "pnpm build && pnpm test && pnpm typecheck && pnpm lint"
   },
   "devDependencies": {
     "typescript": "^5.9.3"
