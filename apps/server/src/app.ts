@@ -13,10 +13,13 @@ import {
   createEvent,
   createRun,
   compactDatabase,
+  compareRuns,
   deleteRun,
   deleteRuns,
+  exportRedactedRun,
   getDashboardRunById,
   getStorageStats,
+  getRunTrends,
   getTraceInsights,
   listEventsByRunId,
   listEventsPageByRunId,
@@ -137,6 +140,20 @@ export function createApp() {
 
   app.get("/usage/scanner", async (c) => c.json(await getScannerStatus()));
 
+  app.get("/analytics/runs/compare", async (c) => {
+    const ids = parseComparisonIds(c.req.query("ids"));
+
+    if (!ids) {
+      return c.json({ error: "comparison_requires_2_to_5_runs" }, 400);
+    }
+
+    return c.json({ runs: await compareRuns(ids) });
+  });
+
+  app.get("/analytics/runs/trends", async (c) => {
+    return c.json(await getRunTrends(parseAnalyticsDays(c.req.query("days"))));
+  });
+
   app.get("/runs", async (c) => {
     const includeUntracked = ["1", "true"].includes(c.req.query("includeUntracked") ?? "");
     if (isLegacyQuery(c.req.query("legacy"))) {
@@ -192,6 +209,18 @@ export function createApp() {
     });
 
     return c.json(result);
+  });
+
+  app.get("/runs/:id/export", async (c) => {
+    const result = await exportRedactedRun(c.req.param("id"));
+
+    if (!result) {
+      return c.json({ error: "run_not_found" }, 404);
+    }
+
+    c.header("content-disposition", `attachment; filename="agent-trace-${result.run.id}.json"`);
+    c.header("content-type", "application/json; charset=UTF-8");
+    return c.body(JSON.stringify(result, null, 2));
   });
 
   app.get("/runs/:id", async (c) => {
@@ -255,6 +284,23 @@ export function createApp() {
 
 function isLegacyQuery(value: string | undefined) {
   return value === "1" || value === "true";
+}
+
+function parseComparisonIds(value: string | undefined) {
+  const ids = [...new Set(
+    (value ?? "")
+      .split(",")
+      .map((id) => id.trim())
+      .filter(Boolean)
+  )];
+
+  return ids.length >= 2 && ids.length <= 5 ? ids : undefined;
+}
+
+function parseAnalyticsDays(value: string | undefined) {
+  const parsed = Number(value);
+
+  return Number.isFinite(parsed) && parsed > 0 ? Math.min(90, Math.floor(parsed)) : 14;
 }
 
 function parseVisibility(value: string | undefined) {

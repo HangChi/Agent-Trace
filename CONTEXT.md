@@ -80,6 +80,18 @@ CLI 周期或单次调用 `tokscale`，协调客户端历史并向 Collector 提
 
 Collector 为 Dashboard 生成的有界查询结果，包括分页、筛选、汇总、Facet 和 Trace Insight。共享 Schema 中的 Dashboard 类型是其 Interface。
 
+### Redacted Export
+
+用于分享或提交诊断材料的单 Run JSON 快照。它保留状态、时间、调用结构、Token、成本和安全元数据；Run/Event ID 使用稳定化名，Prompt、输入输出、命令、路径、会话 ID 与错误正文不进入导出文件。当前唯一脱敏级别为 `metadata`。
+
+### Run Comparison
+
+对 2–5 个 Run 的状态、耗时、Event 数、失败 Event 数、Token 和成本进行并排比较的有界 Read Model。输入顺序决定展示顺序，第一个 Run 是 Dashboard 中的比较基准。
+
+### Run Trend
+
+按 UTC 自然日聚合 Run 数、成功/失败数、平均耗时、Token 和成本的有界 Read Model。Dashboard 默认展示最近 14 天，Collector 最大接受 90 天窗口，并补齐没有 Run 的日期。
+
 ### Legacy Read
 
 通过 `legacy=1|true` 返回旧版不分页数组的兼容查询。仅用于旧客户端和兼容测试，新调用方应使用默认分页 Read Model。

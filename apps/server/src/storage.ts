@@ -1,5 +1,6 @@
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import type SqliteDatabase from "better-sqlite3";
 import { existsSync, statSync } from "node:fs";
 
 import type {
@@ -11,6 +12,8 @@ import type {
   DashboardModelUsage,
   DashboardRun,
   DashboardRunFilters,
+  DashboardRunMetric,
+  DashboardRunTrends,
   DashboardRunMetadata,
   DashboardRunPage,
   DashboardRunSummary,
@@ -26,9 +29,10 @@ import { migrateDatabase } from "./migrations.js";
 import { events, runs, runTombstones, usageSessions } from "./schema.js";
 import { publishChange } from "./change-feed.js";
 import { analyzeTraceInsights } from "./trace-insights.js";
+import { createRedactedRunExport } from "./run-export.js";
 import type { TranscriptTrace } from "./transcript-scan.js";
 
-type Database = BetterSQLite3Database;
+type Database = BetterSQLite3Database & { $client: SqliteDatabase.Database };
 
 type ListRunsOptions = {
   includeUntracked?: boolean;
@@ -295,6 +299,162 @@ export async function getDashboardRunById(
   const usageRows = await database.select().from(usageSessions);
 
   return toDashboardRun(run, summaries.get(id), groupUsageBySession(usageRows));
+}
+
+export async function exportRedactedRun(
+  id: string,
+  database: Database = defaultDb
+) {
+  const [run, eventRows] = await Promise.all([
+    getRunById(id, database),
+    listEventsByRunId(id, database)
+  ]);
+
+  return run ? createRedactedRunExport(run, eventRows) : undefined;
+}
+
+export async function compareRuns(
+  ids: string[],
+  database: Database = defaultDb
+): Promise<DashboardRunMetric[]> {
+  if (ids.length === 0) return [];
+
+  const runRows = await database.select().from(runs).where(inArray(runs.id, ids));
+  const eventRows = await selectEventSummaryRows(database, ids);
+  const usageRows = await selectUsageRowsForRuns(runRows, database);
+  const summaries = summarizeEventsByRun(eventRows);
+  const usageBySession = groupUsageBySession(usageRows);
+  const counts = new Map<string, { total: number; failed: number }>();
+
+  for (const event of eventRows) {
+    const count = counts.get(event.runId) ?? { total: 0, failed: 0 };
+    count.total += 1;
+    if (event.status === "error") count.failed += 1;
+    counts.set(event.runId, count);
+  }
+
+  const order = new Map(ids.map((id, index) => [id, index]));
+
+  return runRows
+    .map((row) => {
+      const run = toDashboardRun(row, summaries.get(row.id), usageBySession);
+      const summary = run.metadata?.summary;
+      const count = counts.get(row.id) ?? { total: 0, failed: 0 };
+      const endedAt = run.endedAt ?? new Date().toISOString();
+      const durationMs = Math.max(0, new Date(endedAt).getTime() - new Date(run.startedAt).getTime());
+
+      return {
+        id: run.id,
+        name: run.name,
+        status: run.status,
+        startedAt: run.startedAt,
+        durationMs,
+        eventCount: count.total,
+        failedEventCount: count.failed,
+        totalTokens: summary?.tokenUsage.total ?? 0,
+        costUsd: summary?.costUsd ?? 0
+      };
+    })
+    .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
+}
+
+export async function getRunTrends(
+  days: number,
+  database: Database = defaultDb,
+  now = new Date()
+): Promise<DashboardRunTrends> {
+  const normalizedDays = Math.min(90, Math.max(1, Math.floor(days)));
+  const endDate = startOfUtcDay(now);
+  const startDate = new Date(endDate);
+  startDate.setUTCDate(startDate.getUTCDate() - normalizedDays + 1);
+  const exclusiveEnd = new Date(endDate);
+  exclusiveEnd.setUTCDate(exclusiveEnd.getUTCDate() + 1);
+  const rows = database.$client.prepare(`
+    with selected_runs as (
+      select * from runs where started_at >= ? and started_at < ?
+    ),
+    event_metrics as (
+      select
+        event.run_id as run_id,
+        sum(cast(json_extract(event.metadata_json, '$.tokenUsage.total') as integer)) as total_tokens,
+        sum(cast(json_extract(event.metadata_json, '$.costUsd') as real)) as cost_usd
+      from events event
+      join selected_runs run on run.id = event.run_id
+      group by event.run_id
+    ),
+    usage_metrics as (
+      select
+        usage.client as client,
+        usage.session_id as session_id,
+        sum(usage.total_tokens) as total_tokens,
+        sum(usage.cost_usd) as cost_usd
+      from usage_sessions usage
+      where exists (
+        select 1 from selected_runs run
+        where usage.session_id = json_extract(run.metadata_json, '$.sessionId')
+          and usage.client = case json_extract(run.metadata_json, '$.agent')
+            when 'claude-code' then 'claude'
+            when 'github-copilot' then 'copilot'
+            else json_extract(run.metadata_json, '$.agent') end
+      )
+      group by usage.client, usage.session_id
+    )
+    select
+      date(run.started_at) as date,
+      count(*) as runCount,
+      sum(case when run.status = 'success' then 1 else 0 end) as successfulRunCount,
+      sum(case when run.status = 'error' then 1 else 0 end) as failedRunCount,
+      cast(round(avg(max(0,
+        (julianday(coalesce(run.ended_at, ?)) - julianday(run.started_at)) * 86400000
+      ))) as integer) as averageDurationMs,
+      sum(coalesce(usage.total_tokens, event.total_tokens, 0)) as totalTokens,
+      sum(coalesce(usage.cost_usd, event.cost_usd, 0)) as costUsd
+    from selected_runs run
+    left join event_metrics event on event.run_id = run.id
+    left join usage_metrics usage
+      on usage.session_id = json_extract(run.metadata_json, '$.sessionId')
+      and usage.client = case json_extract(run.metadata_json, '$.agent')
+        when 'claude-code' then 'claude'
+        when 'github-copilot' then 'copilot'
+        else json_extract(run.metadata_json, '$.agent') end
+    group by date(run.started_at)
+    order by date(run.started_at)
+  `).all(
+    startDate.toISOString(),
+    exclusiveEnd.toISOString(),
+    now.toISOString()
+  ) as Array<{
+    date: string;
+    runCount: number;
+    successfulRunCount: number;
+    failedRunCount: number;
+    averageDurationMs: number;
+    totalTokens: number;
+    costUsd: number;
+  }>;
+  const byDate = new Map(rows.map((row) => [row.date, row]));
+  const points = Array.from({ length: normalizedDays }, (_, index) => {
+    const date = new Date(startDate);
+    date.setUTCDate(date.getUTCDate() + index);
+    const key = date.toISOString().slice(0, 10);
+    const row = byDate.get(key);
+
+    return {
+      date: key,
+      runCount: Number(row?.runCount ?? 0),
+      successfulRunCount: Number(row?.successfulRunCount ?? 0),
+      failedRunCount: Number(row?.failedRunCount ?? 0),
+      averageDurationMs: Number(row?.averageDurationMs ?? 0),
+      totalTokens: Number(row?.totalTokens ?? 0),
+      costUsd: Number(row?.costUsd ?? 0)
+    };
+  });
+
+  return { days: normalizedDays, points };
+}
+
+function startOfUtcDay(value: Date) {
+  return new Date(Date.UTC(value.getUTCFullYear(), value.getUTCMonth(), value.getUTCDate()));
 }
 
 export async function listRunsPage(

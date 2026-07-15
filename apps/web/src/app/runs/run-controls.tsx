@@ -2,7 +2,7 @@
 
 import { useRouter } from "next/navigation";
 import { useEffect, useRef, useState, useTransition } from "react";
-import { RefreshCw, Trash2 } from "lucide-react";
+import { GitCompareArrows, RefreshCw, Trash2 } from "lucide-react";
 
 import { Button } from "~/components/ui/button";
 import {
@@ -255,6 +255,38 @@ export function BulkDeleteRunsButton({
         </DialogContent>
       </Dialog>
     </>
+  );
+}
+
+export function CompareRunsButton({
+  formId,
+  label,
+  locale
+}: {
+  formId: string;
+  label: string;
+  locale: "zh" | "en";
+}) {
+  const router = useRouter();
+  const { selectedIds } = useRunSelection(formId);
+  const canCompare = selectedIds.length >= 2 && selectedIds.length <= 5;
+
+  return (
+    <Button
+      type="button"
+      variant="outline"
+      size="sm"
+      disabled={!canCompare}
+      title={locale === "zh" ? "请选择 2–5 个 Run" : "Select 2–5 runs"}
+      onClick={() => {
+        const params = new URLSearchParams({ ids: selectedIds.join(",") });
+        if (locale === "en") params.set("lang", "en");
+        router.push(`/runs/compare?${params}`);
+      }}
+    >
+      <GitCompareArrows className="h-3.5 w-3.5" aria-hidden />
+      {label}
+    </Button>
   );
 }
 

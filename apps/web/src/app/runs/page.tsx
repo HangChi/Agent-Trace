@@ -5,6 +5,7 @@ import type {
   DashboardRunMetadata,
   DashboardRunPage,
   DashboardRunSummary,
+  DashboardRunTrends,
   DashboardUsageSummary
 } from "@agent-trace/schema";
 import { Activity, AlertCircle, ChevronLeft, ChevronRight, Coins, Cpu, Eye, EyeOff, ListFilter, Play, Server } from "lucide-react";
@@ -42,6 +43,7 @@ import { cn } from "~/lib/utils";
 import {
   AutoRefresh,
   BulkDeleteRunsButton,
+  CompareRunsButton,
   DeleteRunButton,
   RefreshButton,
   SelectAllRunsCheckbox
@@ -163,10 +165,11 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
   const runMode = parseRunMode(params.runs);
   const scannerMode = parseScannerMode(params.scanner);
   const runFilters = parseRunFilters(params);
-  const [{ page: runPage, error }, scannerStatus, usageResult, exchangeRate] = await Promise.all([
+  const [{ page: runPage, error }, scannerStatus, usageResult, trendResult, exchangeRate] = await Promise.all([
     getRunPage(locale, requestedPage, runMode, runFilters),
     fetchScannerStatus(collectorUrl),
     getUsageSummary(locale),
+    getRunTrends(locale),
     getUsdCnyRate()
   ]);
   const runs = runPage.runs;
@@ -310,6 +313,11 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                 failedText={text.runs.bulkDeleteFailed}
                 selectedText={text.runs.selectedRuns}
                 clearSelectionLabel={text.runs.clearSelection}
+              />
+              <CompareRunsButton
+                formId={runsBulkDeleteFormId}
+                label={locale === "zh" ? "对比 Run" : "Compare runs"}
+                locale={locale}
               />
               <RefreshButton label={text.runs.refresh} refreshingLabel={text.runs.refreshing} />
             </div>
@@ -507,6 +515,8 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
           ) : null}
         </Card>
 
+        <RunTrendCard result={trendResult} locale={locale} />
+
         <UsageLedger summary={usageResult.summary} error={usageResult.error} locale={locale} />
 
         {allScannerDiagnostics.length > 0 ? (
@@ -687,6 +697,34 @@ async function getUsageSummary(
     return {
       summary: emptySummary,
       error: error instanceof Error ? error.message : copy[locale].runs.usageUnavailable
+    };
+  }
+}
+
+async function getRunTrends(
+  locale: Locale
+): Promise<{ trends: DashboardRunTrends; error?: string }> {
+  const empty = { days: 14, points: [] } satisfies DashboardRunTrends;
+
+  try {
+    const response = await fetch(`${collectorUrl}/analytics/runs/trends?days=14`, {
+      cache: "no-store"
+    });
+
+    if (!response.ok) {
+      return {
+        trends: empty,
+        error: locale === "zh"
+          ? `趋势分析返回 ${response.status}`
+          : `Trend analysis returned ${response.status}`
+      };
+    }
+
+    return { trends: (await response.json()) as DashboardRunTrends };
+  } catch (error) {
+    return {
+      trends: empty,
+      error: error instanceof Error ? error.message : locale === "zh" ? "趋势分析不可用" : "Trend analysis is unavailable"
     };
   }
 }
@@ -978,6 +1016,81 @@ function RunsPaginationControls({
         )}
       </nav>
     </div>
+  );
+}
+
+function RunTrendCard({
+  result,
+  locale
+}: {
+  result: { trends: DashboardRunTrends; error?: string };
+  locale: Locale;
+}) {
+  const maxRuns = Math.max(1, ...result.trends.points.map((point) => point.runCount));
+  const hasData = result.trends.points.some((point) => point.runCount > 0);
+
+  return (
+    <Card className="mt-5 overflow-hidden py-0">
+      <div className="border-b border-border/70 bg-surface-raised px-4 py-3.5 sm:px-5">
+        <div className="flex flex-wrap items-start justify-between gap-3">
+          <div>
+            <h2 className="text-sm font-semibold text-foreground">
+              {locale === "zh" ? "Run 趋势" : "Run trends"}
+            </h2>
+            <p className="mt-1 text-xs text-muted-foreground">
+              {locale === "zh"
+                ? "最近 14 天的运行量、成功率、Token 与成本"
+                : "Run volume, success rate, tokens, and cost over the last 14 days"}
+            </p>
+          </div>
+          <span className="rounded-md border border-border/80 bg-surface-muted px-2 py-1 font-mono text-[11px] text-muted-foreground">
+            {result.trends.days} {locale === "zh" ? "天" : "days"}
+          </span>
+        </div>
+      </div>
+      {result.error ? (
+        <div className="px-5 py-4 text-sm text-destructive">{result.error}</div>
+      ) : !hasData ? (
+        <div className="px-5 py-8 text-center text-sm text-muted-foreground">
+          {locale === "zh" ? "当前时间范围内没有 Run" : "No runs in this time range"}
+        </div>
+      ) : (
+        <ol className="grid gap-2 px-4 py-4 sm:px-5 lg:grid-cols-2">
+          {result.trends.points.map((point) => {
+            const successRate = point.runCount > 0
+              ? Math.round(point.successfulRunCount / point.runCount * 100)
+              : 0;
+
+            return (
+              <li key={point.date} className="rounded-lg border border-border/70 bg-background/60 p-3">
+                <div className="flex items-center justify-between gap-3 text-xs">
+                  <span className="font-mono font-semibold text-foreground">{point.date}</span>
+                  <span className="tabular-nums text-muted-foreground">
+                    {point.runCount} Run · {successRate}% {locale === "zh" ? "成功" : "success"}
+                  </span>
+                </div>
+                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-muted">
+                  <div
+                    className="h-full rounded-full bg-primary"
+                    style={{ width: `${point.runCount / maxRuns * 100}%` }}
+                  />
+                </div>
+                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-foreground">
+                  <span>{point.totalTokens.toLocaleString()} tokens</span>
+                  <span>{formatUsd(point.costUsd)}</span>
+                  <span>{formatDurationMs(point.averageDurationMs)}</span>
+                  {point.failedRunCount > 0 ? (
+                    <span className="text-status-error">
+                      {point.failedRunCount} {locale === "zh" ? "失败" : "failed"}
+                    </span>
+                  ) : null}
+                </div>
+              </li>
+            );
+          })}
+        </ol>
+      )}
+    </Card>
   );
 }
 
@@ -1351,6 +1464,11 @@ function formatCny(value: number) {
 
 function formatMoney(value: number) {
   return value < 0.01 ? value.toFixed(4) : value.toFixed(2);
+}
+
+function formatDurationMs(value: number) {
+  if (value < 1000) return `${Math.round(value)}ms`;
+  return `${(value / 1000).toFixed(1)}s`;
 }
 
 function getString(value: unknown) {

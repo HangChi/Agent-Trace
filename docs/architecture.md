@@ -107,6 +107,8 @@ Dashboard 不直接访问 SQLite，而是调用 Collector：
 
 - Run 列表的搜索、状态、来源、模型、日期、成本、排序、计数和分页下推到 SQLite；只为当前页 Run 读取 Event 摘要和 usage snapshot。
 - Event 读模型在 SQL 内完成 display/hidden、筛选、facet、汇总、排序和分页；完整 Trace 诊断通过独立 `/runs/:id/insights` Interface 计算。
+- Run Comparison 将查询限制为 2–5 个 ID，复用相同的 Event/Usage 摘要语义；Run Trend 通过日期窗口 SQL CTE 聚合 Event 与 Usage Snapshot，并只在内存中补齐最多 90 个日期点。
+- Redacted Export Module 集中维护允许导出的 metadata 字段和稳定化名规则；路由与 Dashboard 不接触原始脱敏实现。
 - Collector 通过 `/changes` 发布 SSE 修改通知，Dashboard 仅在有数据变化时刷新，连接失败才启用低频轮询。
 - 确定性诊断返回关联 `eventIds`；Web 端使用事件 ID 精确查询并生成 Trace Rail 锚点，实现跨分页、筛选和 display/hidden 范围的定位，不增加新的 Collector API 或持久化字段。
 - 存在会话级 scan snapshot 时，Run Token/成本摘要优先使用该快照，避免和事件估算重复相加。

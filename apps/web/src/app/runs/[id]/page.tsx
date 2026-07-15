@@ -13,6 +13,7 @@ import {
   CheckCircle2,
   ChevronDown,
   Clock3,
+  Download,
   Filter,
   FileJson,
   Hash,
@@ -149,7 +150,7 @@ export default async function RunDetailPage({
           </Link>
         </Button>
 
-        <div className="mt-3">
+        <div className="mt-3 flex flex-col gap-3 sm:flex-row sm:items-start sm:justify-between">
           <div className="min-w-0">
             <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
               {text.detail.title}
@@ -159,6 +160,14 @@ export default async function RunDetailPage({
             </h1>
             {run ? <p className="mt-1.5 break-all font-mono text-[11px] text-muted-foreground">{id}</p> : null}
           </div>
+          {run ? (
+            <Button variant="outline" size="sm" asChild>
+              <a href={`${collectorUrl}/runs/${encodeURIComponent(id)}/export`} download>
+                <Download className="size-4" aria-hidden />
+                {locale === "zh" ? "脱敏导出" : "Redacted export"}
+              </a>
+            </Button>
+          ) : null}
         </div>
 
         <TelemetryStrip

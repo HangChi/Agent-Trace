@@ -40,7 +40,7 @@ test("server runs the trace insights smoke", async () => {
 
   assert.equal(
     manifest.scripts?.test,
-    "tsx src/migrations.smoke.ts && tsx src/normalizers/provider-token-adapter.smoke.ts && tsx src/change-feed.smoke.ts && tsx src/smoke.ts && tsx src/start.smoke.ts && tsx src/read-model.smoke.ts && tsx src/trace-insights.smoke.ts && tsx src/usage-api.smoke.ts && tsx src/usage-storage.smoke.ts && tsx src/transcript-api.smoke.ts && tsx src/data-governance.smoke.ts",
+    "tsx src/migrations.smoke.ts && tsx src/normalizers/provider-token-adapter.smoke.ts && tsx src/change-feed.smoke.ts && tsx src/smoke.ts && tsx src/start.smoke.ts && tsx src/read-model.smoke.ts && tsx src/trace-insights.smoke.ts && tsx src/usage-api.smoke.ts && tsx src/usage-storage.smoke.ts && tsx src/transcript-api.smoke.ts && tsx src/data-governance.smoke.ts && tsx src/run-export.smoke.ts && tsx src/run-analytics.smoke.ts",
   );
 });
 

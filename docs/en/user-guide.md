@@ -48,6 +48,8 @@ Run `agent-trace <command> --help` for the current options. The Chinese [user gu
 - Tracked/all Run modes.
 - Source, status, model, Token, duration, cost, and start time.
 - Single and bulk deletion.
+- Select 2–5 Runs for a baseline comparison of status, duration, Events, tokens, and cost.
+- Fourteen-day volume, success-rate, duration, token, and cost trends.
 - Usage ledger and Scanner diagnostics.
 - Chinese/English language and light/dark theme.
 
@@ -60,6 +62,7 @@ Deleting a Run removes it from Agent-Trace SQLite and cascades to its Events. It
 - Raw Run/Event fields.
 - Failure inspection and deterministic insights for repeated actions, retry loops, slow steps, token hotspots, and failure cascades.
 - Direct navigation from an insight to any related Event, including across pagination and hidden visibility.
+- Metadata-redacted JSON export without prompts, input/output, commands, paths, session ids, or error text.
 
 ## TypeScript SDK
 

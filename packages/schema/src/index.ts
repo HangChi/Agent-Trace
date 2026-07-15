@@ -320,3 +320,59 @@ export type DashboardEventPage = {
   };
   visibility: DashboardEventVisibility;
 };
+
+export type RedactedRunExport = {
+  schemaVersion: 1;
+  exportedAt: string;
+  redaction: "metadata";
+  run: {
+    id: string;
+    name: "redacted-run";
+    status: string;
+    startedAt: string;
+    endedAt?: string;
+    metadata?: Record<string, unknown>;
+  };
+  events: Array<{
+    id: string;
+    runId: string;
+    parentId?: string;
+    type: string;
+    name: string;
+    status: string;
+    timestamp: string;
+    durationMs?: number;
+    metadata?: Record<string, unknown>;
+  }>;
+};
+
+export type DashboardRunMetric = {
+  id: string;
+  name: string;
+  status: string;
+  startedAt: string;
+  durationMs: number;
+  eventCount: number;
+  failedEventCount: number;
+  totalTokens: number;
+  costUsd: number;
+};
+
+export type DashboardRunComparison = {
+  runs: DashboardRunMetric[];
+};
+
+export type DashboardRunTrendPoint = {
+  date: string;
+  runCount: number;
+  successfulRunCount: number;
+  failedRunCount: number;
+  averageDurationMs: number;
+  totalTokens: number;
+  costUsd: number;
+};
+
+export type DashboardRunTrends = {
+  days: number;
+  points: DashboardRunTrendPoint[];
+};

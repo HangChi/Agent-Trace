@@ -15,6 +15,7 @@ tags:
   - name: Events
   - name: Integrations
   - name: Usage
+  - name: Analytics
 paths:
   /health:
     get:
@@ -230,6 +231,69 @@ paths:
                   - type: array
                     items:
                       $ref: "#/components/schemas/Event"
+  /runs/{id}/export:
+    get:
+      tags: [Runs]
+      summary: Download a metadata-redacted Run snapshot
+      operationId: exportRedactedRun
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: Redacted JSON attachment with stable pseudonymous ids
+          headers:
+            Content-Disposition:
+              schema: { type: string }
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/RedactedRunExport"
+        "404":
+          $ref: "#/components/responses/NotFound"
+  /analytics/runs/compare:
+    get:
+      tags: [Analytics]
+      summary: Compare two to five Runs
+      operationId: compareRuns
+      parameters:
+        - name: ids
+          in: query
+          required: true
+          description: Comma-separated Run ids in display order.
+          schema: { type: string }
+      responses:
+        "200":
+          description: Bounded Run comparison
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [runs]
+                properties:
+                  runs:
+                    type: array
+                    minItems: 0
+                    maxItems: 5
+                    items:
+                      $ref: "#/components/schemas/DashboardRunMetric"
+        "400":
+          $ref: "#/components/responses/ValidationError"
+  /analytics/runs/trends:
+    get:
+      tags: [Analytics]
+      summary: Get continuous UTC daily Run trends
+      operationId: getRunTrends
+      parameters:
+        - name: days
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 90, default: 14 }
+      responses:
+        "200":
+          description: Daily Run, success, duration, token, and cost aggregates
+          content:
+            application/json:
+              schema:
+                $ref: "#/components/schemas/DashboardRunTrends"
   /runs/{id}/insights:
     get:
       tags: [Events]
@@ -688,6 +752,70 @@ components:
         summary:
           type: object
           additionalProperties: true
+    RedactedRunExport:
+      type: object
+      required: [schemaVersion, exportedAt, redaction, run, events]
+      properties:
+        schemaVersion: { type: integer, const: 1 }
+        exportedAt: { type: string, format: date-time }
+        redaction: { type: string, const: metadata }
+        run:
+          type: object
+          required: [id, name, status, startedAt]
+          properties:
+            id: { type: string, pattern: '^run-[a-f0-9]{12}$' }
+            name: { type: string, const: redacted-run }
+            status: { type: string }
+            startedAt: { type: string, format: date-time }
+            endedAt: { type: string, format: date-time }
+            metadata: { type: object, additionalProperties: true }
+        events:
+          type: array
+          items:
+            type: object
+            required: [id, runId, type, name, status, timestamp]
+            properties:
+              id: { type: string, pattern: '^event-[a-f0-9]{12}$' }
+              runId: { type: string, pattern: '^run-[a-f0-9]{12}$' }
+              parentId: { type: string, pattern: '^event-[a-f0-9]{12}$' }
+              type: { type: string }
+              name: { type: string }
+              status: { type: string }
+              timestamp: { type: string, format: date-time }
+              durationMs: { type: integer, minimum: 0 }
+              metadata: { type: object, additionalProperties: true }
+    DashboardRunMetric:
+      type: object
+      required: [id, name, status, startedAt, durationMs, eventCount, failedEventCount, totalTokens, costUsd]
+      properties:
+        id: { type: string }
+        name: { type: string }
+        status: { type: string }
+        startedAt: { type: string, format: date-time }
+        durationMs: { type: integer, minimum: 0 }
+        eventCount: { type: integer, minimum: 0 }
+        failedEventCount: { type: integer, minimum: 0 }
+        totalTokens: { type: integer, minimum: 0 }
+        costUsd: { type: number, minimum: 0 }
+    DashboardRunTrends:
+      type: object
+      required: [days, points]
+      properties:
+        days: { type: integer, minimum: 1, maximum: 90 }
+        points:
+          type: array
+          maxItems: 90
+          items:
+            type: object
+            required: [date, runCount, successfulRunCount, failedRunCount, averageDurationMs, totalTokens, costUsd]
+            properties:
+              date: { type: string, format: date }
+              runCount: { type: integer, minimum: 0 }
+              successfulRunCount: { type: integer, minimum: 0 }
+              failedRunCount: { type: integer, minimum: 0 }
+              averageDurationMs: { type: integer, minimum: 0 }
+              totalTokens: { type: integer, minimum: 0 }
+              costUsd: { type: number, minimum: 0 }
     DashboardEventPage:
       type: object
       required: [events, counts, facets, pagination, summary, visibility]

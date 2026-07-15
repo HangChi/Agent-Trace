@@ -23,6 +23,8 @@ CORS only controls browser access. It does not protect non-browser clients and m
 
 Hooks currently use metadata redaction. Shell commands remain visible because they are diagnostic evidence; commands can still contain paths, arguments, or secrets.
 
+Dashboard redacted export is a separate sharing-safety layer. It omits Run/Event names, prompts, input/output, commands, paths, session ids, error text, and stacks, and replaces original ids with stable pseudonyms. Review agent, model, tool, MCP, and Skill names against the recipient and project policy before sharing.
+
 The SDK serializes values supplied by the caller. Remove credentials, personal data, and protected content before passing input/output to the SDK.
 
 ## Prompt preview mode

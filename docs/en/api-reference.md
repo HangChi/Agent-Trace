@@ -80,6 +80,10 @@ This behavior prevents observability failures from blocking the upstream Agent.
 
 Default responses are bounded page objects. `legacy=1|true` returns old, unbounded arrays and should only be used during client migration.
 
+`GET /runs/:id/export` downloads a metadata-redacted JSON snapshot. It preserves status, timestamps, Event topology, durations, tokens, cost, and safe agent/model/tool metadata. Run/Event ids are stable SHA-256-derived pseudonyms; names, prompts, input/output, commands, paths, session ids, error messages, and stacks are omitted.
+
+`GET /analytics/runs/compare?ids=run_1,run_2` compares 2–5 Runs in request order. It returns status, start time, duration, Event and failed-Event counts, tokens, and cost. `GET /analytics/runs/trends?days=14` returns continuous UTC daily points for 1–90 days, including zero-value days.
+
 Event pagination performs filtering, facets, aggregates, ordering, and pagination in SQLite. Full-Trace diagnostics use the separate `/runs/:id/insights` route. Dashboard live refresh listens to `/changes`; it falls back to a 15-second poll only when SSE is unavailable.
 
 Deleting a Run creates a tombstone, preventing Hook, OTel, and Transcript Scanner ingestion from recreating it. Delete `/runs/:id/tombstone` before intentionally collecting that id again. Maintenance routes expose capacity, retention cleanup, and compaction.

@@ -27,7 +27,7 @@ pnpm test
 | Schema | `pnpm --filter @agent-trace/schema test` | TypeScript 与 Zod 契约类型检查。 |
 | SDK | `pnpm --filter @agent-trace/sdk test` | Run 创建、步骤成功/失败、父 ID、metadata、投递超时与不干扰主流程。 |
 | CLI | `pnpm --filter @agent-trace/cli test` | Hooks 安装/卸载、帮助/参数、usage 规范化、历史协调、transcript 解析。 |
-| Server | `pnpm --filter @agent-trace/server test` | 迁移、API、启动、读模型、Provider/Token 黄金 fixtures、数据治理、诊断、usage 和 transcript 存储。 |
+| Server | `pnpm --filter @agent-trace/server test` | 迁移、API、启动、读模型、Provider/Token 黄金 fixtures、数据治理、诊断、脱敏导出、Run 对比/趋势、usage 和 transcript 存储。 |
 | Web | `pnpm --filter @agent-trace/web test` | 成本、Scanner 状态、trace tree 和诊断定位。 |
 | Desktop | `pnpm --filter @agent-trace/desktop test` | 主进程与打包脚本静态结构。 |
 | Desktop E2E | `pnpm --filter @agent-trace/desktop test:e2e` | 真实启动 Electron、Collector 和 Dashboard，验证健康后退出并回收子进程。 |
@@ -43,6 +43,8 @@ pnpm test
 2. `smoke.ts`：Run/Event 写入、Hooks、OTel、删除和基础 API。
 3. `start.smoke.ts`：端口、主机、启动与 stale 协调定时器。
 4. `read-model.smoke.ts`：Run/Event 分页、筛选、汇总和大数据量行为。
+5. `run-export.smoke.ts`：脱敏导出不泄露 Prompt、路径、会话 ID、错误或原始标识。
+6. `run-analytics.smoke.ts`：2–5 Run 对比和连续 UTC 日趋势聚合。
 5. `trace-insights.smoke.ts`：重复动作、重试、慢步骤、Token 热点和失败级联。
 6. `usage-api.smoke.ts`：用量与 Scanner 查询接口。
 7. `usage-storage.smoke.ts`：完整/部分快照替换和客户端隔离。
