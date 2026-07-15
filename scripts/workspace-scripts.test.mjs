@@ -24,6 +24,8 @@ test("web runs its TypeScript smokes directly", async () => {
     "src/app/runs/pagination.smoke.ts",
     "src/app/runs/scanner-status.smoke.ts",
     "src/app/runs/live-refresh.smoke.ts",
+    "src/app/runs/run-sorting.smoke.ts",
+    "src/app/runs/[id]/event-visibility.smoke.ts",
     "src/app/runs/[id]/trace-tree.smoke.ts",
     "src/app/runs/[id]/trace-navigation.smoke.ts",
   ];

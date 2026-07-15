@@ -45,15 +45,19 @@ pnpm test
 4. `read-model.smoke.ts`：Run/Event 分页、筛选、汇总和大数据量行为。
 5. `run-export.smoke.ts`：脱敏导出不泄露 Prompt、路径、会话 ID、错误或原始标识。
 6. `run-analytics.smoke.ts`：2–5 Run 对比和连续 UTC 日趋势聚合。
-5. `trace-insights.smoke.ts`：重复动作、重试、慢步骤、Token 热点和失败级联。
-6. `usage-api.smoke.ts`：用量与 Scanner 查询接口。
-7. `usage-storage.smoke.ts`：完整/部分快照替换和客户端隔离。
-8. `transcript-api.smoke.ts`：Transcript ingestion、更新和清理。
-9. `data-governance.smoke.ts`：删除墓碑、Scanner 防复活、显式恢复、保留期清理与容量计数。
+7. `trace-insights.smoke.ts`：重复动作、重试、慢步骤、Token 热点和失败级联。
+8. `usage-api.smoke.ts`：用量与 Scanner 查询接口。
+9. `usage-storage.smoke.ts`：完整/部分快照替换和客户端隔离。
+10. `transcript-api.smoke.ts`：Transcript ingestion、更新和清理。
+11. `data-governance.smoke.ts`：删除墓碑、Scanner 防复活、显式恢复、保留期清理与容量计数。
 
 `normalizers/provider-token-adapter.smoke.ts` 在主 Server smoke 前运行，通过 JSON 黄金 fixtures 锁定 OpenAI、Anthropic、Gemini、Cohere 和 Bedrock 用量规范化。
 
 `change-feed.smoke.ts` 验证修订号、订阅和取消订阅；Web `live-refresh.smoke.ts` 验证 SSE 变更刷新与 15 秒故障回退，并禁止恢复 2 秒整页轮询。
+
+Web `event-visibility.smoke.ts` 锁定 `display`、`hidden`、`all` 三态的计数、说明和切换目标，防止“全部事件”再次被误标为“显示已隐藏事件”。
+
+Web `run-sorting.smoke.ts` 锁定 Tokens、成本、开始时间和耗时表头的激活状态、新列默认降序，以及重复点击最终恢复默认排序。
 
 ## 性能预算
 

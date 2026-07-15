@@ -14,6 +14,11 @@ $ResultPath = Join-Path $UserData "lifecycle-result.json"
 New-Item -ItemType Directory -Path $InstallDir -Force | Out-Null
 New-Item -ItemType Directory -Path $UserData -Force | Out-Null
 
+function Invoke-Installer([string]$Installer, [string]$Target) {
+  $Process = Start-Process -FilePath $Installer -ArgumentList "/S", "/D=$Target" -PassThru -Wait -WindowStyle Hidden
+  if ($Process.ExitCode -ne 0) { throw "Installer $Installer exited with $($Process.ExitCode)" }
+}
+
 try {
   Invoke-Installer $PreviousInstaller $InstallDir
   $Executable = Join-Path $InstallDir "Agent-Trace.exe"
@@ -49,9 +54,4 @@ try {
       (Split-Path -Leaf $ResolvedRoot).StartsWith("agent-trace-upgrade-e2e-")) {
     Remove-Item -LiteralPath $ResolvedRoot -Recurse -Force -ErrorAction SilentlyContinue
   }
-}
-
-function Invoke-Installer([string]$Installer, [string]$Target) {
-  $Process = Start-Process -FilePath $Installer -ArgumentList "/S", "/D=$Target" -PassThru -Wait -WindowStyle Hidden
-  if ($Process.ExitCode -ne 0) { throw "Installer $Installer exited with $($Process.ExitCode)" }
 }

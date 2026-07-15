@@ -325,7 +325,7 @@ export function DeleteRunButton({
         type="button"
         variant="ghost"
         size="icon-sm"
-        className="text-muted-foreground hover:bg-destructive/10 hover:text-destructive"
+        className="size-8 rounded-md border border-border/70 bg-surface-raised text-muted-foreground shadow-xs hover:border-destructive/30 hover:bg-destructive/10 hover:text-destructive"
         onClick={() => {
           setError(null);
           setOpen(true);

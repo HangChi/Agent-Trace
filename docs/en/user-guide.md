@@ -45,6 +45,7 @@ Run `agent-trace <command> --help` for the current options. The Chinese [user gu
 ### Run list
 
 - Bounded pagination and manual or optional automatic refresh.
+- Search plus status, source, model, and date filters; repeated clicks on Tokens, cost, or duration cycle through descending, ascending, and the default sort. Started cycles through ascending and the default (started descending).
 - Tracked/all Run modes.
 - Source, status, model, Token, duration, cost, and start time.
 - Single and bulk deletion.

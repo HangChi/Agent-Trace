@@ -50,6 +50,7 @@ import {
 import { cn } from "~/lib/utils";
 import { AutoRefresh } from "../run-controls";
 import { inspectFailures } from "./failure-inspector";
+import { getEventVisibilityPresentation } from "./event-visibility";
 import { TraceLocationFocus } from "./trace-location-focus";
 import { traceEventTargetId, traceInsightLocationHref } from "./trace-navigation";
 import { buildTraceForest, type TraceTreeNode } from "./trace-tree";
@@ -128,6 +129,7 @@ export default async function RunDetailPage({
   const failureInsights = inspectFailures(summary.errorEvents);
   const traceInsights = insightRequest.insights ?? summary.insights ?? [];
   const sourceMetadata = summary.sourceMetadata;
+  const visibilityPresentation = getEventVisibilityPresentation(visibility, counts, locale);
 
   return (
     <main id="main-content" className="min-h-dvh bg-background text-foreground">
@@ -192,7 +194,9 @@ export default async function RunDetailPage({
                   </h2>
                 </div>
                 <p className="mt-1 text-xs leading-5 text-muted-foreground">
-                  {view === "tree" ? text.detail.treeHelp : text.detail.timelineHelp}
+                  {view === "tree"
+                    ? `${text.detail.treeHelp} ${visibilityPresentation.description}`
+                    : visibilityPresentation.description}
                 </p>
               </div>
               <div className="flex flex-wrap items-center gap-2 sm:justify-end">
@@ -217,26 +221,23 @@ export default async function RunDetailPage({
                 <span className="inline-flex w-fit items-center rounded-md border border-border/80 bg-surface-muted px-2 py-1 text-xs text-muted-foreground">
                   {formatFilterCount(events.length, pagination.total, locale)}
                 </span>
+                <span className="inline-flex w-fit items-center rounded-md border border-border/80 bg-surface-muted px-2 py-1 text-xs text-muted-foreground">
+                  {visibilityPresentation.modeLabel}
+                </span>
                 {counts.hidden > 0 ? (
                   <Link
                     href={detailHref(
                       id,
                       locale,
                       filters,
-                      visibility === "hidden" ? "display" : "hidden",
+                      visibilityPresentation.nextVisibility,
                       1,
                       view
                     )}
                     className="inline-flex w-fit items-center rounded-md border border-border/80 bg-surface-muted px-2 py-1 text-xs font-medium text-primary transition-colors hover:bg-accent hover:text-foreground"
-                    title={
-                      visibility === "hidden"
-                        ? text.detail.hideOtherEvents
-                        : `${text.detail.showHiddenEvents}: ${counts.hidden}`
-                    }
+                    title={visibilityPresentation.toggleLabel}
                   >
-                    {visibility === "hidden"
-                      ? text.detail.hideOtherEvents
-                      : `${text.detail.showHiddenEvents}: ${counts.hidden}`}
+                    {visibilityPresentation.toggleLabel}
                   </Link>
                 ) : null}
               </div>

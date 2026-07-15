@@ -1,14 +1,13 @@
 import Link from "next/link";
 import type {
   DashboardRun,
-  DashboardRunFilters,
   DashboardRunMetadata,
   DashboardRunPage,
   DashboardRunSummary,
   DashboardRunTrends,
   DashboardUsageSummary
 } from "@agent-trace/schema";
-import { Activity, AlertCircle, ChevronLeft, ChevronRight, Coins, Cpu, Eye, EyeOff, ListFilter, Play, Server } from "lucide-react";
+import { Activity, AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Coins, Cpu, Eye, EyeOff, ListFilter, Play, Server } from "lucide-react";
 
 import {
   ConsoleHeader,
@@ -52,6 +51,7 @@ import { calculateRunCost, getUsdCnyRate, type RunCost } from "~/lib/cost";
 import { ResizableTableColumns } from "./resizable-table-columns";
 import { fetchScannerStatus, type ScannerDiagnostic } from "./scanner-status";
 import { getPaginationItems } from "./pagination";
+import { getRunSortControl, type SortableRunColumn } from "./run-sorting";
 
 export const dynamic = "force-dynamic";
 
@@ -66,8 +66,6 @@ type RunsSearchParams = Promise<{
   model?: string | string[];
   startedAfter?: string | string[];
   startedBefore?: string | string[];
-  minCostUsd?: string | string[];
-  maxCostUsd?: string | string[];
   sort?: string | string[];
   order?: string | string[];
 }>;
@@ -80,17 +78,15 @@ type RunFilterState = {
   model: string;
   startedAfter: string;
   startedBefore: string;
-  minCostUsd: string;
-  maxCostUsd: string;
-  sort: NonNullable<DashboardRunFilters["sort"]>;
-  order: NonNullable<DashboardRunFilters["order"]>;
+  sort: SortableRunColumn | null;
+  order: "asc" | "desc" | null;
 };
 
 const collectorUrl = process.env.AGENT_TRACE_API_URL ?? process.env.TOOLTRACE_API_URL ?? "http://localhost:4319";
 const runsBulkDeleteFormId = "runs-bulk-delete-form";
 const runsTableColumnStorageKey = "agent-trace:runs-table-columns:v2";
 const runsPageSize = 20;
-const runsTableFixedColumnWidth = 44 + 42;
+const runsTableFixedColumnWidth = 44 + 64;
 const runsTableColumns = [
   {
     id: "run",
@@ -226,12 +222,12 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
 
         <form
           action="/runs"
-          className="mt-5 grid gap-3 rounded-xl border border-border bg-card p-4 shadow-sm md:grid-cols-4 xl:grid-cols-8"
+          className="mt-5 grid gap-3 rounded-xl border border-border bg-card p-4 shadow-sm md:grid-cols-2 lg:grid-cols-3 xl:grid-cols-[minmax(260px,2fr)_minmax(120px,0.8fr)_minmax(130px,1fr)_minmax(130px,1fr)_minmax(150px,1fr)_minmax(150px,1fr)_auto] xl:items-end"
         >
           {locale === "en" ? <input type="hidden" name="lang" value="en" /> : null}
           {runMode === "all" ? <input type="hidden" name="runs" value="all" /> : null}
           {scannerMode === "all" ? <input type="hidden" name="scanner" value="all" /> : null}
-          <label className="md:col-span-2 text-xs font-medium text-muted-foreground">
+          <label className="text-xs font-medium text-muted-foreground">
             {locale === "zh" ? "搜索" : "Search"}
             <input name="q" defaultValue={runFilters.q} placeholder={locale === "zh" ? "名称、ID、会话或来源" : "Name, ID, session, or source"} className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" />
           </label>
@@ -252,17 +248,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
             {locale === "zh" ? "结束日期" : "To"}
             <input type="date" name="startedBefore" defaultValue={runFilters.startedBefore} className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground" />
           </label>
-          <RunFilterSelect label={locale === "zh" ? "排序" : "Sort"} name="sort" value={runFilters.sort} options={[["startedAt", locale === "zh" ? "开始时间" : "Started"], ["name", locale === "zh" ? "名称" : "Name"], ["status", locale === "zh" ? "状态" : "Status"], ["duration", locale === "zh" ? "耗时" : "Duration"], ["tokens", "Tokens"], ["cost", locale === "zh" ? "成本" : "Cost"]]} />
-          <label className="text-xs font-medium text-muted-foreground">
-            {locale === "zh" ? "最低成本 (USD)" : "Min cost (USD)"}
-            <input type="number" min="0" step="0.0001" name="minCostUsd" defaultValue={runFilters.minCostUsd} className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" />
-          </label>
-          <label className="text-xs font-medium text-muted-foreground">
-            {locale === "zh" ? "最高成本 (USD)" : "Max cost (USD)"}
-            <input type="number" min="0" step="0.0001" name="maxCostUsd" defaultValue={runFilters.maxCostUsd} className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" />
-          </label>
-          <RunFilterSelect label={locale === "zh" ? "方向" : "Order"} name="order" value={runFilters.order} options={[["desc", locale === "zh" ? "降序" : "Descending"], ["asc", locale === "zh" ? "升序" : "Ascending"]]} />
-          <div className="flex items-end gap-2 md:col-span-2">
+          <div className="flex items-end gap-2 whitespace-nowrap">
             <Button type="submit" size="sm">{locale === "zh" ? "应用筛选" : "Apply filters"}</Button>
             <Button variant="outline" size="sm" asChild><Link href={runsHref(locale, 1, scannerMode, runMode)}>{locale === "zh" ? "重置" : "Reset"}</Link></Button>
           </div>
@@ -270,20 +256,20 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
 
         <Card className="mt-5 overflow-hidden py-0">
           <div className="flex flex-col gap-3 border-b border-border bg-surface-raised px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-            <div>
-              <div className="flex items-center gap-2">
-                <span className="h-4 w-0.5 rounded-full bg-primary" aria-hidden />
-                <h2 className="text-sm font-semibold tracking-[-0.01em] text-foreground">{text.runs.recent}</h2>
-                <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-border/80 bg-surface-muted px-1.5 text-xs text-muted-foreground tabular-nums">
-                  {totalRuns.toLocaleString()}
-                </span>
-                <span className="text-xs text-muted-foreground tabular-nums">
-                  {formatCountLabel(text.runs.perPage, runsPageSize)}
-                </span>
+            <div className="flex min-w-0 flex-wrap items-center gap-x-4 gap-y-3">
+              <div className="min-w-0">
+                <div className="flex items-center gap-2">
+                  <span className="h-4 w-0.5 rounded-full bg-primary" aria-hidden />
+                  <h2 className="text-sm font-semibold tracking-[-0.01em] text-foreground">{text.runs.recent}</h2>
+                  <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-border/80 bg-surface-muted px-1.5 text-xs text-muted-foreground tabular-nums">
+                    {totalRuns.toLocaleString()}
+                  </span>
+                  <span className="text-xs text-muted-foreground tabular-nums">
+                    {formatCountLabel(text.runs.perPage, runsPageSize)}
+                  </span>
+                </div>
+                <p className="mt-1 text-xs text-muted-foreground">{text.runs.latest}</p>
               </div>
-              <p className="mt-1 text-xs text-muted-foreground">{text.runs.latest}</p>
-            </div>
-            <div className="flex flex-wrap items-center gap-2">
               <Button variant="outline" size="sm" asChild>
                 <Link
                   href={runsHref(
@@ -302,6 +288,8 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                   {runMode === "all" ? text.runs.hideEmptyRuns : text.runs.showAllRuns}
                 </Link>
               </Button>
+            </div>
+            <div className="flex flex-wrap items-center gap-2">
               <BulkDeleteRunsButton
                 formId={runsBulkDeleteFormId}
                 label={text.runs.bulkDelete}
@@ -357,7 +345,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                       <col style={{ width: "var(--runs-col-cost)" }} />
                       <col style={{ width: "var(--runs-col-started)" }} />
                       <col style={{ width: "var(--runs-col-duration)" }} />
-                      <col className="w-[42px]" />
+                      <col className="w-[64px]" />
                     </colgroup>
                     <TableHeader>
                       <TableRow className="bg-surface-muted/90 hover:bg-surface-muted/90">
@@ -387,23 +375,11 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                           {text.runs.tableTracked}
                           <ColumnResizeHandle column="tracked" label={text.runs.tableTracked} locale={locale} />
                         </TableHead>
-                        <TableHead className="relative h-11 pr-4 text-right">
-                          {text.runs.tableTokens}
-                          <ColumnResizeHandle column="tokens" label={text.runs.tableTokens} locale={locale} />
-                        </TableHead>
-                        <TableHead className="relative h-11 pr-4 text-right">
-                          {text.runs.tableCost}
-                          <ColumnResizeHandle column="cost" label={text.runs.tableCost} locale={locale} />
-                        </TableHead>
-                        <TableHead className="relative h-11 pr-4">
-                          {text.runs.tableStarted}
-                          <ColumnResizeHandle column="started" label={text.runs.tableStarted} locale={locale} />
-                        </TableHead>
-                        <TableHead className="relative h-11 pr-4 text-right">
-                          {text.runs.tableDuration}
-                          <ColumnResizeHandle column="duration" label={text.runs.tableDuration} locale={locale} />
-                        </TableHead>
-                        <TableHead className="h-11 pr-4" />
+                        <SortableRunTableHead column="tokens" resizeColumn="tokens" label={text.runs.tableTokens} locale={locale} filters={runFilters} scannerMode={scannerMode} runMode={runMode} align="right" />
+                        <SortableRunTableHead column="cost" resizeColumn="cost" label={text.runs.tableCost} locale={locale} filters={runFilters} scannerMode={scannerMode} runMode={runMode} align="right" />
+                        <SortableRunTableHead column="startedAt" resizeColumn="started" label={text.runs.tableStarted} locale={locale} filters={runFilters} scannerMode={scannerMode} runMode={runMode} />
+                        <SortableRunTableHead column="duration" resizeColumn="duration" label={text.runs.tableDuration} locale={locale} filters={runFilters} scannerMode={scannerMode} runMode={runMode} align="right" />
+                        <TableHead className="h-11 px-4" />
                       </TableRow>
                     </TableHeader>
                     <TableBody>
@@ -484,7 +460,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                             {formatDuration(run.startedAt, run.endedAt, locale)}
                           </div>
                         </TableCell>
-                        <TableCell className="py-4 pr-4 text-right align-top">
+                        <TableCell className="px-4 py-3 text-center align-top">
                           <DeleteRunButton
                             runId={run.id}
                             label={text.runs.delete}
@@ -548,6 +524,65 @@ function StatusDot({ status }: { status: string }) {
           "animate-pulse bg-status-warning shadow-[0_0_0_3px_var(--status-warning-subtle)]"
       )}
     />
+  );
+}
+
+function SortableRunTableHead({
+  column,
+  resizeColumn,
+  label,
+  locale,
+  filters,
+  scannerMode,
+  runMode,
+  align = "left"
+}: {
+  column: SortableRunColumn;
+  resizeColumn: string;
+  label: string;
+  locale: Locale;
+  filters: RunFilterState;
+  scannerMode: "detected" | "all";
+  runMode: RunMode;
+  align?: "left" | "right";
+}) {
+  const control = getRunSortControl(filters, column);
+  const nextLabel = control.next.sort === null
+    ? locale === "zh" ? "恢复默认排序" : "Reset to default sorting"
+    : locale === "zh"
+      ? `按${label}${control.next.order === "asc" ? "升序" : "降序"}排列`
+      : `Sort ${label} ${control.next.order === "asc" ? "ascending" : "descending"}`;
+  const SortIcon = control.direction === "ascending"
+    ? ArrowUp
+    : control.direction === "descending"
+      ? ArrowDown
+      : ArrowUpDown;
+
+  return (
+    <TableHead
+      className={cn("relative h-11 pr-4", align === "right" && "text-right")}
+      aria-sort={control.direction}
+    >
+      <Link
+        href={runsHref(locale, 1, scannerMode, runMode, { ...filters, ...control.next })}
+        className={cn(
+          "-ml-2 inline-flex min-h-8 w-full items-center gap-1 rounded-md px-2 transition-colors hover:bg-accent/70 hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring",
+          align === "right" && "justify-end"
+        )}
+        aria-label={nextLabel}
+        title={nextLabel}
+      >
+        <span>{label}</span>
+        <SortIcon
+          className={cn(
+            "size-3.5 shrink-0",
+            control.active && !control.default ? "text-primary" : "text-muted-foreground/70"
+          )}
+          aria-hidden
+        />
+      </Link>
+      <ColumnResizeHandle column={resizeColumn} label={label} locale={locale} />
+    </TableHead>
   );
 }
 
@@ -739,6 +774,9 @@ function parseRunFilters(params: Awaited<RunsSearchParams>): RunFilterState {
   const value = (input: string | string[] | undefined) =>
     (Array.isArray(input) ? input[0] : input)?.trim() ?? "";
   const sort = value(params.sort);
+  const parsedSort = sort === "startedAt" || sort === "duration" || sort === "tokens" || sort === "cost"
+    ? sort
+    : null;
 
   return {
     q: value(params.q),
@@ -747,21 +785,19 @@ function parseRunFilters(params: Awaited<RunsSearchParams>): RunFilterState {
     model: value(params.model),
     startedAfter: value(params.startedAfter),
     startedBefore: value(params.startedBefore),
-    minCostUsd: value(params.minCostUsd),
-    maxCostUsd: value(params.maxCostUsd),
-    sort: sort === "name" || sort === "status" || sort === "duration" || sort === "tokens" || sort === "cost"
-      ? sort
-      : "startedAt",
-    order: value(params.order) === "asc" ? "asc" : "desc"
+    sort: parsedSort,
+    order: parsedSort ? (value(params.order) === "asc" ? "asc" : "desc") : null
   };
 }
 
 function appendRunFilters(params: URLSearchParams, filters: RunFilterState) {
-  for (const key of ["q", "status", "source", "model", "startedAfter", "startedBefore", "minCostUsd", "maxCostUsd"] as const) {
+  for (const key of ["q", "status", "source", "model", "startedAfter", "startedBefore"] as const) {
     if (filters[key]) params.set(key, filters[key]);
   }
-  if (filters.sort !== "startedAt") params.set("sort", filters.sort);
-  if (filters.order !== "desc") params.set("order", filters.order);
+  if (filters.sort && filters.order) {
+    params.set("sort", filters.sort);
+    params.set("order", filters.order);
+  }
 }
 
 function runsHref(
