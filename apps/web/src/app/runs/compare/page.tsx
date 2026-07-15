@@ -1,5 +1,9 @@
 import Link from "next/link";
-import type { DashboardRunComparison, DashboardRunMetric } from "@agent-trace/schema";
+import type {
+  DashboardRunComparison,
+  DashboardRunEventDiff,
+  DashboardRunMetric
+} from "@agent-trace/schema";
 import { ArrowLeft, GitCompareArrows } from "lucide-react";
 
 import { ConsoleHeader, ErrorState, StatusBadge } from "~/components";
@@ -61,10 +65,83 @@ export default async function CompareRunsPage({ searchParams }: { searchParams: 
 
         {result.error ? <div className="mt-5"><ErrorState message={result.error} locale={locale} /></div> : null}
         {!result.error && result.runs.length > 0 ? (
-          <ComparisonTable runs={result.runs} locale={locale} />
+          <>
+            <ComparisonTable runs={result.runs} locale={locale} />
+            <EventDiffTable
+              diffs={result.eventDiffs}
+              regressionCount={result.regressionCount}
+              locale={locale}
+            />
+          </>
         ) : null}
       </section>
     </main>
+  );
+}
+
+function EventDiffTable({
+  diffs,
+  regressionCount,
+  locale
+}: {
+  diffs: DashboardRunEventDiff[];
+  regressionCount: number;
+  locale: Locale;
+}) {
+  return (
+    <Card className="mt-5 overflow-hidden py-0">
+      <div className="border-b border-border bg-surface-raised px-5 py-4">
+        <h2 className="text-sm font-semibold">
+          {locale === "zh" ? "事件差异与回归" : "Event differences and regressions"}
+        </h2>
+        <p className="mt-1 text-xs text-muted-foreground">
+          {locale === "zh"
+            ? `检测到 ${diffs.length} 个事件差异，其中 ${regressionCount} 项达到回归阈值。`
+            : `${diffs.length} event differences; ${regressionCount} crossed regression thresholds.`}
+        </p>
+      </div>
+      {diffs.length === 0 ? (
+        <p className="px-5 py-6 text-sm text-muted-foreground">
+          {locale === "zh" ? "未检测到事件级差异。" : "No event-level differences detected."}
+        </p>
+      ) : (
+        <Table containerClassName="overflow-x-auto">
+          <TableHeader>
+            <TableRow className="bg-surface-muted/90 hover:bg-surface-muted/90">
+              <TableHead>{locale === "zh" ? "候选 Run" : "Candidate"}</TableHead>
+              <TableHead>{locale === "zh" ? "事件" : "Event"}</TableHead>
+              <TableHead>{locale === "zh" ? "变化" : "Changes"}</TableHead>
+              <TableHead>{locale === "zh" ? "回归" : "Regressions"}</TableHead>
+            </TableRow>
+          </TableHeader>
+          <TableBody>
+            {diffs.map((diff) => (
+              <TableRow key={`${diff.runId}:${diff.eventKey}`}>
+                <TableCell className="font-mono text-xs">{diff.runId}</TableCell>
+                <TableCell>
+                  <div className="font-medium">{diff.name}</div>
+                  <div className="font-mono text-[10px] text-muted-foreground">
+                    {diff.type} · #{diff.occurrence}
+                  </div>
+                </TableCell>
+                <TableCell className="text-xs text-muted-foreground">
+                  {diff.changes.join(", ")}
+                </TableCell>
+                <TableCell>
+                  {diff.regressions.length > 0 ? (
+                    <span className="rounded-md border border-destructive/30 bg-destructive/10 px-2 py-1 text-xs font-medium text-destructive">
+                      {diff.regressions.join(", ")}
+                    </span>
+                  ) : (
+                    <span className="text-xs text-muted-foreground">—</span>
+                  )}
+                </TableCell>
+              </TableRow>
+            ))}
+          </TableBody>
+        </Table>
+      )}
+    </Card>
   );
 }
 
@@ -167,10 +244,12 @@ function metricValue(
 async function getComparison(
   ids: string[],
   locale: Locale
-): Promise<{ runs: DashboardRunMetric[]; error?: string }> {
+): Promise<DashboardRunComparison & { error?: string }> {
   if (ids.length < 2 || ids.length > 5) {
     return {
       runs: [],
+      eventDiffs: [],
+      regressionCount: 0,
       error: locale === "zh" ? "请选择 2–5 个 Run 进行对比。" : "Select 2–5 runs to compare."
     };
   }
@@ -184,6 +263,8 @@ async function getComparison(
     if (!response.ok) {
       return {
         runs: [],
+        eventDiffs: [],
+        regressionCount: 0,
         error: locale === "zh" ? `Run 对比返回 ${response.status}` : `Run comparison returned ${response.status}`
       };
     }
@@ -192,6 +273,8 @@ async function getComparison(
     if (body.runs.length < 2) {
       return {
         runs: body.runs,
+        eventDiffs: body.eventDiffs,
+        regressionCount: body.regressionCount,
         error: locale === "zh" ? "至少有两个 Run 必须仍然存在。" : "At least two runs must still exist."
       };
     }
@@ -200,6 +283,8 @@ async function getComparison(
   } catch (error) {
     return {
       runs: [],
+      eventDiffs: [],
+      regressionCount: 0,
       error: error instanceof Error ? error.message : locale === "zh" ? "Run 对比不可用" : "Run comparison is unavailable"
     };
   }

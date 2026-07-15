@@ -2,17 +2,31 @@ import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
 import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
 import type SqliteDatabase from "better-sqlite3";
 import { existsSync, statSync } from "node:fs";
+import { randomUUID } from "node:crypto";
 
 import { privacySettingsSchema, type PrivacySettings } from "@agent-trace/schema";
 import type {
   CreateRun,
   CreateTraceEvent,
+  CreateEvaluationCase,
+  CreateEvaluationDataset,
+  CreateEvaluationResult,
+  CreateAnalyticsBudget,
+  AnalyticsBreakdown,
+  AnalyticsBreakdownGroup,
+  AnalyticsBudget,
+  AnalyticsBudgetAlert,
+  AnalyticsDimension,
   DashboardEventFilters,
   DashboardEventPage,
   DashboardEventVisibility,
   DashboardModelUsage,
   DashboardRun,
   DashboardRunFilters,
+  DashboardRunEventChange,
+  DashboardRunEventDiff,
+  DashboardRunEventMetric,
+  DashboardRunEventRegression,
   DashboardRunMetric,
   DashboardRunTrends,
   DashboardRunMetadata,
@@ -20,6 +34,10 @@ import type {
   DashboardRunSummary,
   DashboardTraceEvent,
   DashboardTraceMetadata,
+  EvaluationCase,
+  EvaluationDatasetReport,
+  EvaluationDatasetSummary,
+  EvaluationResult,
   Run,
   RunOrganization,
   TokenUsage,
@@ -476,6 +494,350 @@ export async function compareRuns(
     .sort((a, b) => (order.get(a.id) ?? 0) - (order.get(b.id) ?? 0));
 }
 
+export async function compareRunEvents(
+  ids: string[],
+  database: Database = defaultDb
+): Promise<DashboardRunEventDiff[]> {
+  const [baselineId, ...candidateIds] = ids;
+  if (!baselineId || candidateIds.length === 0) return [];
+
+  const eventGroups = await Promise.all(
+    ids.map(async (runId) => [runId, indexComparableEvents(await listEventsByRunId(runId, database))] as const)
+  );
+  const indexedByRun = new Map(eventGroups);
+  const baseline = indexedByRun.get(baselineId) ?? new Map();
+  const diffs: DashboardRunEventDiff[] = [];
+
+  for (const runId of candidateIds) {
+    const candidate = indexedByRun.get(runId) ?? new Map();
+    const keys = [...baseline.keys(), ...[...candidate.keys()].filter((key) => !baseline.has(key))];
+
+    for (const key of keys) {
+      const baselineEvent = baseline.get(key);
+      const candidateEvent = candidate.get(key);
+      const changes = getEventChanges(baselineEvent?.metric, candidateEvent?.metric);
+      if (changes.length === 0) continue;
+      const source = candidateEvent ?? baselineEvent!;
+
+      diffs.push({
+        runId,
+        eventKey: key,
+        type: source.type,
+        name: source.name,
+        occurrence: source.occurrence,
+        baseline: baselineEvent?.metric,
+        candidate: candidateEvent?.metric,
+        changes,
+        regressions: getEventRegressions(baselineEvent?.metric, candidateEvent?.metric)
+      });
+    }
+  }
+
+  return diffs;
+}
+
+export async function createEvaluationDataset(
+  input: CreateEvaluationDataset,
+  database: Database = defaultDb
+): Promise<EvaluationDatasetSummary> {
+  const id = randomUUID();
+  const createdAt = new Date().toISOString();
+  database.$client.prepare(`
+    INSERT INTO evaluation_datasets (id, name, description, score_weights_json, created_at)
+    VALUES (?, ?, ?, ?, ?)
+  `).run(id, input.name, input.description ?? null, JSON.stringify(input.scoreWeights), createdAt);
+  publishChange("evaluation");
+
+  return {
+    id,
+    name: input.name,
+    description: input.description,
+    scoreWeights: input.scoreWeights,
+    createdAt,
+    caseCount: 0,
+    resultCount: 0,
+    averageQualityScore: 0
+  };
+}
+
+export async function createEvaluationCase(
+  datasetId: string,
+  input: CreateEvaluationCase,
+  database: Database = defaultDb
+): Promise<EvaluationCase | undefined> {
+  const dataset = database.$client
+    .prepare("SELECT id FROM evaluation_datasets WHERE id = ?")
+    .get(datasetId);
+  if (!dataset) return undefined;
+  const id = randomUUID();
+  const createdAt = new Date().toISOString();
+  database.$client.prepare(`
+    INSERT INTO evaluation_cases (
+      id, dataset_id, name, input_json, expected_output_json, metadata_json, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    datasetId,
+    input.name,
+    JSON.stringify(input.input),
+    stringifyJson(input.expectedOutput),
+    stringifyJson(input.metadata),
+    createdAt
+  );
+  publishChange("evaluation");
+
+  return { id, datasetId, ...input, createdAt, results: [] };
+}
+
+export async function recordEvaluationResult(
+  input: CreateEvaluationResult,
+  database: Database = defaultDb
+): Promise<EvaluationResult | undefined> {
+  const context = database.$client.prepare(`
+    SELECT dataset.score_weights_json AS scoreWeightsJson
+    FROM evaluation_cases evaluation_case
+    JOIN evaluation_datasets dataset ON dataset.id = evaluation_case.dataset_id
+    JOIN runs run ON run.id = ?
+    WHERE evaluation_case.id = ?
+  `).get(input.runId, input.caseId) as { scoreWeightsJson: string } | undefined;
+  if (!context) return undefined;
+  const qualityScore = calculateQualityScore(input.scores, parseJson(context.scoreWeightsJson));
+  const id = randomUUID();
+  const createdAt = new Date().toISOString();
+
+  database.$client.prepare(`
+    INSERT INTO evaluation_results (
+      id, case_id, run_id, scores_json, quality_score, notes, created_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?)
+    ON CONFLICT(case_id, run_id) DO UPDATE SET
+      scores_json = excluded.scores_json,
+      quality_score = excluded.quality_score,
+      notes = excluded.notes,
+      created_at = excluded.created_at
+  `).run(
+    id,
+    input.caseId,
+    input.runId,
+    JSON.stringify(input.scores),
+    qualityScore,
+    input.notes ?? null,
+    createdAt
+  );
+  const stored = database.$client.prepare(`
+    SELECT id, created_at AS createdAt
+    FROM evaluation_results WHERE case_id = ? AND run_id = ?
+  `).get(input.caseId, input.runId) as { id: string; createdAt: string };
+  publishChange("evaluation");
+
+  return { ...input, id: stored.id, qualityScore, createdAt: stored.createdAt };
+}
+
+export async function listEvaluationDatasets(
+  database: Database = defaultDb
+): Promise<EvaluationDatasetSummary[]> {
+  const rows = database.$client.prepare(`
+    SELECT
+      dataset.id,
+      dataset.name,
+      dataset.description,
+      dataset.score_weights_json AS scoreWeightsJson,
+      dataset.created_at AS createdAt,
+      count(distinct evaluation_case.id) AS caseCount,
+      count(result.id) AS resultCount,
+      coalesce(avg(result.quality_score), 0) AS averageQualityScore
+    FROM evaluation_datasets dataset
+    LEFT JOIN evaluation_cases evaluation_case ON evaluation_case.dataset_id = dataset.id
+    LEFT JOIN evaluation_results result ON result.case_id = evaluation_case.id
+    GROUP BY dataset.id
+    ORDER BY dataset.created_at DESC
+  `).all() as EvaluationDatasetSummaryRow[];
+
+  return rows.map(toEvaluationDatasetSummary);
+}
+
+export async function getEvaluationDatasetReport(
+  datasetId: string,
+  database: Database = defaultDb
+): Promise<EvaluationDatasetReport | undefined> {
+  const datasets = await listEvaluationDatasets(database);
+  const dataset = datasets.find((entry) => entry.id === datasetId);
+  if (!dataset) return undefined;
+  const caseRows = database.$client.prepare(`
+    SELECT
+      id, dataset_id AS datasetId, name, input_json AS inputJson,
+      expected_output_json AS expectedOutputJson, metadata_json AS metadataJson,
+      created_at AS createdAt
+    FROM evaluation_cases WHERE dataset_id = ? ORDER BY created_at, id
+  `).all(datasetId) as EvaluationCaseRow[];
+  const caseIds = caseRows.map((row) => row.id);
+  const resultRows = caseIds.length === 0 ? [] : database.$client.prepare(`
+    SELECT
+      id, case_id AS caseId, run_id AS runId, scores_json AS scoresJson,
+      quality_score AS qualityScore, notes, created_at AS createdAt
+    FROM evaluation_results
+    WHERE case_id IN (${caseIds.map(() => "?").join(",")})
+    ORDER BY created_at, id
+  `).all(...caseIds) as EvaluationResultRow[];
+  const resultsByCase = new Map<string, EvaluationResult[]>();
+
+  for (const row of resultRows) {
+    const result: EvaluationResult = {
+      id: row.id,
+      caseId: row.caseId,
+      runId: row.runId,
+      scores: asNumberRecord(parseJson(row.scoresJson)),
+      qualityScore: roundQuality(row.qualityScore),
+      notes: row.notes ?? undefined,
+      createdAt: row.createdAt
+    };
+    const group = resultsByCase.get(row.caseId) ?? [];
+    group.push(result);
+    resultsByCase.set(row.caseId, group);
+  }
+
+  return {
+    dataset,
+    cases: caseRows.map((row) => ({
+      id: row.id,
+      datasetId: row.datasetId,
+      name: row.name,
+      input: parseJson(row.inputJson),
+      expectedOutput: parseJson(row.expectedOutputJson),
+      metadata: asRecord(parseJson(row.metadataJson)),
+      createdAt: row.createdAt,
+      results: resultsByCase.get(row.id) ?? []
+    }))
+  };
+}
+
+type EvaluationDatasetSummaryRow = {
+  id: string;
+  name: string;
+  description: string | null;
+  scoreWeightsJson: string;
+  createdAt: string;
+  caseCount: number;
+  resultCount: number;
+  averageQualityScore: number;
+};
+
+type EvaluationCaseRow = {
+  id: string;
+  datasetId: string;
+  name: string;
+  inputJson: string;
+  expectedOutputJson: string | null;
+  metadataJson: string | null;
+  createdAt: string;
+};
+
+type EvaluationResultRow = {
+  id: string;
+  caseId: string;
+  runId: string;
+  scoresJson: string;
+  qualityScore: number;
+  notes: string | null;
+  createdAt: string;
+};
+
+function toEvaluationDatasetSummary(row: EvaluationDatasetSummaryRow): EvaluationDatasetSummary {
+  return {
+    id: row.id,
+    name: row.name,
+    description: row.description ?? undefined,
+    scoreWeights: asNumberRecord(parseJson(row.scoreWeightsJson)),
+    createdAt: row.createdAt,
+    caseCount: Number(row.caseCount),
+    resultCount: Number(row.resultCount),
+    averageQualityScore: roundQuality(row.averageQualityScore)
+  };
+}
+
+function calculateQualityScore(scores: Record<string, number>, rawWeights: unknown) {
+  const weights = asNumberRecord(rawWeights);
+  const weighted = Object.entries(scores)
+    .map(([key, score]) => ({ score, weight: weights[key] ?? 0 }))
+    .filter(({ weight }) => weight > 0);
+  const selected = weighted.length > 0
+    ? weighted
+    : Object.values(scores).map((score) => ({ score, weight: 1 }));
+  const totalWeight = selected.reduce((total, entry) => total + entry.weight, 0);
+  return roundQuality(selected.reduce((total, entry) => total + entry.score * entry.weight, 0) / totalWeight);
+}
+
+function asNumberRecord(value: unknown): Record<string, number> {
+  return Object.fromEntries(
+    Object.entries(asRecord(value)).filter((entry): entry is [string, number] =>
+      typeof entry[1] === "number" && Number.isFinite(entry[1])
+    )
+  );
+}
+
+function roundQuality(value: number) {
+  return Math.round(Number(value) * 10_000) / 10_000;
+}
+
+function indexComparableEvents(eventRows: DashboardTraceEvent[]) {
+  const occurrences = new Map<string, number>();
+  const indexed = new Map<string, {
+    type: string;
+    name: string;
+    occurrence: number;
+    metric: DashboardRunEventMetric;
+  }>();
+
+  for (const event of eventRows) {
+    const signature = `${event.type}:${event.name}`;
+    const occurrence = (occurrences.get(signature) ?? 0) + 1;
+    occurrences.set(signature, occurrence);
+    const eventKey = `${signature}:${occurrence}`;
+
+    indexed.set(eventKey, {
+      type: event.type,
+      name: event.name,
+      occurrence,
+      metric: {
+        id: event.id,
+        status: event.status,
+        durationMs: event.durationMs ?? 0,
+        totalTokens: Number(event.metadata?.tokenUsage?.total ?? 0)
+      }
+    });
+  }
+
+  return indexed;
+}
+
+function getEventChanges(
+  baseline: DashboardRunEventMetric | undefined,
+  candidate: DashboardRunEventMetric | undefined
+): DashboardRunEventChange[] {
+  if (!baseline) return candidate ? ["added"] : [];
+  if (!candidate) return ["removed"];
+  const changes: DashboardRunEventChange[] = [];
+  if (baseline.status !== candidate.status) changes.push("status");
+  if (baseline.durationMs !== candidate.durationMs) changes.push("duration");
+  if (baseline.totalTokens !== candidate.totalTokens) changes.push("tokens");
+  return changes;
+}
+
+function getEventRegressions(
+  baseline: DashboardRunEventMetric | undefined,
+  candidate: DashboardRunEventMetric | undefined
+): DashboardRunEventRegression[] {
+  if (!candidate) return baseline ? ["missing"] : [];
+  const regressions: DashboardRunEventRegression[] = [];
+  if (candidate.status === "error" && baseline?.status !== "error") regressions.push("status");
+  if (baseline && baseline.durationMs > 0 && candidate.durationMs > baseline.durationMs * 1.2) {
+    regressions.push("duration");
+  }
+  if (baseline && baseline.totalTokens > 0 && candidate.totalTokens > baseline.totalTokens * 1.2) {
+    regressions.push("tokens");
+  }
+  return regressions;
+}
+
 export async function getRunTrends(
   days: number,
   database: Database = defaultDb,
@@ -569,6 +931,224 @@ export async function getRunTrends(
   });
 
   return { days: normalizedDays, points };
+}
+
+export async function getAnalyticsBreakdown(
+  days: number,
+  dimension: AnalyticsDimension,
+  database: Database = defaultDb,
+  now = new Date()
+): Promise<AnalyticsBreakdown> {
+  const normalizedDays = Math.min(90, Math.max(1, Math.floor(days)));
+  const start = new Date(now);
+  start.setUTCDate(start.getUTCDate() - normalizedDays + 1);
+  start.setUTCHours(0, 0, 0, 0);
+
+  return {
+    dimension,
+    days: normalizedDays,
+    groups: getAnalyticsBreakdownBetween(dimension, start, now, database)
+  };
+}
+
+function getAnalyticsBreakdownBetween(
+  dimension: AnalyticsDimension,
+  start: Date,
+  end: Date,
+  database: Database
+): AnalyticsBreakdownGroup[] {
+  const dimensionExpression = getAnalyticsDimensionExpression(dimension);
+  const rows = database.$client.prepare(`
+    WITH selected_runs AS (
+      SELECT * FROM runs WHERE started_at >= ? AND started_at <= ?
+    ),
+    event_metrics AS (
+      SELECT
+        run_id,
+        sum(cast(json_extract(metadata_json, '$.tokenUsage.total') AS INTEGER)) AS total_tokens,
+        sum(cast(json_extract(metadata_json, '$.costUsd') AS REAL)) AS cost_usd
+      FROM events
+      WHERE run_id IN (SELECT id FROM selected_runs)
+      GROUP BY run_id
+    )
+    SELECT
+      ${dimensionExpression} AS key,
+      count(*) AS runCount,
+      sum(CASE WHEN run.status = 'success' THEN 1 ELSE 0 END) AS successfulRunCount,
+      sum(CASE WHEN run.status = 'error' THEN 1 ELSE 0 END) AS failedRunCount,
+      cast(round(avg(max(0,
+        (julianday(coalesce(run.ended_at, ?)) - julianday(run.started_at)) * 86400000
+      ))) AS INTEGER) AS averageDurationMs,
+      sum(coalesce(event.total_tokens, 0)) AS totalTokens,
+      sum(coalesce(event.cost_usd, 0)) AS costUsd
+    FROM selected_runs run
+    LEFT JOIN event_metrics event ON event.run_id = run.id
+    GROUP BY key
+    ORDER BY costUsd DESC, totalTokens DESC, key
+  `).all(start.toISOString(), end.toISOString(), end.toISOString()) as Array<{
+    key: string;
+    runCount: number;
+    successfulRunCount: number;
+    failedRunCount: number;
+    averageDurationMs: number;
+    totalTokens: number;
+    costUsd: number;
+  }>;
+
+  return rows.map((row) => ({
+    key: row.key,
+    runCount: Number(row.runCount),
+    successfulRunCount: Number(row.successfulRunCount),
+    failedRunCount: Number(row.failedRunCount),
+    failureRate: row.runCount === 0 ? 0 : roundQuality(row.failedRunCount / row.runCount),
+    averageDurationMs: Number(row.averageDurationMs),
+    totalTokens: Number(row.totalTokens),
+    costUsd: roundCost(row.costUsd)
+  }));
+}
+
+function getAnalyticsDimensionExpression(dimension: AnalyticsDimension) {
+  if (dimension === "project") {
+    return "coalesce(nullif(json_extract(run.metadata_json, '$.project'), ''), 'unassigned')";
+  }
+  if (dimension === "environment") {
+    return "coalesce(nullif(json_extract(run.metadata_json, '$.environment'), ''), 'unassigned')";
+  }
+  if (dimension === "model") {
+    return `coalesce(
+      nullif(json_extract(run.metadata_json, '$.model'), ''),
+      (SELECT nullif(json_extract(model_event.metadata_json, '$.model'), '')
+        FROM events model_event WHERE model_event.run_id = run.id
+        AND json_extract(model_event.metadata_json, '$.model') IS NOT NULL
+        ORDER BY model_event.timestamp LIMIT 1),
+      'unknown'
+    )`;
+  }
+  return `coalesce(
+    nullif(json_extract(run.metadata_json, '$.agent'), ''),
+    nullif(json_extract(run.metadata_json, '$.source'), ''),
+    nullif(json_extract(run.metadata_json, '$.surface'), ''),
+    'manual'
+  )`;
+}
+
+export async function createAnalyticsBudget(
+  input: CreateAnalyticsBudget,
+  database: Database = defaultDb
+): Promise<AnalyticsBudget> {
+  const id = randomUUID();
+  const now = new Date().toISOString();
+  database.$client.prepare(`
+    INSERT INTO analytics_budgets (
+      id, name, dimension, dimension_value, period, max_cost_usd, max_tokens,
+      max_runs, enabled, created_at, updated_at
+    ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+  `).run(
+    id,
+    input.name,
+    input.dimension,
+    input.value,
+    input.period,
+    input.maxCostUsd ?? null,
+    input.maxTokens ?? null,
+    input.maxRuns ?? null,
+    input.enabled ? 1 : 0,
+    now,
+    now
+  );
+  publishChange("budget");
+  return { id, ...input, createdAt: now, updatedAt: now };
+}
+
+export async function listAnalyticsBudgets(
+  database: Database = defaultDb
+): Promise<AnalyticsBudget[]> {
+  const rows = database.$client.prepare(`
+    SELECT
+      id, name, dimension, dimension_value AS value, period,
+      max_cost_usd AS maxCostUsd, max_tokens AS maxTokens, max_runs AS maxRuns,
+      enabled, created_at AS createdAt, updated_at AS updatedAt
+    FROM analytics_budgets ORDER BY created_at DESC
+  `).all() as Array<{
+    id: string;
+    name: string;
+    dimension: AnalyticsDimension;
+    value: string;
+    period: "daily" | "monthly";
+    maxCostUsd: number | null;
+    maxTokens: number | null;
+    maxRuns: number | null;
+    enabled: number;
+    createdAt: string;
+    updatedAt: string;
+  }>;
+
+  return rows.map((row) => ({
+    id: row.id,
+    name: row.name,
+    dimension: row.dimension,
+    value: row.value,
+    period: row.period,
+    maxCostUsd: row.maxCostUsd ?? undefined,
+    maxTokens: row.maxTokens ?? undefined,
+    maxRuns: row.maxRuns ?? undefined,
+    enabled: row.enabled === 1,
+    createdAt: row.createdAt,
+    updatedAt: row.updatedAt
+  }));
+}
+
+export async function deleteAnalyticsBudget(
+  id: string,
+  database: Database = defaultDb
+) {
+  const result = database.$client.prepare("DELETE FROM analytics_budgets WHERE id = ?").run(id);
+  if (result.changes > 0) publishChange("budget");
+  return result.changes > 0;
+}
+
+export async function getAnalyticsBudgetAlerts(
+  database: Database = defaultDb,
+  now = new Date()
+): Promise<AnalyticsBudgetAlert[]> {
+  const budgets = (await listAnalyticsBudgets(database)).filter((budget) => budget.enabled);
+  const alerts: AnalyticsBudgetAlert[] = [];
+
+  for (const budget of budgets) {
+    const start = new Date(now);
+    if (budget.period === "monthly") {
+      start.setUTCDate(1);
+    }
+    start.setUTCHours(0, 0, 0, 0);
+    const group = getAnalyticsBreakdownBetween(budget.dimension, start, now, database)
+      .find((entry) => entry.key === budget.value);
+    const metrics = [
+      ["costUsd", budget.maxCostUsd, group?.costUsd ?? 0],
+      ["tokens", budget.maxTokens, group?.totalTokens ?? 0],
+      ["runs", budget.maxRuns, group?.runCount ?? 0]
+    ] as const;
+
+    for (const [metric, limit, actual] of metrics) {
+      if (limit === undefined || actual <= limit) continue;
+      alerts.push({
+        budgetId: budget.id,
+        budgetName: budget.name,
+        dimension: budget.dimension,
+        value: budget.value,
+        period: budget.period,
+        metric,
+        limit,
+        actual,
+        ratio: limit === 0 ? Number.POSITIVE_INFINITY : roundQuality(actual / limit)
+      });
+    }
+  }
+
+  return alerts;
+}
+
+function roundCost(value: number) {
+  return Math.round(Number(value) * 1_000_000) / 1_000_000;
 }
 
 function startOfUtcDay(value: Date) {

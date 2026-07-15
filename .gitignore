@@ -6,6 +6,8 @@ dist/
 .cache/
 .worktrees/
 coverage/
+__pycache__/
+*.py[cod]
 apps/desktop/resources/
 apps/desktop/release/
 *.tsbuildinfo

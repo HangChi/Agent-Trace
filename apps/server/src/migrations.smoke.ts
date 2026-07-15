@@ -26,7 +26,7 @@ function testFreshDatabase() {
     assert.equal(getUserVersion(sqlite), currentSchemaVersion);
     assert.deepEqual(
       getNames(sqlite, "table"),
-      ["events", "run_tombstones", "runs", "settings", "usage_scan_state", "usage_sessions"]
+      ["analytics_budgets", "evaluation_cases", "evaluation_datasets", "evaluation_results", "events", "run_tombstones", "runs", "settings", "usage_scan_state", "usage_sessions"]
     );
     assert.deepEqual(getColumnNames(sqlite, "runs"), [
       "id",
@@ -40,6 +40,10 @@ function testFreshDatabase() {
       "metadata_json"
     ]);
     assert.deepEqual(getNames(sqlite, "index"), [
+      "analytics_budgets_scope_idx",
+      "evaluation_cases_dataset_id_idx",
+      "evaluation_results_case_id_idx",
+      "evaluation_results_run_id_idx",
       "events_run_id_idx",
       "events_run_id_status_timestamp_idx",
       "events_run_id_timestamp_idx",

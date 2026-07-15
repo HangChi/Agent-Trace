@@ -25,6 +25,10 @@
 | FR-19 | 通用 SDK Step | SDK 可记录任意共享 Event 类型；嵌套步骤自动继承父 Event，显式 `parentId` 可覆盖。 |
 | FR-20 | Run 组织与标注 | 用户可编辑项目、环境、版本、标签、备注与收藏状态，并按项目、环境、标签和收藏筛选。 |
 | FR-21 | 维护与隐私中心 | Dashboard 可查看容量、清理与压缩数据、恢复墓碑，并配置持久化的写入前敏感字段脱敏。 |
+| FR-22 | 事件差异与回归 | Run 对比按事件签名匹配并识别状态、缺失、耗时和 Token 回归。 |
+| FR-23 | Agent 评测 | 用户可创建评测集与用例，把 Run 绑定为多维评分结果并获得加权质量分。 |
+| FR-24 | 多维分析与预算 | Dashboard 可按项目、环境、模型和来源聚合指标，设置日/月成本、Token 和 Run 数预算并查看告警。 |
+| FR-25 | Python SDK 与 OTLP | Python SDK 支持嵌套 Step、OpenAI 与 LangChain 适配；Collector 接收通用 OTLP Trace。 |
 
 ## 非功能需求
 
@@ -72,6 +76,9 @@
 | FR-07、FR-09、FR-18 | CLI scanner、Server usage/transcript 存储 | CLI transcript smoke、Server usage/transcript API smoke |
 | FR-10、FR-11、FR-17 | `apps/web/src/app/runs` | Web cost、scanner status、trace tree smoke |
 | FR-12 | Server trace insights、Web failure inspector 与诊断定位 | `trace-insights.smoke.ts`、`trace-tree.smoke.ts`、`trace-navigation.smoke.ts` |
+| FR-22、FR-24 | Server analytics、预算与 Web 分析页 | `run-analytics.smoke.ts`、`analytics-budget.smoke.ts` |
+| FR-23 | Server evaluation 存储、API 与 Web 评测页 | `evaluations.smoke.ts` |
+| FR-25 | `packages/sdk-python`、OTLP Trace normalizer | Python unittest、`otlp-traces.smoke.ts` |
 | FR-15、FR-16 | `apps/desktop/main.cjs` | `apps/desktop/scripts/check.mjs` |
 | NFR-04、NFR-05、NFR-08 | migrations、分页读模型、兼容环境变量 | migrations、read-model、startup smoke |
 | NFR-10、NFR-11 | 根脚本、文档检查和 CI | `workspace-scripts.*`、`docs-check.mjs`、`.github/workflows/ci.yml` |

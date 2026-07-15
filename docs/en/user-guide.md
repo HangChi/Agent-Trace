@@ -70,6 +70,31 @@ Deleting a Run removes it from Agent-Trace SQLite and cascades to its Events. It
 
 Use **Maintenance** in the header to inspect capacity, prune or compact local data, allow tombstoned Run ids to be collected again, and configure case-insensitive sensitive field names that are replaced before subsequent Run, Event, and Transcript writes.
 
+## Analytics, budgets, and evaluations
+
+Use **Analytics** in the header to group the last 30 days by project, environment, model, or source. UTC daily/monthly budgets can limit cost, tokens, and Run count; current violations are computed from live data.
+
+When comparing 2–5 Runs, the first Run is the baseline. Events are matched by type, name, and occurrence. New failures, missing baseline Events, or duration/token growth above 20% are regressions.
+
+Use **Evaluations** to create weighted datasets and cases, then attach multidimensional scores to existing Runs. Submitting the same case/Run pair replaces its result; quality is a normalized weighted average.
+
+## Python SDK
+
+```bash
+pip install -e packages/sdk-python
+```
+
+```python
+from agent_trace import AgentTraceClient
+
+client = AgentTraceClient()
+with client.start_run("research-agent", metadata={"project": "demo"}) as run:
+    with run.trace_step("retrieval", "load-documents"):
+        documents = load_documents()
+```
+
+`instrument_openai(client, run)` wraps OpenAI chat completions, while `AgentTraceCallbackHandler(run)` implements LangChain callback method names without adding a runtime dependency. Generic OTLP/HTTP JSON exporters can send traces to `http://127.0.0.1:4319/v1/traces`.
+
 ## TypeScript SDK
 
 ```ts

@@ -18,6 +18,7 @@ Agent-Trace collects model calls, tool execution, tokens, API-equivalent cost, l
 ## Highlights
 
 - TypeScript SDK for explicit Run, LLM, and tool instrumentation.
+- Python SDK with nested steps, sync/async decorators, and OpenAI/LangChain adapters.
 - Global Codex and Claude Code Hooks for lifecycle and tool metadata.
 - Codex OTLP/HTTP JSON ingestion for model and official token telemetry.
 - Local `tokscale` scanning for multi-client sessions, tokens, and cost.
@@ -105,6 +106,7 @@ For sensitive projects, set `AGENT_TRACE_HISTORY_CONTENT=metadata` before the fi
 | `apps/desktop` | Electron main process and Windows packaging |
 | `packages/schema` | Shared Zod contracts and TypeScript types |
 | `packages/sdk-js` | JavaScript/TypeScript tracing SDK |
+| `packages/sdk-python` | Python tracing SDK and framework adapters |
 | `packages/cli` | Development orchestration, Hooks, and usage scanning |
 | `examples` | SDK and Hook smoke examples |
 

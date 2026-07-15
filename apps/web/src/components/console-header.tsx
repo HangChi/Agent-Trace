@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { HardDrive, Server } from "lucide-react";
+import { BarChart3, FlaskConical, HardDrive, Server } from "lucide-react";
 
 import { BrandMark } from "~/components/brand-mark";
 import { ConsoleSettings } from "~/components/console-settings";
@@ -50,6 +50,20 @@ export function ConsoleHeader({
               </span>
             </div>
           ) : null}
+          <Link
+            href={localizedHref("/analytics", locale)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface-raised px-2.5 text-xs font-medium text-muted-foreground shadow-[var(--shadow-control)] transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <BarChart3 className="size-3.5" aria-hidden />
+            <span className="hidden lg:inline">{locale === "zh" ? "分析" : "Analytics"}</span>
+          </Link>
+          <Link
+            href={localizedHref("/evaluations", locale)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface-raised px-2.5 text-xs font-medium text-muted-foreground shadow-[var(--shadow-control)] transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <FlaskConical className="size-3.5" aria-hidden />
+            <span className="hidden lg:inline">{locale === "zh" ? "评测" : "Evaluations"}</span>
+          </Link>
           <Link
             href={localizedHref("/maintenance", locale)}
             className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface-raised px-2.5 text-xs font-medium text-muted-foreground shadow-[var(--shadow-control)] transition-colors hover:bg-accent hover:text-foreground"

@@ -26,6 +26,8 @@ The Collector must not be exposed directly to an untrusted network. CORS restric
 | POST | `/integrations/claude-code/hook` | Ingest Claude Code Hook data |
 | POST | `/integrations/codex/otel/v1/logs` | Ingest Codex OTLP/HTTP JSON |
 | POST | `/v1/logs` | Desktop-compatible OTLP path |
+| POST | `/v1/traces` | Ingest generic OTLP JSON traces |
+| POST | `/integrations/otlp/v1/traces` | Explicit generic OTLP trace path |
 | POST | `/integrations/usage-scan` | Ingest Usage and Transcript snapshots |
 | GET | `/usage/summary` | Aggregate local usage |
 | GET | `/usage/scanner` | Scanner status |
@@ -34,6 +36,18 @@ The Collector must not be exposed directly to an untrusted network. CORS restric
 | GET | `/runs/:id` | Get one Run |
 | GET | `/runs/:id/events` | Paginated Event read model |
 | GET | `/runs/:id/insights` | Deterministic full-Trace insights |
+| GET | `/analytics/runs/compare` | Run metrics, Event differences, and regression detection |
+| GET | `/analytics/runs/trends` | UTC daily Run trends |
+| GET | `/analytics/breakdown` | Metrics grouped by project, environment, model, or source |
+| GET | `/analytics/budgets` | List budgets |
+| POST | `/analytics/budgets` | Create a budget |
+| DELETE | `/analytics/budgets/:id` | Delete a budget |
+| GET | `/analytics/alerts` | Current budget threshold violations |
+| GET | `/evaluations/datasets` | List evaluation datasets |
+| POST | `/evaluations/datasets` | Create an evaluation dataset |
+| GET | `/evaluations/datasets/:id` | Dataset cases, results, and quality report |
+| POST | `/evaluations/datasets/:id/cases` | Add a regression case |
+| POST | `/evaluations/results` | Record a weighted Run score |
 | DELETE | `/runs/:id` | Delete one Run |
 | DELETE | `/runs/:id/tombstone` | Allow a deleted Run id to be collected again |
 | GET | `/maintenance/storage` | Database size and row counts |
@@ -86,7 +100,13 @@ Default responses are bounded page objects. `legacy=1|true` returns old, unbound
 
 `GET /runs/:id/export` downloads a metadata-redacted JSON snapshot. It preserves status, timestamps, Event topology, durations, tokens, cost, and safe agent/model/tool metadata. Run/Event ids are stable SHA-256-derived pseudonyms; names, prompts, input/output, commands, paths, session ids, error messages, and stacks are omitted.
 
-`GET /analytics/runs/compare?ids=run_1,run_2` compares 2–5 Runs in request order. It returns status, start time, duration, Event and failed-Event counts, tokens, and cost. `GET /analytics/runs/trends?days=14` returns continuous UTC daily points for 1–90 days, including zero-value days.
+`GET /analytics/runs/compare?ids=run_1,run_2` compares 2–5 Runs in request order. In addition to Run metrics, Events are matched by type, name, and occurrence. A new failure, missing baseline Event, or duration/token increase above 20% is reported as a regression. `GET /analytics/runs/trends?days=14` returns continuous UTC daily points for 1–90 days, including zero-value days.
+
+`GET /analytics/breakdown?dimension=project&days=30` groups quality, duration, tokens, and cost by `project`, `environment`, `model`, or `source`. Budgets support UTC daily/monthly windows and cost, token, and Run-count limits; `/analytics/alerts` computes current violations from live data.
+
+Evaluation datasets own weighted score dimensions and cases. `POST /evaluations/results` upserts the result for one case/Run pair and computes a normalized quality score from 0 to 1.
+
+Generic OTLP/HTTP JSON exporters can send `resourceSpans` to `/v1/traces` or `/integrations/otlp/v1/traces`. Trace ids become Runs, spans become parent-linked Events, and GenAI semantic attributes populate model and token metadata.
 
 Event pagination performs filtering, facets, aggregates, ordering, and pagination in SQLite. Full-Trace diagnostics use the separate `/runs/:id/insights` route. Dashboard live refresh listens to `/changes`; it falls back to a 15-second poll only when SSE is unavailable.
 

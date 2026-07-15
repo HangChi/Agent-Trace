@@ -1,4 +1,9 @@
 import {
+  analyticsDimensionSchema,
+  createAnalyticsBudgetSchema,
+  createEvaluationCaseSchema,
+  createEvaluationDatasetSchema,
+  createEvaluationResultSchema,
   createRunSchema,
   createTraceEventSchema,
   privacySettingsSchema,
@@ -17,23 +22,34 @@ import {
 } from "./agent-hooks.js";
 import {
   createEvent,
+  createEvaluationCase,
+  createEvaluationDataset,
   createRun,
   compactDatabase,
+  createAnalyticsBudget,
+  compareRunEvents,
   compareRuns,
   deleteRun,
+  deleteAnalyticsBudget,
   deleteRuns,
   exportRedactedRun,
   getDashboardRunById,
+  getAnalyticsBreakdown,
+  getAnalyticsBudgetAlerts,
+  getEvaluationDatasetReport,
   getPrivacySettings,
   getStorageStats,
   getRunTrends,
   getTraceInsights,
   listEventsByRunId,
+  listAnalyticsBudgets,
+  listEvaluationDatasets,
   listEventsPageByRunId,
   listRunTombstones,
   listRuns,
   listRunsPage,
   pruneRuns,
+  recordEvaluationResult,
   restoreDeletedRun,
   updatePrivacySettings,
   updateRun,
@@ -41,6 +57,7 @@ import {
 } from "./storage.js";
 import { getScannerStatus, getUsageSummary } from "./usage-storage.js";
 import { getCurrentRevision, subscribeToChanges } from "./change-feed.js";
+import { ingestOtlpTraces } from "./otlp-traces.js";
 
 const loopbackDashboardOrigin = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?$/;
 
@@ -157,11 +174,99 @@ export function createApp() {
       return c.json({ error: "comparison_requires_2_to_5_runs" }, 400);
     }
 
-    return c.json({ runs: await compareRuns(ids) });
+    const [runs, eventDiffs] = await Promise.all([
+      compareRuns(ids),
+      compareRunEvents(ids)
+    ]);
+
+    return c.json({
+      runs,
+      eventDiffs,
+      regressionCount: eventDiffs.reduce((total, diff) => total + diff.regressions.length, 0)
+    });
+  });
+
+  app.post("/v1/traces", async (c) => {
+    const result = await ingestOtlpTraces(await readJson(c.req));
+    return c.json({ ok: true, ...result }, 202);
+  });
+
+  app.post("/integrations/otlp/v1/traces", async (c) => {
+    const result = await ingestOtlpTraces(await readJson(c.req));
+    return c.json({ ok: true, ...result }, 202);
   });
 
   app.get("/analytics/runs/trends", async (c) => {
     return c.json(await getRunTrends(parseAnalyticsDays(c.req.query("days"))));
+  });
+
+  app.get("/analytics/breakdown", async (c) => {
+    const dimension = analyticsDimensionSchema.safeParse(c.req.query("dimension") ?? "project");
+    if (!dimension.success) return c.json({ error: "invalid_analytics_dimension" }, 400);
+    return c.json(await getAnalyticsBreakdown(
+      parseAnalyticsDays(c.req.query("days")),
+      dimension.data
+    ));
+  });
+
+  app.get("/analytics/budgets", async (c) => c.json({
+    budgets: await listAnalyticsBudgets()
+  }));
+
+  app.post("/analytics/budgets", async (c) => {
+    const parsed = createAnalyticsBudgetSchema.safeParse(await readJson(c.req));
+    if (!parsed.success) {
+      return c.json({ error: "invalid_analytics_budget", issues: parsed.error.issues }, 400);
+    }
+    return c.json(await createAnalyticsBudget(parsed.data), 201);
+  });
+
+  app.delete("/analytics/budgets/:id", async (c) => {
+    const deleted = await deleteAnalyticsBudget(c.req.param("id"));
+    return deleted ? c.json({ ok: true }) : c.json({ error: "analytics_budget_not_found" }, 404);
+  });
+
+  app.get("/analytics/alerts", async (c) => c.json({
+    alerts: await getAnalyticsBudgetAlerts()
+  }));
+
+  app.get("/evaluations/datasets", async (c) => c.json({
+    datasets: await listEvaluationDatasets()
+  }));
+
+  app.post("/evaluations/datasets", async (c) => {
+    const parsed = createEvaluationDatasetSchema.safeParse(await readJson(c.req));
+    if (!parsed.success) {
+      return c.json({ error: "invalid_evaluation_dataset", issues: parsed.error.issues }, 400);
+    }
+    return c.json(await createEvaluationDataset(parsed.data), 201);
+  });
+
+  app.get("/evaluations/datasets/:id", async (c) => {
+    const report = await getEvaluationDatasetReport(c.req.param("id"));
+    return report ? c.json(report) : c.json({ error: "evaluation_dataset_not_found" }, 404);
+  });
+
+  app.post("/evaluations/datasets/:id/cases", async (c) => {
+    const parsed = createEvaluationCaseSchema.safeParse(await readJson(c.req));
+    if (!parsed.success) {
+      return c.json({ error: "invalid_evaluation_case", issues: parsed.error.issues }, 400);
+    }
+    const evaluationCase = await createEvaluationCase(c.req.param("id"), parsed.data);
+    return evaluationCase
+      ? c.json(evaluationCase, 201)
+      : c.json({ error: "evaluation_dataset_not_found" }, 404);
+  });
+
+  app.post("/evaluations/results", async (c) => {
+    const parsed = createEvaluationResultSchema.safeParse(await readJson(c.req));
+    if (!parsed.success) {
+      return c.json({ error: "invalid_evaluation_result", issues: parsed.error.issues }, 400);
+    }
+    const result = await recordEvaluationResult(parsed.data);
+    return result
+      ? c.json(result, 201)
+      : c.json({ error: "evaluation_case_or_run_not_found" }, 404);
   });
 
   app.get("/runs", async (c) => {

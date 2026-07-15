@@ -1,6 +1,6 @@
 export type ChangeFeedEvent = {
   revision: number;
-  kind: "run" | "event" | "usage" | "maintenance";
+  kind: "run" | "event" | "usage" | "maintenance" | "evaluation" | "budget";
   at: string;
 };
 

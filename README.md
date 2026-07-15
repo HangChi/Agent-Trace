@@ -18,6 +18,7 @@ Agent-Trace 把模型调用、工具执行、Token、成本、耗时、错误和
 ## 核心能力
 
 - TypeScript SDK：显式记录自定义 Agent 的 Run、LLM 与工具调用。
+- Python SDK：嵌套 Step、同步/异步装饰器，以及 OpenAI 和 LangChain 适配。
 - Codex/Claude Code Hooks：无需修改 Agent 源码即可采集生命周期与工具元数据。
 - Codex OTel：接收 OTLP/HTTP JSON 日志中的模型与官方 Token 用量。
 - 本地 Usage Scanner：通过 `tokscale` 汇总多客户端会话、Token 与 API 等价成本。
@@ -108,6 +109,7 @@ node packages/cli/dist/index.js usage clients --home <path>
 | `apps/desktop` | Electron 主进程与 Windows 打包 |
 | `packages/schema` | Zod 契约与共享 TypeScript 类型 |
 | `packages/sdk-js` | JavaScript/TypeScript Tracing SDK |
+| `packages/sdk-python` | Python Tracing SDK 与框架适配 |
 | `packages/cli` | 开发编排、Hooks 管理和本地用量扫描 |
 | `examples` | SDK 与 Hook 冒烟示例 |
 

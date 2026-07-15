@@ -120,6 +120,50 @@ export const privacySettingsSchema = z.object({
   replacement: z.string().min(1).max(120)
 });
 
+const evaluationScoresSchema = z.record(
+  z.string().trim().min(1).max(64),
+  z.number().min(0).max(1)
+).refine((scores) => Object.keys(scores).length > 0, "At least one score is required");
+
+export const createEvaluationDatasetSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  description: z.string().trim().max(2000).optional(),
+  scoreWeights: z.record(
+    z.string().trim().min(1).max(64),
+    z.number().positive().max(1)
+  ).default({})
+});
+
+export const createEvaluationCaseSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  input: z.unknown(),
+  expectedOutput: z.unknown().optional(),
+  metadata: z.record(z.string(), z.unknown()).optional()
+});
+
+export const createEvaluationResultSchema = z.object({
+  caseId: z.string().min(1),
+  runId: z.string().min(1),
+  scores: evaluationScoresSchema,
+  notes: z.string().trim().max(2000).optional()
+});
+
+export const analyticsDimensionSchema = z.enum(["project", "environment", "model", "source"]);
+
+export const createAnalyticsBudgetSchema = z.object({
+  name: z.string().trim().min(1).max(160),
+  dimension: analyticsDimensionSchema,
+  value: z.string().trim().min(1).max(160),
+  period: z.enum(["daily", "monthly"]),
+  maxCostUsd: z.number().nonnegative().optional(),
+  maxTokens: z.number().int().nonnegative().optional(),
+  maxRuns: z.number().int().nonnegative().optional(),
+  enabled: z.boolean().default(true)
+}).refine(
+  (budget) => budget.maxCostUsd !== undefined || budget.maxTokens !== undefined || budget.maxRuns !== undefined,
+  "At least one budget limit is required"
+);
+
 export type TraceStatus = z.infer<typeof traceStatusSchema>;
 export type TraceEventType = z.infer<typeof traceEventTypeSchema>;
 export type TraceError = z.infer<typeof traceErrorSchema>;
@@ -132,6 +176,72 @@ export type CreateRun = z.infer<typeof createRunSchema>;
 export type UpdateRun = z.infer<typeof updateRunSchema>;
 export type RunOrganization = z.infer<typeof runOrganizationSchema>;
 export type PrivacySettings = z.infer<typeof privacySettingsSchema>;
+export type CreateEvaluationDataset = z.infer<typeof createEvaluationDatasetSchema>;
+export type CreateEvaluationCase = z.infer<typeof createEvaluationCaseSchema>;
+export type CreateEvaluationResult = z.infer<typeof createEvaluationResultSchema>;
+export type AnalyticsDimension = z.infer<typeof analyticsDimensionSchema>;
+export type CreateAnalyticsBudget = z.infer<typeof createAnalyticsBudgetSchema>;
+
+export type EvaluationDatasetSummary = CreateEvaluationDataset & {
+  id: string;
+  createdAt: string;
+  caseCount: number;
+  resultCount: number;
+  averageQualityScore: number;
+};
+
+export type EvaluationResult = CreateEvaluationResult & {
+  id: string;
+  qualityScore: number;
+  createdAt: string;
+};
+
+export type EvaluationCase = CreateEvaluationCase & {
+  id: string;
+  datasetId: string;
+  createdAt: string;
+  results: EvaluationResult[];
+};
+
+export type EvaluationDatasetReport = {
+  dataset: EvaluationDatasetSummary;
+  cases: EvaluationCase[];
+};
+
+export type AnalyticsBreakdownGroup = {
+  key: string;
+  runCount: number;
+  successfulRunCount: number;
+  failedRunCount: number;
+  failureRate: number;
+  averageDurationMs: number;
+  totalTokens: number;
+  costUsd: number;
+};
+
+export type AnalyticsBreakdown = {
+  dimension: AnalyticsDimension;
+  days: number;
+  groups: AnalyticsBreakdownGroup[];
+};
+
+export type AnalyticsBudget = CreateAnalyticsBudget & {
+  id: string;
+  createdAt: string;
+  updatedAt: string;
+};
+
+export type AnalyticsBudgetAlert = {
+  budgetId: string;
+  budgetName: string;
+  dimension: AnalyticsDimension;
+  value: string;
+  period: "daily" | "monthly";
+  metric: "costUsd" | "tokens" | "runs";
+  limit: number;
+  actual: number;
+  ratio: number;
+};
 
 export type DashboardModelUsage = {
   model: string;
@@ -388,6 +498,31 @@ export type DashboardRunMetric = {
 
 export type DashboardRunComparison = {
   runs: DashboardRunMetric[];
+  eventDiffs: DashboardRunEventDiff[];
+  regressionCount: number;
+};
+
+export type DashboardRunEventMetric = {
+  id: string;
+  status: string;
+  durationMs: number;
+  totalTokens: number;
+};
+
+export type DashboardRunEventChange = "added" | "removed" | "status" | "duration" | "tokens";
+
+export type DashboardRunEventRegression = "status" | "missing" | "duration" | "tokens";
+
+export type DashboardRunEventDiff = {
+  runId: string;
+  eventKey: string;
+  type: string;
+  name: string;
+  occurrence: number;
+  baseline?: DashboardRunEventMetric;
+  candidate?: DashboardRunEventMetric;
+  changes: DashboardRunEventChange[];
+  regressions: DashboardRunEventRegression[];
 };
 
 export type DashboardRunTrendPoint = {

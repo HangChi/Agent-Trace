@@ -85,6 +85,18 @@ try {
       totalTokens: number;
       costUsd: number;
     }>;
+    eventDiffs?: Array<{
+      runId: string;
+      eventKey: string;
+      type: string;
+      name: string;
+      occurrence: number;
+      baseline?: { id: string; status: string; durationMs: number; totalTokens: number };
+      candidate?: { id: string; status: string; durationMs: number; totalTokens: number };
+      changes: string[];
+      regressions: string[];
+    }>;
+    regressionCount?: number;
   };
 
   assert.deepEqual(body.runs, [
@@ -111,6 +123,45 @@ try {
       costUsd: 0.2
     }
   ]);
+  assert.deepEqual(body.eventDiffs, [
+    {
+      runId: "compare-b",
+      eventKey: "llm_call:model:1",
+      type: "llm_call",
+      name: "model",
+      occurrence: 1,
+      baseline: {
+        id: "compare-a-event",
+        status: "success",
+        durationMs: 1000,
+        totalTokens: 100
+      },
+      candidate: {
+        id: "compare-b-event-1",
+        status: "success",
+        durationMs: 2000,
+        totalTokens: 200
+      },
+      changes: ["duration", "tokens"],
+      regressions: ["duration", "tokens"]
+    },
+    {
+      runId: "compare-b",
+      eventKey: "tool_call:failed tool:1",
+      type: "tool_call",
+      name: "failed tool",
+      occurrence: 1,
+      candidate: {
+        id: "compare-b-event-2",
+        status: "error",
+        durationMs: 1000,
+        totalTokens: 0
+      },
+      changes: ["added"],
+      regressions: ["status"]
+    }
+  ]);
+  assert.equal(body.regressionCount, 3);
 
   const trendResponse = await createApp().request("/analytics/runs/trends?days=2");
   assert.equal(trendResponse.status, 200);

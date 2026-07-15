@@ -15,6 +15,7 @@
 - SDK 通用 Step、异步自动父子链路和 Run 级组织 metadata。
 - Run 项目/环境/版本/标签/备注/收藏编辑与筛选。
 - Dashboard 维护与隐私中心、墓碑列表和持久化写入前字段脱敏。
+- Event 级 Run 回归检测、Agent 评测集、加权质量评分、多维分析、预算告警、Python SDK、通用 OTLP Trace 与 OpenAI/LangChain 适配。
 
 ### Changed
 

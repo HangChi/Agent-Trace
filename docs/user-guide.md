@@ -136,6 +136,33 @@ pnpm --filter simple-agent dev
 
 敏感字段名支持逗号或换行分隔，不区分大小写。规则保存后只作用于后续 Run、Event 和 Transcript 写入；不会追溯修改现有记录。清理与压缩属于本地数据操作，执行前应先备份数据库及对应 WAL/SHM 文件。
 
+## 分析、预算与评测
+
+顶部“分析”页面按项目、环境、模型或来源查看最近 30 天的 Run 数、失败率、平均耗时、Token 与成本。预算支持 UTC 日/月周期，可同时设置成本、Token 和 Run 数上限；页面会实时列出当前超限项。
+
+在 Run 列表选择 2–5 个 Run 进行对比时，第一个 Run 是基准。系统按 Event 类型、名称和出现次序匹配事件；新增失败、基准事件缺失、耗时或 Token 增长超过 20% 会标记为回归。
+
+顶部“评测”页面可以创建带评分权重的评测集、添加输入/期望输出用例，并把已有 Run 记录为多维评分结果。同一用例与 Run 再次提交会更新原结果；质量分为 0–1 的加权平均值。
+
+## 接入 Python SDK
+
+```bash
+pip install -e packages/sdk-python
+```
+
+```python
+from agent_trace import AgentTraceClient
+from agent_trace.integrations.openai import instrument_openai
+
+client = AgentTraceClient()
+with client.start_run("research-agent", metadata={"project": "demo"}) as run:
+    with run.trace_step("retrieval", "load-documents"):
+        documents = load_documents()
+    openai_client = instrument_openai(openai_client, run)
+```
+
+`AgentTraceCallbackHandler(run)` 可直接放入 LangChain 的 `callbacks`。Python SDK 与 TypeScript SDK 一样采用有界超时和 fail-open 投递。通用 OTLP/HTTP JSON Exporter 可把 Trace 发到 `http://127.0.0.1:4319/v1/traces`。
+
 ## 接入 TypeScript SDK
 
 先构建工作区包：
