@@ -84,7 +84,9 @@ $env:AGENT_TRACE_USD_CNY_RATE = "7.20"
 
 - `DELETE /runs/:id` 和批量删除会从 Agent-Trace 数据库删除 Run，并级联删除其 Event。
 - 删除不会修改 Codex、Claude Code、OpenCode 或其他客户端的源历史。
-- 后续扫描可能依据仍存在的源历史重新生成会话 Run。
+- 删除会在 `run_tombstones` 中保留 Run ID，后续 Hook、OTel 和 Transcript Scanner 不会依据源历史重新生成该 Run。
+- 如果需要重新采集某个已删除 Run，显式调用 `DELETE /runs/:id/tombstone`。
+- 使用 `POST /maintenance/prune` 按日期和状态执行保留期清理；默认保留墓碑。`GET /maintenance/storage` 用于监测容量，`POST /maintenance/compact` 用于回收 SQLite 空间。
 - 完整 usage snapshot 会替换已协调客户端的旧汇总行，但不会删除 Hook 或 OTel trace。
 
 需要彻底清空 Agent-Trace 本地数据时，先退出 Collector/桌面端，再备份或删除数据库及同名 `-wal`、`-shm` 文件。该操作不可撤销。

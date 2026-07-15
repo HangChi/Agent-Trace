@@ -1,0 +1,43 @@
+[
+  {
+    "name": "openai cached reasoning usage",
+    "source": "codex",
+    "context": { "model": "gpt-5" },
+    "value": {
+      "prompt_tokens": 100,
+      "completion_tokens": 25,
+      "total_tokens": 125,
+      "prompt_tokens_details": { "cached_tokens": 40 },
+      "completion_tokens_details": { "reasoning_tokens": 5 }
+    },
+    "expected": { "input": 100, "output": 25, "total": 125, "cachedInput": 40, "reasoningOutput": 5, "source": "codex" }
+  },
+  {
+    "name": "anthropic cache usage",
+    "source": "claude-code",
+    "context": { "model": "claude-sonnet-4-6" },
+    "value": { "input_tokens": 80, "output_tokens": 20, "cache_creation_input_tokens": 12, "cache_read_input_tokens": 30 },
+    "expected": { "input": 80, "output": 20, "total": 142, "cacheCreationInput": 12, "cacheReadInput": 30, "cachedInput": 30, "source": "claude-code" }
+  },
+  {
+    "name": "gemini usage",
+    "source": "codex",
+    "context": { "model": "gemini-2.5-pro" },
+    "value": { "promptTokenCount": 40, "toolUsePromptTokenCount": 5, "candidatesTokenCount": 10, "thoughtsTokenCount": 3, "totalTokenCount": 58 },
+    "expected": { "input": 45, "output": 10, "total": 58, "reasoningOutput": 3, "source": "google" }
+  },
+  {
+    "name": "cohere billed units",
+    "source": "codex",
+    "context": { "model": "command-r-plus" },
+    "value": { "billed_units": { "input_tokens": 9, "output_tokens": 4 } },
+    "expected": { "input": 9, "output": 4, "total": 13, "source": "cohere" }
+  },
+  {
+    "name": "bedrock camel case usage",
+    "source": "claude-code",
+    "context": { "provider": "bedrock" },
+    "value": { "inputTokens": 30, "outputTokens": 8, "cacheReadInputTokens": 7, "cacheWriteInputTokens": 2 },
+    "expected": { "input": 30, "output": 8, "total": 47, "cacheCreationInput": 2, "cacheReadInput": 7, "cachedInput": 7, "source": "bedrock" }
+  }
+]

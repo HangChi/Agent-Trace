@@ -12,6 +12,7 @@ import type {
 } from "@agent-trace/schema";
 
 import { estimateTextTokenUsage } from "./token-estimator.js";
+import { providerTokenAdapter } from "./normalizers/provider-token-adapter.js";
 
 export type AgentHookSource = "codex" | "claude-code";
 
@@ -109,7 +110,7 @@ export function normalizeAgentHook(
       ? claudeTranscript?.tokenUsage
       : undefined;
   const tokenUsage =
-    extractHookTokenUsage(source, body, hookEvent, toolName, { model, provider }) ??
+    providerTokenAdapter.extractHookTokenUsage(source, body, hookEvent, toolName, { model, provider }) ??
     transcriptTokenUsage ??
     estimateHookTokenUsage(source, body, hookEvent, model);
   const category = getTrackingCategory({
@@ -273,7 +274,7 @@ export function normalizeCodexOtelLogs(payload: unknown, hints: IngestHints = {}
           "command.name"
         );
         const toolKind = getToolKind(toolName);
-        const tokenUsage = extractTokenUsage(
+        const tokenUsage = providerTokenAdapter.extractTokenUsage(
           "codex",
           {
             ...attributes,
@@ -825,8 +826,8 @@ function getHookProvider(
   );
 
   return (
-    normalizeProviderName(explicit) ??
-    inferProviderFromModel(model) ??
+    providerTokenAdapter.normalizeProviderName(explicit) ??
+    providerTokenAdapter.inferProviderFromModel(model) ??
     (source === "claude-code" && model ? "anthropic" : undefined)
   );
 }
@@ -855,144 +856,25 @@ function getClaudeTranscriptTokenUsage(
     getClaudeTranscriptModel(record) ??
     getString(usage, "model", "model_id", "modelId");
   const provider =
-    getUsageProvider(usage) ??
-    inferProviderFromModel(usageModel);
-  const tokenUsage = parseUsageCandidate(usage, "claude-code", provider);
+    providerTokenAdapter.normalizeProviderName(getString(
+      usage,
+      "provider",
+      "llm_provider",
+      "llmProvider",
+      "model_provider",
+      "modelProvider",
+      "gen_ai.system",
+      "gen_ai.provider.name"
+    )) ??
+    providerTokenAdapter.inferProviderFromModel(usageModel);
+  const tokenUsage = providerTokenAdapter.extractTokenUsage("claude-code", usage, {
+    model: usageModel,
+    provider
+  });
 
   return tokenUsage === undefined
     ? undefined
-    : compactTokenUsage({
-        ...tokenUsage,
-        source: "claude-code-transcript"
-      });
-}
-
-function normalizeProviderName(provider: string | undefined) {
-  const normalized = provider?.trim().toLowerCase();
-
-  if (!normalized) {
-    return undefined;
-  }
-
-  if (["anthropic", "claude"].includes(normalized)) return "anthropic";
-  if (["google", "gemini", "google-ai", "google_ai", "vertex", "vertex-ai"].includes(normalized)) {
-    return "google";
-  }
-  if (["amazon", "aws", "bedrock", "amazon-bedrock"].includes(normalized)) return "bedrock";
-  if (["xai", "x.ai", "grok"].includes(normalized)) return "xai";
-
-  return normalized;
-}
-
-function inferProviderFromModel(model: string | undefined) {
-  const normalized = model?.trim().toLowerCase() ?? "";
-
-  if (!normalized) {
-    return undefined;
-  }
-
-  if (/^(gpt-|o[1345](?:-|$)|chatgpt-|text-embedding-|dall-e)/.test(normalized)) {
-    return "openai";
-  }
-
-  if (normalized.includes("claude") || normalized.startsWith("anthropic.")) return "anthropic";
-  if (normalized.includes("gemini") || normalized.startsWith("gemma")) return "google";
-  if (normalized.includes("mistral") || normalized.includes("mixtral") || normalized.includes("codestral")) {
-    return "mistral";
-  }
-  if (normalized.startsWith("command-") || normalized.startsWith("embed-") || normalized.includes("cohere")) {
-    return "cohere";
-  }
-  if (normalized.includes("grok") || normalized.startsWith("xai-")) return "xai";
-  if (normalized.includes("deepseek")) return "deepseek";
-  if (normalized.includes("llama") || normalized.startsWith("meta.")) return "meta";
-  if (normalized.includes("nova") || normalized.includes("titan") || normalized.startsWith("amazon.")) {
-    return "bedrock";
-  }
-  if (normalized.includes("sonar") || normalized.includes("perplexity")) return "perplexity";
-  if (normalized.includes("qwen") || normalized.includes("dashscope")) return "alibaba";
-  if (normalized.includes("glm") || normalized.includes("zhipu")) return "zhipu";
-  if (normalized.includes("kimi") || normalized.includes("moonshot")) return "moonshot";
-
-  return undefined;
-}
-
-type UsageParseContext = {
-  model?: string;
-  provider?: string;
-};
-
-function extractHookTokenUsage(
-  source: AgentHookSource,
-  body: Record<string, unknown>,
-  hookEvent: string,
-  toolName: string | undefined,
-  context: UsageParseContext
-): TokenUsage | undefined {
-  for (const key of [
-    "usage",
-    "usage_metadata",
-    "usageMetadata",
-    "token_usage",
-    "tokenUsage",
-    "response_usage",
-    "responseUsage"
-  ]) {
-    const usage = asRecord(parseJsonString(body[key]));
-
-    if (Object.keys(usage).length === 0) {
-      continue;
-    }
-
-    const parsed = extractTokenUsage(source, usage, context);
-
-    if (parsed) {
-      return parsed;
-    }
-  }
-
-  if (source !== "claude-code" || hookEvent !== "PostToolUse" || toolName !== "Agent") {
-    return undefined;
-  }
-
-  const response = asRecord(getValue(body, "tool_response", "toolResponse"));
-  const structuredUsage = asRecord(getValue(response, "usage"));
-
-  if (Object.keys(structuredUsage).length === 0) {
-    return undefined;
-  }
-
-  const parsed = extractTokenUsage(source, structuredUsage, context);
-
-  if (!parsed) {
-    return undefined;
-  }
-
-  const aggregateTotal = getNonnegativeNumber(response, "totalTokens", "total_tokens");
-
-  return aggregateTotal === undefined ? parsed : { ...parsed, total: aggregateTotal };
-}
-
-function extractTokenUsage(
-  source: AgentHookSource,
-  value: unknown,
-  context: UsageParseContext = {}
-): TokenUsage | undefined {
-  const candidates = getUsageCandidates(value);
-
-  for (const candidate of candidates) {
-    const provider =
-      getUsageProvider(candidate) ??
-      context.provider ??
-      inferProviderFromModel(getString(candidate, "model", "model_id", "modelId") ?? context.model);
-    const usage = parseUsageCandidate(candidate, source, provider);
-
-    if (usage !== undefined) {
-      return usage;
-    }
-  }
-
-  return undefined;
+    : { ...tokenUsage, source: "claude-code-transcript" };
 }
 
 function estimateHookTokenUsage(
@@ -1028,367 +910,6 @@ function estimateHookTokenUsage(
   }
 
   return undefined;
-}
-
-function getUsageProvider(usage: Record<string, unknown>) {
-  return normalizeProviderName(
-    getString(
-      usage,
-      "provider",
-      "llm_provider",
-      "llmProvider",
-      "model_provider",
-      "modelProvider",
-      "gen_ai.system",
-      "gen_ai.provider.name"
-    )
-  );
-}
-
-function parseUsageCandidate(
-  usage: Record<string, unknown>,
-  source: AgentHookSource,
-  provider: string | undefined
-) {
-  const shouldTryAnthropic =
-    !hasNestedBedrockUsageFields(usage) &&
-    (source === "claude-code" || provider === "anthropic" || hasAnthropicUsageFields(usage));
-  const shouldTryBedrock = hasBedrockUsageFields(usage);
-
-  return (
-    parseGeminiUsage(usage, getUsageSource(source, provider ?? "google")) ??
-    parseCohereUsage(usage, getUsageSource(source, provider ?? "cohere")) ??
-    (shouldTryBedrock
-      ? parseBedrockUsage(usage, getUsageSource(source, provider ?? "bedrock"))
-      : undefined) ??
-    (shouldTryAnthropic
-      ? parseAnthropicUsage(usage, getUsageSource(source, provider))
-      : undefined) ??
-    parseOpenAICompatibleUsage(usage, getUsageSource(source, provider ?? "openai")) ??
-    (!hasNestedBedrockUsageFields(usage) && hasAnthropicUsageFields(usage)
-      ? parseAnthropicUsage(usage, getUsageSource(source, provider ?? "anthropic"))
-      : undefined)
-  );
-}
-
-function getUsageSource(source: AgentHookSource, provider: string | undefined) {
-  const providerName = provider ?? source;
-
-  if (source === "codex" && providerName === "openai") {
-    return "codex";
-  }
-
-  if (source === "claude-code" && providerName === "anthropic") {
-    return "claude-code";
-  }
-
-  return providerName;
-}
-
-function hasAnthropicUsageFields(usage: Record<string, unknown>) {
-  const nestedUsage = asRecord(getValue(usage, "usage"));
-  const anthropicUsage = Object.keys(nestedUsage).length > 0 ? nestedUsage : usage;
-
-  return (
-    getNumber(anthropicUsage, "cache_creation_input_tokens", "cacheCreationInputTokens") !== undefined ||
-    getNumber(anthropicUsage, "cache_read_input_tokens", "cacheReadInputTokens") !== undefined
-  );
-}
-
-function hasBedrockUsageFields(usage: Record<string, unknown>) {
-  return (
-    getNumber(usage, "inputTokens") !== undefined ||
-    getNumber(usage, "outputTokens") !== undefined ||
-    getNumber(usage, "cacheReadInputTokens") !== undefined ||
-    getNumber(usage, "cacheWriteInputTokens") !== undefined
-  );
-}
-
-function hasNestedBedrockUsageFields(usage: Record<string, unknown>) {
-  const nestedUsage = asRecord(getValue(usage, "usage"));
-
-  return Object.keys(nestedUsage).length > 0 && hasBedrockUsageFields(nestedUsage);
-}
-
-function getUsageCandidates(value: unknown): Record<string, unknown>[] {
-  const candidates: Record<string, unknown>[] = [];
-
-  collectUsageCandidates(value, candidates, 0);
-
-  return candidates;
-}
-
-function collectUsageCandidates(
-  value: unknown,
-  candidates: Record<string, unknown>[],
-  depth: number
-) {
-  if (depth > 4) {
-    return;
-  }
-
-  const record = asRecord(parseJsonString(value));
-
-  if (Object.keys(record).length === 0) {
-    return;
-  }
-
-  candidates.push(record);
-
-  for (const key of [
-    "usage",
-    "usage_metadata",
-    "usageMetadata",
-    "token_usage",
-    "tokenUsage",
-    "tokens",
-    "billed_units",
-    "billedUnits",
-    "response_usage",
-    "responseUsage",
-    "response",
-    "result",
-    "message",
-    "output",
-    "tool_response",
-    "toolResponse",
-    "body",
-    "metadata",
-    "metrics"
-  ]) {
-    collectUsageCandidates(record[key], candidates, depth + 1);
-  }
-}
-
-function parseOpenAICompatibleUsage(
-  usage: Record<string, unknown>,
-  source: string
-): TokenUsage | undefined {
-  const input =
-    getNumber(
-      usage,
-      "input_tokens",
-      "inputTokens",
-      "input",
-      "prompt_tokens",
-      "promptTokens",
-      "prompt",
-      "promptTokenCount",
-      "gen_ai.usage.input_tokens",
-      "gen_ai.usage.prompt_tokens"
-    ) ?? 0;
-  const output =
-    getNumber(
-      usage,
-      "output_tokens",
-      "outputTokens",
-      "output",
-      "completion_tokens",
-      "completionTokens",
-      "completion",
-      "completionTokenCount",
-      "candidatesTokenCount",
-      "gen_ai.usage.output_tokens",
-      "gen_ai.usage.completion_tokens"
-    ) ?? 0;
-  const cachedInput =
-    getNumber(
-      usage,
-      "cached_input_tokens",
-      "cachedInputTokens",
-      "cachedInput",
-      "cache_read_input_tokens",
-      "cacheReadInputTokens",
-      "prompt_cache_hit_tokens",
-      "promptCacheHitTokens",
-      "gen_ai.usage.cached_input_tokens"
-    ) ??
-    getNumber(usage, "input_tokens_details.cached_tokens", "prompt_tokens_details.cached_tokens") ??
-    getNestedNumber(usage, ["input_tokens_details", "cached_tokens"]) ??
-    getNestedNumber(usage, ["inputTokensDetails", "cachedTokens"]) ??
-    getNestedNumber(usage, ["prompt_tokens_details", "cached_tokens"]) ??
-    getNestedNumber(usage, ["promptTokensDetails", "cachedTokens"]);
-  const reasoningOutput =
-    getNumber(
-      usage,
-      "reasoning_output_tokens",
-      "reasoningOutputTokens",
-      "reasoningOutput",
-      "reasoning_tokens",
-      "reasoningTokens",
-      "reasoning_token_count",
-      "reasoningTokenCount",
-      "thoughtsTokenCount",
-      "gen_ai.usage.reasoning_output_tokens"
-    ) ??
-    getNumber(usage, "output_tokens_details.reasoning_tokens") ??
-    getNumber(usage, "completion_tokens_details.reasoning_tokens") ??
-    getNestedNumber(usage, ["output_tokens_details", "reasoning_tokens"]) ??
-    getNestedNumber(usage, ["outputTokensDetails", "reasoningTokens"]) ??
-    getNestedNumber(usage, ["completion_tokens_details", "reasoning_tokens"]) ??
-    getNestedNumber(usage, ["completionTokensDetails", "reasoningTokens"]);
-  const explicitTotal = getNumber(
-    usage,
-    "total_tokens",
-    "totalTokens",
-    "total",
-    "totalTokenCount",
-    "gen_ai.usage.total_tokens"
-  );
-  const total = explicitTotal ?? input + output + (reasoningOutput ?? 0);
-
-  if (input === 0 && output === 0 && total === 0) {
-    return undefined;
-  }
-
-  return compactTokenUsage({
-    input,
-    output,
-    total,
-    cachedInput,
-    reasoningOutput,
-    source
-  });
-}
-
-function parseAnthropicUsage(
-  usage: Record<string, unknown>,
-  source: string
-): TokenUsage | undefined {
-  const nestedUsage = asRecord(getValue(usage, "usage"));
-  const anthropicUsage = Object.keys(nestedUsage).length > 0 ? nestedUsage : usage;
-  const input =
-    getNumber(anthropicUsage, "input_tokens", "inputTokens", "input", "prompt_tokens", "promptTokens") ??
-    getNumber(usage, "input_tokens", "inputTokens", "input", "prompt_tokens", "promptTokens") ??
-    0;
-  const output =
-    getNumber(
-      anthropicUsage,
-      "output_tokens",
-      "outputTokens",
-      "output",
-      "completion_tokens",
-      "completionTokens"
-    ) ??
-    getNumber(usage, "output_tokens", "outputTokens", "output", "completion_tokens", "completionTokens") ??
-    0;
-  const cacheCreationInput =
-    getNumber(anthropicUsage, "cache_creation_input_tokens", "cacheCreationInputTokens") ??
-    getNumber(usage, "cache_creation_input_tokens", "cacheCreationInputTokens");
-  const cacheReadInput =
-    getNumber(anthropicUsage, "cache_read_input_tokens", "cacheReadInputTokens") ??
-    getNumber(usage, "cache_read_input_tokens", "cacheReadInputTokens");
-  const total =
-    getNumber(anthropicUsage, "totalTokens", "total_tokens", "total") ??
-    getNumber(usage, "totalTokens", "total_tokens", "total") ??
-    input + output + (cacheCreationInput ?? 0) + (cacheReadInput ?? 0);
-
-  if (input === 0 && output === 0 && total === 0) {
-    return undefined;
-  }
-
-  return compactTokenUsage({
-    input,
-    output,
-    total,
-    cacheCreationInput,
-    cacheReadInput,
-    cachedInput: cacheReadInput,
-    source
-  });
-}
-
-function parseGeminiUsage(usage: Record<string, unknown>, source: string): TokenUsage | undefined {
-  const promptInput = getNumber(usage, "promptTokenCount", "prompt_token_count") ?? 0;
-  const toolUseInput = getNumber(usage, "toolUsePromptTokenCount", "tool_use_prompt_token_count") ?? 0;
-  const input = promptInput + toolUseInput;
-  const output = getNumber(usage, "candidatesTokenCount", "candidates_token_count") ?? 0;
-  const reasoningOutput = getNumber(usage, "thoughtsTokenCount", "thoughts_token_count");
-  const cachedInput = getNumber(usage, "cachedContentTokenCount", "cached_content_token_count");
-  const total =
-    getNumber(usage, "totalTokenCount", "total_token_count") ??
-    input + output + (reasoningOutput ?? 0);
-
-  if (input === 0 && output === 0 && total === 0) {
-    return undefined;
-  }
-
-  return compactTokenUsage({
-    input,
-    output,
-    total,
-    cachedInput,
-    reasoningOutput,
-    source
-  });
-}
-
-function parseCohereUsage(usage: Record<string, unknown>, source: string): TokenUsage | undefined {
-  const tokens = asRecord(getValue(usage, "tokens"));
-  const billedUnits = asRecord(getValue(usage, "billed_units", "billedUnits"));
-  const tokenUsage = Object.keys(tokens).length > 0 ? tokens : billedUnits;
-  const input =
-    getNumber(tokenUsage, "input_tokens", "inputTokens", "input") ?? 0;
-  const output =
-    getNumber(tokenUsage, "output_tokens", "outputTokens", "output") ?? 0;
-  const total = getNumber(tokenUsage, "total_tokens", "totalTokens", "total") ?? input + output;
-
-  if (Object.keys(tokens).length === 0 && Object.keys(billedUnits).length === 0) {
-    return undefined;
-  }
-
-  return compactTokenUsage({
-    input,
-    output,
-    total,
-    source
-  });
-}
-
-function parseBedrockUsage(usage: Record<string, unknown>, source: string): TokenUsage | undefined {
-  const input = getNumber(usage, "inputTokens");
-  const output = getNumber(usage, "outputTokens");
-  const cacheCreationInput = getNumber(usage, "cacheWriteInputTokens");
-  const cacheReadInput = getNumber(usage, "cacheReadInputTokens");
-
-  if (
-    input === undefined &&
-    output === undefined &&
-    cacheCreationInput === undefined &&
-    cacheReadInput === undefined
-  ) {
-    return undefined;
-  }
-
-  const normalizedInput = input ?? 0;
-  const normalizedOutput = output ?? 0;
-  const total =
-    getNumber(usage, "totalTokens") ??
-    normalizedInput + normalizedOutput + (cacheCreationInput ?? 0) + (cacheReadInput ?? 0);
-
-  if (normalizedInput === 0 && normalizedOutput === 0 && total === 0) {
-    return undefined;
-  }
-
-  return compactTokenUsage({
-    input: normalizedInput,
-    output: normalizedOutput,
-    total,
-    cacheCreationInput,
-    cacheReadInput,
-    cachedInput: cacheReadInput,
-    source
-  });
-}
-
-function compactTokenUsage(usage: TokenUsage): TokenUsage {
-  return Object.fromEntries(
-    Object.entries({
-      sourceKind: "official",
-      scope: "event",
-      ...usage
-    }).filter(([, entry]) => entry !== undefined)
-  ) as TokenUsage;
 }
 
 function getDurationMs(body: Record<string, unknown>, tokenUsage: TokenUsage | undefined) {

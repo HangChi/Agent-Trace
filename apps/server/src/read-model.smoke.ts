@@ -117,7 +117,13 @@ try {
       name: "read file",
       status: "success",
       timestamp: new Date(base + 8_000).toISOString(),
-      metadata: { category: "tool", toolName: "read_file" }
+      metadata: {
+        category: "tool",
+        toolName: "read_file",
+        model: "filter-model",
+        costUsd: 1.25,
+        tokenUsage: { input: 10, output: 5, total: 15 }
+      }
     },
     database
   );
@@ -133,6 +139,23 @@ try {
     database
   );
   assert.ok(allContentPage.runs.some((run) => run.id === "read-model-empty-content"));
+
+  const filteredRunPage = await storage.listRunsPage(
+    {
+      q: "tracked content",
+      status: "success",
+      source: "codex",
+      model: "filter-model",
+      startedAfter: new Date(base + 5_000).toISOString(),
+      startedBefore: new Date(base + 9_000).toISOString(),
+      minCostUsd: 1,
+      maxCostUsd: 2,
+      sort: "cost",
+      order: "desc"
+    },
+    database
+  );
+  assert.deepEqual(filteredRunPage.runs.map((run) => run.id), ["read-model-tracked-content"]);
 
   const legacyRuns = await storage.listRuns({ includeUntracked: true }, database);
   queries.length = 0;
@@ -273,11 +296,23 @@ try {
   );
   assert.ok(errorPayloadQuery, "expected a status=error full-payload query");
   assert.ok(errorPayloadQuery.params.includes("error"));
-  const projectedInitialScan = queries.find(
-    (query) => query.sql.includes('from "events"') && !query.sql.includes('"output_json"')
+  const initialPagePayloadQuery = findPayloadQuery(queries, "events");
+  assert.match(initialPagePayloadQuery.sql, /limit \? offset \?/i);
+  assert.doesNotMatch(initialPagePayloadQuery.sql, /\bid\b[^]*\bin\s*\(/i);
+  assert.ok(
+    queries
+      .filter((query) => query.sql.includes('from "events"') && !query.sql.includes('"output_json"'))
+      .every((query) => /count\(|sum\(|distinct|limit \?/i.test(query.sql)),
+    "event pagination must use aggregates or bounded facet/source queries instead of a full projected scan"
   );
-  assert.ok(projectedInitialScan, "expected the ordinary all-event scan to stay projected");
-  assert.match(projectedInitialScan.sql, /json_extract\([^)]*error_json[^)]*\$\.message/i);
+  assert.ok(
+    queries.some((query) =>
+      query.sql.includes('from "events"') &&
+      query.sql.includes('"events"."metadata_json"') &&
+      /where[^]*run_id[^]*in\s*\(/i.test(query.sql)
+    ),
+    `run page event summaries must be restricted to current-page run ids: ${queries.map(({ sql }) => sql).join(" | ")}`
+  );
   const fractionalEventPage = await storage.listEventsPageByRunId(
     "read-model-events",
     { visibility: "all", page: 0.5, pageSize: 0.5 },
@@ -334,11 +369,10 @@ try {
   assert.match(pushedDownPayloadQuery.sql, /status[^]*type/i);
   assert.ok(pushedDownPayloadQuery.params.includes(1), "expected real page offset in SQL params");
   assert.doesNotMatch(pushedDownPayloadQuery.sql, /\bid\b[^]*\bin\s*\(/i);
-  const eventScanQuery = queries.find(
-    (query) => query.sql.includes('from "events"') && !query.sql.includes('"output_json"')
+  assert.ok(
+    queries.some((query) => /count\(\*\)[^]*status[^]*type/i.test(query.sql)),
+    "expected status and type filters to be pushed into the matching-count query"
   );
-  assert.ok(eventScanQuery, "expected a projected event scan");
-  assert.match(eventScanQuery.sql, /json_extract\([^)]*error_json[^)]*\$\.message/i);
 
   await storage.createRun(
     {
@@ -366,7 +400,7 @@ try {
   }
   const filteredInsightPage = await storage.listEventsPageByRunId(
     "read-model-full-run-insights",
-    { visibility: "all", q: "filtered needle", pageSize: 1 },
+    { visibility: "all", q: "filtered needle", pageSize: 1, includeInsights: true },
     database
   );
   assert.deepEqual(filteredInsightPage.events.map((event) => event.id), ["read-model-insight-2"]);
@@ -498,7 +532,7 @@ try {
   assert.deepEqual(duplicateTimestampPage.events.map((event) => event.id), [
     "read-model-duplicate-first"
   ]);
-  assert.match(findPayloadQuery(queries, "events").sql, /\bin\s*\(/i);
+  assert.doesNotMatch(findPayloadQuery(queries, "events").sql, /\bin\s*\(/i);
 
   await storage.createRun(
     {

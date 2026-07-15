@@ -26,9 +26,10 @@ export async function ingestAgentHook(
   hints: IngestHints = {}
 ) {
   const normalized = normalizeAgentHook(source, payload, hints);
-  await persistTrace(normalized);
+  const stored = await persistTrace(normalized);
 
   return {
+    stored,
     eventId: normalized.event.id,
     runId: normalized.run.id
   };
@@ -37,12 +38,14 @@ export async function ingestAgentHook(
 export async function ingestCodexOtelLogs(payload: unknown, hints: IngestHints = {}) {
   const normalized = normalizeCodexOtelLogs(payload, hints);
 
+  let stored = 0;
+
   for (const trace of normalized) {
-    await persistTrace(trace);
+    if (await persistTrace(trace)) stored += 1;
   }
 
   return {
-    stored: normalized.length,
+    stored,
     eventIds: normalized.map((trace) => trace.event.id),
     runIds: [...new Set(normalized.map((trace) => trace.run.id))]
   };
@@ -65,7 +68,8 @@ async function persistTrace(normalized: NormalizedTrace) {
   const existingRun = await getRunById(normalized.run.id);
 
   if (!existingRun) {
-    await createRun(normalized.run);
+    const created = await createRun(normalized.run);
+    if (!created) return false;
   }
 
   await createEvent(normalized.event);
@@ -73,6 +77,8 @@ async function persistTrace(normalized: NormalizedTrace) {
   if (normalized.runUpdate) {
     await updateRun(normalized.run.id, normalized.runUpdate);
   }
+
+  return true;
 }
 
 function asRecord(value: unknown): Record<string, unknown> {

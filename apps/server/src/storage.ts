@@ -1,5 +1,6 @@
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { and, asc, desc, eq, inArray, sql } from "drizzle-orm";
+import { and, asc, desc, eq, inArray, sql, type SQL } from "drizzle-orm";
+import { existsSync, statSync } from "node:fs";
 
 import type {
   CreateRun,
@@ -9,6 +10,7 @@ import type {
   DashboardEventVisibility,
   DashboardModelUsage,
   DashboardRun,
+  DashboardRunFilters,
   DashboardRunMetadata,
   DashboardRunPage,
   DashboardRunSummary,
@@ -19,9 +21,10 @@ import type {
   UpdateRun
 } from "@agent-trace/schema";
 
-import { createSqliteDatabase, db as defaultDb } from "./db.js";
+import { createSqliteDatabase, db as defaultDb, getDatabasePath } from "./db.js";
 import { migrateDatabase } from "./migrations.js";
-import { events, runs, usageSessions } from "./schema.js";
+import { events, runs, runTombstones, usageSessions } from "./schema.js";
+import { publishChange } from "./change-feed.js";
 import { analyzeTraceInsights } from "./trace-insights.js";
 import type { TranscriptTrace } from "./transcript-scan.js";
 
@@ -31,7 +34,7 @@ type ListRunsOptions = {
   includeUntracked?: boolean;
 };
 
-type ListRunsPageOptions = ListRunsOptions & {
+type ListRunsPageOptions = ListRunsOptions & DashboardRunFilters & {
   page?: number;
   pageSize?: number;
 };
@@ -46,6 +49,7 @@ type ListEventsOptions = DashboardEventFilters & {
   visibility?: DashboardEventVisibility;
   page?: number;
   pageSize?: number;
+  includeInsights?: boolean;
 };
 
 type EventSummaryRow = Pick<
@@ -53,25 +57,11 @@ type EventSummaryRow = Pick<
   "runId" | "status" | "timestamp" | "name" | "metadataJson"
 >;
 
-type EventScanRow = Pick<
-  typeof events.$inferSelect,
-  | "id"
-  | "runId"
-  | "parentId"
-  | "type"
-  | "name"
-  | "status"
-  | "timestamp"
-  | "durationMs"
-  | "metadataJson"
-> & { inputCommand: string | null; errorMessage: string | null };
-
 const defaultStaleRunMinutes = 30;
 const defaultEventPageSize = 100;
 const maxEventPageSize = 500;
 const defaultRunPageSize = 50;
 const maxRunPageSize = 200;
-const runScanChunkSize = 200;
 const noEventTimestampSentinel = "<no-events>";
 
 function stringifyJson(value: unknown) {
@@ -106,6 +96,17 @@ function getJsonSource(value: string | null) {
 }
 
 export async function createRun(run: CreateRun, database: Database = defaultDb) {
+  const tombstone = await database
+    .select({ runId: runTombstones.runId })
+    .from(runTombstones)
+    .where(eq(runTombstones.runId, run.id))
+    .limit(1)
+    .get();
+
+  if (tombstone) {
+    return false;
+  }
+
   await database.insert(runs).values({
     id: run.id,
     name: run.name,
@@ -116,6 +117,9 @@ export async function createRun(run: CreateRun, database: Database = defaultDb) 
     error: run.error,
     metadataJson: stringifyJson(run.metadata)
   });
+
+  publishChange("run");
+  return true;
 }
 
 export async function getRunById(
@@ -177,6 +181,7 @@ export async function updateRun(
     .update(runs)
     .set(values)
     .where(eq(runs.id, id));
+  publishChange("run");
 }
 
 export async function updateRunMetadata(
@@ -208,6 +213,7 @@ export async function createEvent(
     errorJson: stringifyJson(event.error),
     metadataJson: stringifyJson(event.metadata)
   });
+  publishChange("event");
 }
 
 export async function upsertEvent(
@@ -234,10 +240,12 @@ export async function upsertEvent(
       id: event.id,
       ...values
     });
+    publishChange("event");
     return;
   }
 
   await database.update(events).set(values).where(eq(events.id, event.id));
+  publishChange("event");
 }
 
 export async function listRuns(
@@ -293,39 +301,39 @@ export async function listRunsPage(
   options: ListRunsPageOptions = {},
   database: Database = defaultDb
 ): Promise<DashboardRunPage> {
-  const eventRows = await selectEventSummaryRows(database);
-  const usageRows = await database.select().from(usageSessions);
-  const summaries = summarizeEventsByRun(eventRows);
-  const usageBySession = groupUsageBySession(usageRows);
-  const runRows = options.includeUntracked
-    ? await selectRunSummaryRows(database)
-    : await scanRunSummaryRows(database);
-  const visibleRows = runRows.filter((run) => {
-    if (options.includeUntracked) return true;
-
-    return hasTrackedContent(summaries.get(run.id));
-  });
   const pageSize = normalizeRunPageSize(options.pageSize);
-  const totalPages = Math.max(1, Math.ceil(visibleRows.length / pageSize));
+  const where = getRunListWhere(options);
+  const aggregate = await database
+    .select({
+      total: sql<number>`count(*)`,
+      running: sql<number>`sum(case when ${runs.status} = 'running' then 1 else 0 end)`,
+      failed: sql<number>`sum(case when ${runs.status} = 'error' then 1 else 0 end)`
+    })
+    .from(runs)
+    .where(where)
+    .get();
+  const total = Number(aggregate?.total ?? 0);
+  const totalPages = Math.max(1, Math.ceil(total / pageSize));
   const page = Math.min(normalizePage(options.page), totalPages);
   const start = (page - 1) * pageSize;
-  const pageIds = visibleRows.slice(start, start + pageSize).map((run) => run.id);
-  const pageRows = visibleRows.length === 0
-    ? []
-    : options.includeUntracked
-      ? await database
-          .select()
-          .from(runs)
-          .orderBy(desc(runs.startedAt))
-          .limit(pageSize)
-          .offset(start)
-      : await database
-          .select()
-          .from(runs)
-          .where(inArray(runs.id, pageIds))
-          .orderBy(desc(runs.startedAt))
-          .limit(pageSize)
-          .offset(0);
+  const pageRows = await database
+    .select()
+    .from(runs)
+    .where(where)
+    .orderBy(...getRunListOrder(options))
+    .limit(pageSize)
+    .offset(start);
+  const pageIds = pageRows.map((run) => run.id);
+  const eventRows = await selectEventSummaryRows(database, pageIds);
+  const usageRows = await selectUsageRowsForRuns(pageRows, database);
+  const summaries = summarizeEventsByRun(eventRows);
+  const usageBySession = groupUsageBySession(usageRows);
+  const agentExpression = sql<string>`coalesce(json_extract(${runs.metadataJson}, '$.agent'), 'manual')`;
+  const agentRows = await database
+    .select({ agent: agentExpression, count: sql<number>`count(*)` })
+    .from(runs)
+    .where(where)
+    .groupBy(agentExpression);
 
   return {
     runs: pageRows.map((run) =>
@@ -334,43 +342,139 @@ export async function listRunsPage(
     pagination: {
       page,
       pageSize,
-      total: visibleRows.length,
+      total,
       totalPages
     },
-    summary: getRunPageSummary(visibleRows)
+    summary: {
+      totalRuns: total,
+      runningRuns: Number(aggregate?.running ?? 0),
+      failedRuns: Number(aggregate?.failed ?? 0),
+      agents: agentRows
+        .map((row) => ({ agent: row.agent, count: Number(row.count) }))
+        .sort((a, b) => b.count - a.count || a.agent.localeCompare(b.agent))
+    }
   };
 }
 
-const runSummarySelection = {
-  id: runs.id,
-  status: runs.status,
-  startedAt: runs.startedAt,
-  inputJson: runs.inputJson,
-  error: runs.error,
-  metadataJson: runs.metadataJson
-};
+function getRunListWhere(options: ListRunsPageOptions) {
+  const conditions: SQL[] = [];
+  const query = options.q?.trim().toLowerCase();
+  const status = normalizeFilter(options.status);
+  const source = normalizeFilter(options.source);
+  const model = normalizeFilter(options.model);
 
-function selectRunSummaryRows(database: Database) {
-  return database
-    .select(runSummarySelection)
-    .from(runs)
-    .orderBy(desc(runs.startedAt));
+  if (!options.includeUntracked) {
+    conditions.push(sql`exists (
+      select 1 from ${events}
+      where ${events.runId} = ${runs.id}
+        and json_extract(${events.metadataJson}, '$.category') in ('command', 'tool', 'mcp', 'skill')
+    )`);
+  }
+
+  if (query) {
+    const pattern = `%${query}%`;
+    conditions.push(sql`(
+      lower(${runs.id}) like ${pattern}
+      or lower(${runs.name}) like ${pattern}
+      or lower(coalesce(json_extract(${runs.metadataJson}, '$.agent'), '')) like ${pattern}
+      or lower(coalesce(json_extract(${runs.metadataJson}, '$.sessionId'), '')) like ${pattern}
+      or lower(coalesce(json_extract(${runs.metadataJson}, '$.model'), '')) like ${pattern}
+    )`);
+  }
+
+  if (status !== "all") conditions.push(eq(runs.status, status));
+  if (source !== "all") {
+    conditions.push(sql`(
+      json_extract(${runs.metadataJson}, '$.agent') = ${source}
+      or json_extract(${runs.metadataJson}, '$.source') = ${source}
+      or json_extract(${runs.metadataJson}, '$.surface') = ${source}
+      or json_extract(${runs.inputJson}, '$.source') = ${source}
+    )`);
+  }
+  if (model !== "all") {
+    conditions.push(sql`(
+      json_extract(${runs.metadataJson}, '$.model') = ${model}
+      or exists (
+        select 1 from ${events}
+        where ${events.runId} = ${runs.id}
+          and json_extract(${events.metadataJson}, '$.model') = ${model}
+      )
+      or exists (
+        select 1 from ${usageSessions}
+        where ${usageSessions.sessionId} = json_extract(${runs.metadataJson}, '$.sessionId')
+          and ${usageSessions.model} = ${model}
+      )
+    )`);
+  }
+  if (options.startedAfter) conditions.push(sql`${runs.startedAt} >= ${options.startedAfter}`);
+  if (options.startedBefore) conditions.push(sql`${runs.startedAt} <= ${options.startedBefore}`);
+  if (options.minCostUsd !== undefined) {
+    conditions.push(sql`${getRunCostExpression()} >= ${options.minCostUsd}`);
+  }
+  if (options.maxCostUsd !== undefined) {
+    conditions.push(sql`${getRunCostExpression()} <= ${options.maxCostUsd}`);
+  }
+
+  return conditions.length > 0 ? and(...conditions) : undefined;
 }
 
-async function scanRunSummaryRows(database: Database) {
-  const rows: Awaited<ReturnType<typeof selectRunSummaryRows>> = [];
+function getRunListOrder(options: ListRunsPageOptions) {
+  const expression = options.sort === "name"
+    ? runs.name
+    : options.sort === "status"
+      ? runs.status
+      : options.sort === "duration"
+        ? sql<number>`(julianday(coalesce(${runs.endedAt}, CURRENT_TIMESTAMP)) - julianday(${runs.startedAt})) * 86400000`
+        : options.sort === "tokens"
+          ? getRunTokensExpression()
+          : options.sort === "cost"
+            ? getRunCostExpression()
+            : runs.startedAt;
+  const primary = options.order === "asc" ? asc(expression) : desc(expression);
 
-  for (let offset = 0; ; offset += runScanChunkSize) {
-    const chunk = await database
-      .select(runSummarySelection)
-      .from(runs)
-      .orderBy(desc(runs.startedAt))
-      .limit(runScanChunkSize)
-      .offset(offset);
-    rows.push(...chunk);
+  return [primary, asc(runs.id)] as const;
+}
 
-    if (chunk.length < runScanChunkSize) return rows;
-  }
+function getRunClientExpression() {
+  return sql<string>`case json_extract(${runs.metadataJson}, '$.agent')
+    when 'claude-code' then 'claude'
+    when 'github-copilot' then 'copilot'
+    else json_extract(${runs.metadataJson}, '$.agent') end`;
+}
+
+function getRunCostExpression() {
+  return sql<number>`coalesce(
+    (select sum(${usageSessions.costUsd}) from ${usageSessions}
+      where ${usageSessions.sessionId} = json_extract(${runs.metadataJson}, '$.sessionId')
+        and ${usageSessions.client} = ${getRunClientExpression()}),
+    (select sum(cast(json_extract(${events.metadataJson}, '$.costUsd') as real))
+      from ${events} where ${events.runId} = ${runs.id}),
+    0
+  )`;
+}
+
+function getRunTokensExpression() {
+  return sql<number>`coalesce(
+    (select sum(${usageSessions.totalTokens}) from ${usageSessions}
+      where ${usageSessions.sessionId} = json_extract(${runs.metadataJson}, '$.sessionId')
+        and ${usageSessions.client} = ${getRunClientExpression()}),
+    (select sum(cast(json_extract(${events.metadataJson}, '$.tokenUsage.total') as integer))
+      from ${events} where ${events.runId} = ${runs.id}),
+    0
+  )`;
+}
+
+async function selectUsageRowsForRuns(
+  runRows: Array<typeof runs.$inferSelect>,
+  database: Database
+) {
+  const sessionIds = [...new Set(runRows
+    .map((run) => getString(asRecord(parseJson(run.metadataJson)).sessionId))
+    .filter((value): value is string => value !== undefined))];
+
+  return sessionIds.length === 0
+    ? []
+    : database.select().from(usageSessions).where(inArray(usageSessions.sessionId, sessionIds));
 }
 
 export async function reconcileStaleRuns(database: Database = defaultDb): Promise<number> {
@@ -405,7 +509,9 @@ function getEventActivitySnapshots(eventRows: EventSummaryRow[]) {
   return snapshots;
 }
 
-function selectEventSummaryRows(database: Database) {
+function selectEventSummaryRows(database: Database, runIds?: string[]) {
+  if (runIds?.length === 0) return Promise.resolve([] as EventSummaryRow[]);
+
   return database
     .select({
       runId: events.runId,
@@ -414,7 +520,8 @@ function selectEventSummaryRows(database: Database) {
       name: events.name,
       metadataJson: events.metadataJson
     })
-    .from(events);
+    .from(events)
+    .where(runIds ? inArray(events.runId, runIds) : undefined);
 }
 
 function toDashboardRun(
@@ -440,26 +547,6 @@ function toDashboardRun(
     output: parseJson(run.outputJson),
     error: run.status === "error" ? (run.error ?? undefined) : undefined,
     metadata: mergeRunMetadata(metadata, summary, getUsageForRun(metadata, usageBySession))
-  };
-}
-
-function getRunPageSummary(
-  runRows: Array<{ status: string; metadataJson: string | null }>
-): DashboardRunPage["summary"] {
-  const agents = new Map<string, number>();
-
-  for (const run of runRows) {
-    const agent = getString(asRecord(parseJson(run.metadataJson)).agent) ?? "manual";
-    agents.set(agent, (agents.get(agent) ?? 0) + 1);
-  }
-
-  return {
-    totalRuns: runRows.length,
-    runningRuns: runRows.filter((run) => run.status === "running").length,
-    failedRuns: runRows.filter((run) => run.status === "error").length,
-    agents: [...agents.entries()]
-      .map(([agent, count]) => ({ agent, count }))
-      .sort((a, b) => b.count - a.count || a.agent.localeCompare(b.agent))
   };
 }
 
@@ -494,82 +581,51 @@ export async function listEventsPageByRunId(
   options: ListEventsOptions = {},
   database: Database = defaultDb
 ): Promise<DashboardEventPage> {
-  const scanSelection = {
-    id: events.id,
-    runId: events.runId,
-    parentId: events.parentId,
-    type: events.type,
-    name: events.name,
-    status: events.status,
-    timestamp: events.timestamp,
-    durationMs: events.durationMs,
-    metadataJson: events.metadataJson
-  };
-  const scanRows: EventScanRow[] = await database
-    .select({
-      ...scanSelection,
-      inputCommand: sql<string | null>`json_extract(${events.inputJson}, '$.command')`,
-      errorMessage: sql<string | null>`json_extract(${events.errorJson}, '$.message')`
-    })
-    .from(events)
-    .where(eq(events.runId, runId))
-    .orderBy(asc(events.timestamp));
-  const allEvents = scanRows.map(toScannedDashboardEvent);
   const visibility = normalizeVisibility(options.visibility);
   const pageSize = normalizePageSize(options.pageSize);
   const page = normalizePage(options.page);
-  const hasLiveActions = allEvents.some((event) => {
-    const metadata = asRecord(event.metadata);
-    return (
-      metadata.source !== "transcript" &&
-      ["command", "tool", "mcp", "skill"].includes(getString(metadata.category) ?? "")
-    );
-  });
-  const displayEvents = allEvents.filter(
-    (event) => isDisplayEvent(event) && (!hasLiveActions || event.metadata?.source !== "transcript")
-  );
-  const hiddenEvents = allEvents.filter((event) => !displayEvents.includes(event));
-  const visibleEvents =
-    visibility === "display" ? displayEvents : visibility === "hidden" ? hiddenEvents : allEvents;
-  const filteredEvents = applyEventFilters(visibleEvents, options);
-  const sortedEvents = sortEventsDesc(filteredEvents);
-  const totalPages = Math.max(1, Math.ceil(sortedEvents.length / pageSize));
+  const runCondition = eq(events.runId, runId);
+  const liveAction = sql<boolean>`coalesce(json_extract(${events.metadataJson}, '$.source'), '') != 'transcript'
+    and json_extract(${events.metadataJson}, '$.category') in ('command', 'tool', 'mcp', 'skill')`;
+  const liveActionRow = await database
+    .select({ count: sql<number>`count(*)` })
+    .from(events)
+    .where(and(runCondition, liveAction))
+    .get();
+  const displayCondition = getDisplayEventCondition(Number(liveActionRow?.count ?? 0) > 0);
+  const visibilityCondition = visibility === "all"
+    ? undefined
+    : visibility === "display"
+      ? displayCondition
+      : sql<boolean>`not (${displayCondition})`;
+  const filterConditions = getEventFilterConditions(options);
+  const visibleWhere = and(runCondition, visibilityCondition);
+  const filteredWhere = and(runCondition, visibilityCondition, ...filterConditions);
+  const [countRow, matchingRow, aggregateRow] = await Promise.all([
+    database.select({
+      total: sql<number>`count(*)`,
+      display: sql<number>`sum(case when ${displayCondition} then 1 else 0 end)`
+    }).from(events).where(runCondition).get(),
+    database.select({ count: sql<number>`count(*)` }).from(events).where(filteredWhere).get(),
+    database.select({
+      totalTokens: sql<number>`coalesce(sum(cast(json_extract(${events.metadataJson}, '$.tokenUsage.total') as integer)), 0)`,
+      totalDurationMs: sql<number>`coalesce(sum(${events.durationMs}), 0)`,
+      failedEvents: sql<number>`sum(case when ${events.status} = 'error' then 1 else 0 end)`
+    }).from(events).where(runCondition).get()
+  ]);
+  const total = Number(countRow?.total ?? 0);
+  const display = Number(countRow?.display ?? 0);
+  const matching = Number(matchingRow?.count ?? 0);
+  const totalPages = Math.max(1, Math.ceil(matching / pageSize));
   const safePage = Math.min(page, totalPages);
   const start = (safePage - 1) * pageSize;
-  const pageIds = sortedEvents.slice(start, start + pageSize).map((event) => event.id);
-  const matchingIds = new Set(sortedEvents.map((event) => event.id));
-  const canUseDirectOffset = canUseDirectEventOffset(
-    options,
-    visibility,
-    scanRows.filter((event) => matchingIds.has(event.id))
-  );
-  const statusFilter = normalizeFilter(options.status);
-  const typeFilter = normalizeFilter(options.type);
-  const pageRows = pageIds.length === 0
-    ? []
-    : canUseDirectOffset
-      ? await database
-          .select()
-          .from(events)
-          .where(
-            and(
-              eq(events.runId, runId),
-              statusFilter === "all" ? undefined : eq(events.status, statusFilter),
-              typeFilter === "all" ? undefined : eq(events.type, typeFilter)
-            )
-          )
-          .orderBy(desc(events.timestamp))
-          .limit(pageSize)
-          .offset(start)
-      : await database
-          .select()
-          .from(events)
-          .where(and(eq(events.runId, runId), inArray(events.id, pageIds)))
-          .orderBy(desc(events.timestamp))
-          .limit(pageSize)
-          .offset(0);
-  const pageEvents = pageRows.map(toDashboardEvent);
-  const pageEventById = new Map(pageEvents.map((event) => [event.id, event]));
+  const pageRows = await database
+    .select()
+    .from(events)
+    .where(filteredWhere)
+    .orderBy(desc(sql`julianday(${events.timestamp})`), asc(events.id))
+    .limit(pageSize)
+    .offset(start);
   const errorEvents = (
     await database
       .select()
@@ -577,40 +633,124 @@ export async function listEventsPageByRunId(
       .where(and(eq(events.runId, runId), eq(events.status, "error")))
       .orderBy(asc(events.timestamp))
   ).map(toDashboardEvent);
+  const typeRows = await database
+    .selectDistinct({ value: events.type })
+    .from(events)
+    .where(visibleWhere)
+    .orderBy(asc(events.type));
+  const categoryExpression = getEventCategoryExpression();
+  const categoryRows = await database
+    .selectDistinct({ value: categoryExpression })
+    .from(events)
+    .where(and(visibleWhere, sql`${categoryExpression} is not null`))
+    .orderBy(asc(categoryExpression));
+  const sourceRow = await database
+    .select({ metadataJson: events.metadataJson })
+    .from(events)
+    .where(and(runCondition, sql`json_extract(${events.metadataJson}, '$.agent') is not null`))
+    .orderBy(asc(events.timestamp))
+    .limit(1)
+    .get();
+  const insights = options.includeInsights ? await getTraceInsights(runId, database) : undefined;
 
   return {
-    events: pageIds
-      .map((id) => pageEventById.get(id))
-      .filter((event): event is DashboardTraceEvent => event !== undefined),
+    events: pageRows.map(toDashboardEvent),
     counts: {
-      total: allEvents.length,
-      display: displayEvents.length,
-      hidden: hiddenEvents.length,
-      matching: sortedEvents.length
+      total,
+      display,
+      hidden: total - display,
+      matching
     },
     facets: {
-      types: getUniqueValues(visibleEvents.map((event) => event.type)),
-      categories: getUniqueValues(visibleEvents.map(getEventCategory).filter(Boolean))
+      types: typeRows.map(({ value }) => value),
+      categories: categoryRows
+        .map(({ value }) => value)
+        .filter((value): value is string => typeof value === "string" && value.length > 0)
     },
     pagination: {
       page: safePage,
       pageSize,
-      total: sortedEvents.length,
+      total: matching,
       totalPages
     },
     summary: {
-      totalTokens: allEvents.reduce(
-        (sum, event) => sum + getNumber(asRecord(asRecord(event.metadata).tokenUsage).total),
-        0
-      ),
-      totalDurationMs: allEvents.reduce((sum, event) => sum + (event.durationMs ?? 0), 0),
-      failedEvents: allEvents.filter((event) => event.status === "error").length,
-      sourceMetadata: getSourceMetadata(allEvents),
+      totalTokens: Number(aggregateRow?.totalTokens ?? 0),
+      totalDurationMs: Number(aggregateRow?.totalDurationMs ?? 0),
+      failedEvents: Number(aggregateRow?.failedEvents ?? 0),
+      sourceMetadata: normalizeMetadataForDisplay(parseJson(sourceRow?.metadataJson ?? null)),
       errorEvents,
-      insights: analyzeTraceInsights(allEvents)
+      insights
     },
     visibility
   };
+}
+
+export async function getTraceInsights(
+  runId: string,
+  database: Database = defaultDb
+) {
+  const rows = await database
+    .select()
+    .from(events)
+    .where(eq(events.runId, runId))
+    .orderBy(asc(events.timestamp));
+
+  return analyzeTraceInsights(rows.map(toDashboardEvent));
+}
+
+function getDisplayEventCondition(hasLiveActions: boolean) {
+  const category = getEventCategoryExpression();
+  const display = sql<boolean>`(
+    ${category} in ('command', 'tool', 'mcp', 'skill', 'tokens')
+    or json_type(${events.metadataJson}, '$.tokenUsage') is not null
+  )`;
+
+  return hasLiveActions
+    ? sql<boolean>`${display} and coalesce(json_extract(${events.metadataJson}, '$.source'), '') != 'transcript'`
+    : display;
+}
+
+function getEventCategoryExpression() {
+  return sql<string | null>`case
+    when json_extract(${events.metadataJson}, '$.category') = 'tool'
+      and json_extract(${events.metadataJson}, '$.toolKind') = 'command' then 'command'
+    when json_extract(${events.metadataJson}, '$.category') is not null
+      then json_extract(${events.metadataJson}, '$.category')
+    when json_extract(${events.metadataJson}, '$.command') is not null
+      or json_extract(${events.inputJson}, '$.command') is not null
+      or json_extract(${events.metadataJson}, '$.toolKind') = 'command' then 'command'
+    when json_extract(${events.metadataJson}, '$.mcpServer') is not null
+      and json_extract(${events.metadataJson}, '$.mcpTool') is not null then 'mcp'
+    when json_extract(${events.metadataJson}, '$.skillName') is not null then 'skill'
+    when json_extract(${events.metadataJson}, '$.toolName') is not null then 'tool'
+    when json_type(${events.metadataJson}, '$.tokenUsage') is not null then 'tokens'
+    else null end`;
+}
+
+function getEventFilterConditions(options: ListEventsOptions) {
+  const conditions: SQL[] = [];
+  const status = normalizeFilter(options.status);
+  const type = normalizeFilter(options.type);
+  const category = normalizeFilter(options.category);
+  const query = options.q?.trim().toLowerCase();
+
+  if (status !== "all") conditions.push(eq(events.status, status));
+  if (type !== "all") conditions.push(eq(events.type, type));
+  if (category !== "all") conditions.push(sql`${getEventCategoryExpression()} = ${category}`);
+  if (query) {
+    const pattern = `%${query}%`;
+    conditions.push(sql`(
+      lower(${events.id}) like ${pattern}
+      or lower(${events.name}) like ${pattern}
+      or lower(${events.type}) like ${pattern}
+      or lower(${events.status}) like ${pattern}
+      or lower(coalesce(json_extract(${events.inputJson}, '$.command'), '')) like ${pattern}
+      or lower(coalesce(json_extract(${events.errorJson}, '$.message'), '')) like ${pattern}
+      or lower(coalesce(${events.metadataJson}, '')) like ${pattern}
+    )`);
+  }
+
+  return conditions;
 }
 
 function toDashboardEvent(event: typeof events.$inferSelect): DashboardTraceEvent {
@@ -630,50 +770,24 @@ function toDashboardEvent(event: typeof events.$inferSelect): DashboardTraceEven
   };
 }
 
-function toScannedDashboardEvent(event: EventScanRow): DashboardTraceEvent {
-  return {
-    id: event.id,
-    runId: event.runId,
-    parentId: event.parentId ?? undefined,
-    type: event.type,
-    name: event.name,
-    status: event.status,
-    timestamp: normalizeStoredTimestamp(event.timestamp),
-    durationMs: event.durationMs ?? undefined,
-    input: event.inputCommand ? { command: event.inputCommand } : undefined,
-    error: event.errorMessage ? { message: event.errorMessage } : undefined,
-    metadata: normalizeMetadataForDisplay(parseJson(event.metadataJson))
-  };
-}
-
-function canUseDirectEventOffset(
-  options: ListEventsOptions,
-  visibility: DashboardEventVisibility,
-  eventRows: EventScanRow[]
-) {
-  if (
-    visibility !== "all" ||
-    options.q?.trim() ||
-    normalizeFilter(options.category) !== "all"
-  ) {
-    return false;
-  }
-
-  const timestamps = eventRows.map((event) => event.timestamp);
-  return (
-    new Set(timestamps).size === timestamps.length &&
-    timestamps.every((timestamp) => {
-      const timestampMs = parseStoredTimestampMs(timestamp);
-      return Number.isFinite(timestampMs) && normalizeStoredTimestamp(timestamp) === timestamp;
-    })
-  );
-}
-
 export async function deleteRun(id: string, database: Database = defaultDb): Promise<boolean> {
+  const existing = await database.select({ id: runs.id }).from(runs).where(eq(runs.id, id)).limit(1).get();
+
+  if (!existing) return false;
+
+  await database
+    .insert(runTombstones)
+    .values({ runId: id, deletedAt: new Date().toISOString(), reason: "user_deleted" })
+    .onConflictDoUpdate({
+      target: runTombstones.runId,
+      set: { deletedAt: new Date().toISOString(), reason: "user_deleted" }
+    });
   // Foreign keys cascade events, but delete them explicitly so the result is
   // correct even if the connection has foreign_keys disabled.
   await database.delete(events).where(eq(events.runId, id));
   const result = await database.delete(runs).where(eq(runs.id, id));
+
+  if (result.changes > 0) publishChange("maintenance");
 
   return result.changes > 0;
 }
@@ -685,10 +799,93 @@ export async function deleteRuns(ids: string[], database: Database = defaultDb):
     return 0;
   }
 
+  const existingRows = await database
+    .select({ id: runs.id })
+    .from(runs)
+    .where(inArray(runs.id, uniqueIds));
+  const deletedAt = new Date().toISOString();
+
+  if (existingRows.length > 0) {
+    await database
+      .insert(runTombstones)
+      .values(existingRows.map(({ id }) => ({ runId: id, deletedAt, reason: "user_deleted" })))
+      .onConflictDoUpdate({
+        target: runTombstones.runId,
+        set: { deletedAt, reason: "user_deleted" }
+      });
+  }
+
   await database.delete(events).where(inArray(events.runId, uniqueIds));
   const result = await database.delete(runs).where(inArray(runs.id, uniqueIds));
 
+  if (result.changes > 0) publishChange("maintenance");
+
   return result.changes;
+}
+
+export async function restoreDeletedRun(id: string, database: Database = defaultDb) {
+  const result = await database.delete(runTombstones).where(eq(runTombstones.runId, id));
+
+  if (result.changes > 0) publishChange("maintenance");
+  return result.changes > 0;
+}
+
+export async function pruneRuns(
+  options: { before: string; statuses?: string[]; keepTombstones?: boolean },
+  database: Database = defaultDb
+) {
+  const conditions: SQL[] = [sql`${runs.startedAt} < ${options.before}`];
+  const statuses = options.statuses?.filter(Boolean) ?? [];
+
+  if (statuses.length > 0) conditions.push(inArray(runs.status, statuses));
+  const rows = await database
+    .select({ id: runs.id })
+    .from(runs)
+    .where(and(...conditions));
+
+  if (rows.length === 0) return 0;
+  const ids = rows.map(({ id }) => id);
+
+  if (options.keepTombstones === false) {
+    await database.delete(events).where(inArray(events.runId, ids));
+    const result = await database.delete(runs).where(inArray(runs.id, ids));
+    if (result.changes > 0) publishChange("maintenance");
+    return result.changes;
+  }
+
+  return deleteRuns(ids, database);
+}
+
+export async function getStorageStats(database: Database = defaultDb) {
+  const [runCount, eventCount, usageCount, tombstoneCount] = await Promise.all([
+    database.select({ count: sql<number>`count(*)` }).from(runs).get(),
+    database.select({ count: sql<number>`count(*)` }).from(events).get(),
+    database.select({ count: sql<number>`count(*)` }).from(usageSessions).get(),
+    database.select({ count: sql<number>`count(*)` }).from(runTombstones).get()
+  ]);
+  const path = getDatabasePath();
+
+  return {
+    databasePath: path,
+    databaseBytes: existsSync(path) ? statSync(path).size : undefined,
+    runs: Number(runCount?.count ?? 0),
+    events: Number(eventCount?.count ?? 0),
+    usageSessions: Number(usageCount?.count ?? 0),
+    tombstones: Number(tombstoneCount?.count ?? 0)
+  };
+}
+
+export function compactDatabase(path = getDatabasePath()) {
+  const sqlite = createSqliteDatabase(path);
+
+  try {
+    migrateDatabase(sqlite);
+    sqlite.exec("PRAGMA wal_checkpoint(TRUNCATE); VACUUM;");
+  } finally {
+    sqlite.close();
+  }
+
+  publishChange("maintenance");
 }
 
 function mergeRunMetadata(
@@ -725,6 +922,14 @@ export function replaceTranscriptSnapshot(
     const currentKeys = new Set(currentSessionKeys);
 
     for (const trace of traces) {
+      const tombstone = transaction
+        .select({ runId: runTombstones.runId })
+        .from(runTombstones)
+        .where(eq(runTombstones.runId, trace.run.id))
+        .limit(1)
+        .get();
+
+      if (tombstone) continue;
       const existingRun = transaction.select().from(runs).where(eq(runs.id, trace.run.id)).limit(1).get();
       const runValues = {
         id: trace.run.id,
@@ -819,6 +1024,8 @@ export function replaceTranscriptSnapshot(
         transaction.delete(runs).where(eq(runs.id, runId)).run();
       }
     }
+
+    publishChange("event");
   });
 }
 
@@ -1325,110 +1532,6 @@ function attachUnmodeledTokenUsageToSingleModel(summary: EventSummary) {
   addModelUsage(summary.modelUsage, model, provider, summary.unmodeledTokenUsage);
 }
 
-function applyEventFilters(events: DashboardTraceEvent[], filters: DashboardEventFilters) {
-  const query = filters.q?.trim().toLowerCase() ?? "";
-  const status = normalizeFilter(filters.status);
-  const type = normalizeFilter(filters.type);
-  const category = normalizeFilter(filters.category);
-
-  return events.filter((event) => {
-    if (status !== "all" && event.status !== status) {
-      return false;
-    }
-
-    if (type !== "all" && event.type !== type) {
-      return false;
-    }
-
-    if (category !== "all" && getEventCategory(event) !== category) {
-      return false;
-    }
-
-    if (!query) {
-      return true;
-    }
-
-    return getEventSearchText(event).toLowerCase().includes(query);
-  });
-}
-
-function getEventSearchText(event: DashboardTraceEvent) {
-  const metadata = asRecord(event.metadata);
-
-  return [
-    event.id,
-    event.parentId,
-    event.type,
-    event.name,
-    event.status,
-    asRecord(event.error).message,
-    metadata.agent,
-    metadata.hookEvent,
-    metadata.command,
-    metadata.toolName,
-    metadata.toolKind,
-    metadata.mcpServer,
-    metadata.mcpTool,
-    metadata.skillName,
-    metadata.model,
-    getObjectString(event.input, "command")
-  ]
-    .filter((value): value is string => typeof value === "string" && value.length > 0)
-    .join(" ");
-}
-
-function isDisplayEvent(event: DashboardTraceEvent) {
-  const category = getEventCategory(event);
-
-  return (
-    category === "command" ||
-    category === "tool" ||
-    category === "mcp" ||
-    category === "skill" ||
-    category === "tokens" ||
-    asRecord(event.metadata).tokenUsage !== undefined
-  );
-}
-
-function getEventCategory(event: DashboardTraceEvent) {
-  const metadata = asRecord(event.metadata);
-  const category = getString(metadata.category);
-
-  if (category === "tool" && metadata.toolKind === "command") {
-    return "command";
-  }
-
-  if (category !== undefined) {
-    return category;
-  }
-
-  if (metadata.command !== undefined || getObjectString(event.input, "command") !== undefined) {
-    return "command";
-  }
-
-  if (metadata.toolKind === "command") {
-    return "command";
-  }
-
-  if (metadata.mcpServer !== undefined && metadata.mcpTool !== undefined) {
-    return "mcp";
-  }
-
-  if (metadata.toolKind === "mcp") {
-    return "mcp";
-  }
-
-  if (metadata.skillName !== undefined) {
-    return "skill";
-  }
-
-  if (metadata.toolName !== undefined) {
-    return "tool";
-  }
-
-  return metadata.tokenUsage ? "tokens" : undefined;
-}
-
 function normalizeVisibility(
   value: DashboardEventVisibility | undefined
 ): DashboardEventVisibility {
@@ -1461,24 +1564,10 @@ function normalizeRunPageSize(value: number | undefined) {
   return Math.min(Math.max(1, Math.floor(value)), maxRunPageSize);
 }
 
-function sortEventsDesc(events: DashboardTraceEvent[]) {
-  return [...events].sort((a, b) => getDateMs(b.timestamp) - getDateMs(a.timestamp));
-}
-
 function getObjectString(value: unknown, key: string) {
   const item = asRecord(value)[key];
 
   return typeof item === "string" && item.length > 0 ? item : undefined;
-}
-
-function getSourceMetadata(events: DashboardTraceEvent[]) {
-  return events.find((event) => asRecord(event.metadata).agent !== undefined)?.metadata ?? {};
-}
-
-function getUniqueValues(values: Array<string | undefined>) {
-  return [...new Set(values.filter((value): value is string => Boolean(value)))].sort((a, b) =>
-    a.localeCompare(b)
-  );
 }
 
 function addOptional(current: number | undefined, value: unknown) {

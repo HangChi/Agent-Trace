@@ -27,9 +27,12 @@ pnpm test
 | Schema | `pnpm --filter @agent-trace/schema test` | TypeScript 与 Zod 契约类型检查。 |
 | SDK | `pnpm --filter @agent-trace/sdk test` | Run 创建、步骤成功/失败、父 ID、metadata、投递超时与不干扰主流程。 |
 | CLI | `pnpm --filter @agent-trace/cli test` | Hooks 安装/卸载、帮助/参数、usage 规范化、历史协调、transcript 解析。 |
-| Server | `pnpm --filter @agent-trace/server test` | 迁移、API、启动、读模型、诊断、usage 和 transcript 存储。 |
+| Server | `pnpm --filter @agent-trace/server test` | 迁移、API、启动、读模型、Provider/Token 黄金 fixtures、数据治理、诊断、usage 和 transcript 存储。 |
 | Web | `pnpm --filter @agent-trace/web test` | 成本、Scanner 状态、trace tree 和诊断定位。 |
-| Desktop | `pnpm --filter @agent-trace/desktop test` | 主进程与打包脚本所需静态结构。 |
+| Desktop | `pnpm --filter @agent-trace/desktop test` | 主进程与打包脚本静态结构。 |
+| Desktop E2E | `pnpm --filter @agent-trace/desktop test:e2e` | 真实启动 Electron、Collector 和 Dashboard，验证健康后退出并回收子进程。 |
+| Desktop 安装/升级 | `desktop-release-validation.yml` | 静默安装旧版、就地升级当前版、真实启动/退出并卸载。 |
+| 容量基准 | `pnpm --filter @agent-trace/server benchmark:capacity` | 10 万 Run / 100 万 Event 下的列表延迟、Event 延迟、堆内存和数据库体积预算。 |
 | Example | `pnpm --filter simple-agent test` | 示例 TypeScript 类型检查。 |
 
 ## Server 测试组成
@@ -44,6 +47,15 @@ pnpm test
 6. `usage-api.smoke.ts`：用量与 Scanner 查询接口。
 7. `usage-storage.smoke.ts`：完整/部分快照替换和客户端隔离。
 8. `transcript-api.smoke.ts`：Transcript ingestion、更新和清理。
+9. `data-governance.smoke.ts`：删除墓碑、Scanner 防复活、显式恢复、保留期清理与容量计数。
+
+`normalizers/provider-token-adapter.smoke.ts` 在主 Server smoke 前运行，通过 JSON 黄金 fixtures 锁定 OpenAI、Anthropic、Gemini、Cohere 和 Bedrock 用量规范化。
+
+`change-feed.smoke.ts` 验证修订号、订阅和取消订阅；Web `live-refresh.smoke.ts` 验证 SSE 变更刷新与 15 秒故障回退，并禁止恢复 2 秒整页轮询。
+
+## 性能预算
+
+每周 `performance.yml` 执行 10 万 Run / 100 万 Event 基准。默认门槛：Run 分页 1500 ms、Event 分页 500 ms、单次查询堆增量 512 MiB、SQLite 体积 2048 MiB。可通过 `AGENT_TRACE_BENCHMARK_*` 环境变量收紧或放宽。
 
 测试使用临时 SQLite 数据库，不应依赖或修改开发者的 `agent-trace.db`。
 

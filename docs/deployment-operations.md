@@ -173,7 +173,9 @@ pnpm desktop:build:win
 - Server 启动时自动执行版本化 migration。
 - migration 在事务中执行并更新 SQLite `user_version`。
 - 数据库版本高于程序支持版本时拒绝启动，避免降级程序破坏数据。
-- 删除 Run 会依赖 SQLite 外键级联删除 Event。
+- 删除 Run 会写入 Tombstone 并级联删除 Event，防止 Scanner 重新生成。
+- `GET /maintenance/storage` 监测 Run/Event/Usage/Tombstone 数量与数据库体积。
+- `POST /maintenance/prune` 按截止时间和状态删除历史；`POST /maintenance/compact` 在清理后回收空间。
 
 备份步骤：
 
@@ -182,6 +184,18 @@ pnpm desktop:build:win
 3. 恢复时使用相同或更新版本的 Agent-Trace 打开副本。
 
 不要在 Collector 运行期间只复制主数据库文件作为一致性备份。
+
+### 测试与容量基准变量
+
+| 变量 | 默认值 | 用途 |
+| --- | --- | --- |
+| `AGENT_TRACE_DESKTOP_E2E_DIR` | 未设置 | Desktop 生命周期 E2E 的隔离 `userData` 和结果目录；仅用于测试。 |
+| `AGENT_TRACE_BENCHMARK_RUNS` | `100000` | 容量基准 Run 数。 |
+| `AGENT_TRACE_BENCHMARK_EVENTS` | `1000000` | 容量基准 Event 数。 |
+| `AGENT_TRACE_BENCHMARK_RUN_MS` | `1500` | Run 分页延迟上限（ms）。 |
+| `AGENT_TRACE_BENCHMARK_EVENT_MS` | `500` | Event 分页延迟上限（ms）。 |
+| `AGENT_TRACE_BENCHMARK_HEAP_MB` | `512` | 基准查询堆内存增量上限（MiB）。 |
+| `AGENT_TRACE_BENCHMARK_DB_MB` | `2048` | 基准 SQLite 文件体积上限（MiB）。 |
 
 ## 运行检查
 

@@ -1,6 +1,7 @@
 import { createRunSchema, createTraceEventSchema, updateRunSchema } from "@agent-trace/schema";
 import { Hono } from "hono";
 import { cors } from "hono/cors";
+import { streamSSE } from "hono/streaming";
 
 import {
   ingestAgentHook,
@@ -11,16 +12,22 @@ import {
 import {
   createEvent,
   createRun,
+  compactDatabase,
   deleteRun,
   deleteRuns,
   getDashboardRunById,
+  getStorageStats,
+  getTraceInsights,
   listEventsByRunId,
   listEventsPageByRunId,
   listRuns,
   listRunsPage,
+  pruneRuns,
+  restoreDeletedRun,
   updateRun
 } from "./storage.js";
 import { getScannerStatus, getUsageSummary } from "./usage-storage.js";
+import { getCurrentRevision, subscribeToChanges } from "./change-feed.js";
 
 const loopbackDashboardOrigin = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?$/;
 
@@ -36,6 +43,30 @@ export function createApp() {
     return c.json({ ok: true, service: "agent-trace" });
   });
 
+  app.get("/changes", (c) => streamSSE(c, async (stream) => {
+    const revision = getCurrentRevision();
+    await stream.writeSSE({
+      event: "ready",
+      id: String(revision),
+      data: JSON.stringify({ revision })
+    });
+
+    await new Promise<void>((resolve) => {
+      const unsubscribe = subscribeToChanges((event) => {
+        void stream.writeSSE({
+          event: "change",
+          id: String(event.revision),
+          data: JSON.stringify(event)
+        });
+      });
+
+      stream.onAbort(() => {
+        unsubscribe();
+        resolve();
+      });
+    });
+  }));
+
   app.post("/runs", async (c) => {
     const body = await readJson(c.req);
     const parsed = createRunSchema.safeParse(body);
@@ -44,7 +75,11 @@ export function createApp() {
       return c.json({ error: "invalid_run", issues: parsed.error.issues }, 400);
     }
 
-    await createRun(parsed.data);
+    const created = await createRun(parsed.data);
+
+    if (!created) {
+      return c.json({ error: "run_tombstoned" }, 409);
+    }
 
     return c.json({ ok: true }, 201);
   });
@@ -112,7 +147,17 @@ export function createApp() {
       await listRunsPage({
         includeUntracked,
         page: parseNumber(c.req.query("page")),
-        pageSize: parseNumber(c.req.query("pageSize"))
+        pageSize: parseNumber(c.req.query("pageSize")),
+        q: c.req.query("q"),
+        status: c.req.query("status"),
+        source: c.req.query("source"),
+        model: c.req.query("model"),
+        startedAfter: parseDate(c.req.query("startedAfter")),
+        startedBefore: parseDate(c.req.query("startedBefore"), true),
+        minCostUsd: parseNumber(c.req.query("minCostUsd")),
+        maxCostUsd: parseNumber(c.req.query("maxCostUsd")),
+        sort: parseRunSort(c.req.query("sort")),
+        order: c.req.query("order") === "asc" ? "asc" : "desc"
       })
     );
   });
@@ -159,6 +204,10 @@ export function createApp() {
     return c.json(run);
   });
 
+  app.get("/runs/:id/insights", async (c) => {
+    return c.json({ insights: await getTraceInsights(c.req.param("id")) });
+  });
+
   app.delete("/runs/:id", async (c) => {
     const deleted = await deleteRun(c.req.param("id"));
 
@@ -166,6 +215,38 @@ export function createApp() {
       return c.json({ error: "run_not_found" }, 404);
     }
 
+    return c.json({ ok: true });
+  });
+
+  app.delete("/runs/:id/tombstone", async (c) => {
+    const restored = await restoreDeletedRun(c.req.param("id"));
+
+    return restored
+      ? c.json({ ok: true })
+      : c.json({ error: "tombstone_not_found" }, 404);
+  });
+
+  app.get("/maintenance/storage", async (c) => c.json(await getStorageStats()));
+
+  app.post("/maintenance/prune", async (c) => {
+    const body = asRecord(await readJson(c.req));
+    const before = parseDate(typeof body.before === "string" ? body.before : undefined);
+
+    if (!before) return c.json({ error: "invalid_prune_before" }, 400);
+    const statuses = Array.isArray(body.statuses)
+      ? body.statuses.filter((value): value is string => typeof value === "string")
+      : undefined;
+    const deleted = await pruneRuns({
+      before,
+      statuses,
+      keepTombstones: body.keepTombstones !== false
+    });
+
+    return c.json({ ok: true, deleted });
+  });
+
+  app.post("/maintenance/compact", (c) => {
+    compactDatabase();
     return c.json({ ok: true });
   });
 
@@ -188,6 +269,24 @@ function parseNumber(value: string | undefined) {
   const parsed = Number(value);
 
   return Number.isFinite(parsed) ? parsed : undefined;
+}
+
+function parseDate(value: string | undefined, endOfDay = false) {
+  if (!value) return undefined;
+  const date = new Date(value);
+  if (endOfDay && /^\d{4}-\d{2}-\d{2}$/.test(value)) {
+    date.setUTCHours(23, 59, 59, 999);
+  }
+  const timestamp = date.getTime();
+
+  return Number.isFinite(timestamp) ? new Date(timestamp).toISOString() : undefined;
+}
+
+function parseRunSort(value: string | undefined) {
+  return value === "name" || value === "status" || value === "duration" ||
+    value === "tokens" || value === "cost" || value === "startedAt"
+    ? value
+    : undefined;
 }
 
 async function ingestHook(

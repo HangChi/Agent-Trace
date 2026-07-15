@@ -38,6 +38,36 @@ paths:
         - $ref: "#/components/parameters/IncludeUntracked"
         - $ref: "#/components/parameters/RunPage"
         - $ref: "#/components/parameters/RunPageSize"
+        - name: q
+          in: query
+          schema: { type: string }
+        - name: status
+          in: query
+          schema: { type: string, enum: [all, running, success, error] }
+        - name: source
+          in: query
+          schema: { type: string }
+        - name: model
+          in: query
+          schema: { type: string }
+        - name: startedAfter
+          in: query
+          schema: { type: string, format: date-time }
+        - name: startedBefore
+          in: query
+          schema: { type: string, format: date-time }
+        - name: minCostUsd
+          in: query
+          schema: { type: number, minimum: 0 }
+        - name: maxCostUsd
+          in: query
+          schema: { type: number, minimum: 0 }
+        - name: sort
+          in: query
+          schema: { type: string, enum: [startedAt, name, status, duration, tokens, cost] }
+        - name: order
+          in: query
+          schema: { type: string, enum: [asc, desc], default: desc }
         - $ref: "#/components/parameters/Legacy"
       responses:
         "200":
@@ -65,6 +95,8 @@ paths:
           $ref: "#/components/responses/Ok"
         "400":
           $ref: "#/components/responses/ValidationError"
+        "409":
+          description: Run id is tombstoned
     delete:
       tags: [Runs]
       summary: Delete multiple Runs
@@ -198,6 +230,35 @@ paths:
                   - type: array
                     items:
                       $ref: "#/components/schemas/Event"
+  /runs/{id}/insights:
+    get:
+      tags: [Events]
+      summary: Analyze deterministic Trace insights
+      operationId: getRunInsights
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200":
+          description: Insight list for the complete Run
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [insights]
+                properties:
+                  insights:
+                    type: array
+                    items: { type: object, additionalProperties: true }
+  /runs/{id}/tombstone:
+    delete:
+      tags: [Maintenance]
+      summary: Allow a deleted Run id to be ingested again
+      operationId: restoreDeletedRun
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200": { $ref: "#/components/responses/Ok" }
+        "404": { $ref: "#/components/responses/NotFound" }
   /events:
     post:
       tags: [Events]
@@ -351,6 +412,56 @@ paths:
                       additionalProperties: true
                   error:
                     type: string
+  /changes:
+    get:
+      tags: [Read model]
+      summary: Stream Collector change notifications
+      operationId: streamChanges
+      responses:
+        "200":
+          description: Server-sent event stream
+          content:
+            text/event-stream:
+              schema: { type: string }
+  /maintenance/storage:
+    get:
+      tags: [Maintenance]
+      summary: Get database capacity counters
+      operationId: getStorageStats
+      responses:
+        "200":
+          description: Database path, byte size, and row counts
+          content:
+            application/json:
+              schema: { type: object, additionalProperties: true }
+  /maintenance/prune:
+    post:
+      tags: [Maintenance]
+      summary: Delete Runs older than a cutoff
+      operationId: pruneRuns
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [before]
+              properties:
+                before: { type: string, format: date-time }
+                statuses:
+                  type: array
+                  items: { type: string }
+                keepTombstones: { type: boolean, default: true }
+      responses:
+        "200": { $ref: "#/components/responses/Ok" }
+        "400": { $ref: "#/components/responses/ValidationError" }
+  /maintenance/compact:
+    post:
+      tags: [Maintenance]
+      summary: Checkpoint WAL and vacuum the database
+      operationId: compactDatabase
+      responses:
+        "200": { $ref: "#/components/responses/Ok" }
 components:
   parameters:
     RunId:

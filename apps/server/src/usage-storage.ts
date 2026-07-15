@@ -9,6 +9,7 @@ import type {
 
 import { db as defaultDb } from "./db.js";
 import { usageScanState, usageSessions } from "./schema.js";
+import { publishChange } from "./change-feed.js";
 
 type Database = BetterSQLite3Database;
 
@@ -26,7 +27,7 @@ export async function replaceUsageSnapshot(
   snapshot: UsageSnapshot,
   database: Database = defaultDb
 ) {
-  return database.transaction((transaction) => {
+  const result = database.transaction((transaction) => {
     const priorState = transaction
       .select()
       .from(usageScanState)
@@ -104,6 +105,9 @@ export async function replaceUsageSnapshot(
       })
       .run();
   });
+
+  publishChange("usage");
+  return result;
 }
 
 export async function getUsageSummary(database: Database = defaultDb): Promise<DashboardUsageSummary> {

@@ -35,3 +35,6 @@ jobs:
 
       - name: Verify
         run: pnpm verify
+
+      - name: Verify desktop lifecycle
+        run: pnpm --filter @agent-trace/desktop test:e2e

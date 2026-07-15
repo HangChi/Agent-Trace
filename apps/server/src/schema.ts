@@ -57,3 +57,9 @@ export const usageScanState = sqliteTable("usage_scan_state", {
   diagnosticsJson: text("diagnostics_json").notNull(),
   error: text("error")
 });
+
+export const runTombstones = sqliteTable("run_tombstones", {
+  runId: text("run_id").primaryKey(),
+  deletedAt: text("deleted_at").notNull(),
+  reason: text("reason")
+});

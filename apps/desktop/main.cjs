@@ -15,6 +15,7 @@ const closeBehaviorAsk = "ask";
 const closeBehaviorExit = "exit";
 const closeBehaviorMinimize = "minimize";
 const desktopPreferencesFileName = "preferences.json";
+const isDesktopE2E = Boolean(process.env.AGENT_TRACE_DESKTOP_E2E_DIR);
 
 let mainWindow;
 let tray;
@@ -24,6 +25,14 @@ let isCloseDialogOpen = false;
 const childProcesses = new Set();
 
 app.setName(productName);
+
+if (isDesktopE2E) {
+  app.disableHardwareAcceleration();
+  app.commandLine.appendSwitch("disable-gpu");
+  app.commandLine.appendSwitch("disable-gpu-compositing");
+  app.commandLine.appendSwitch("disable-software-rasterizer");
+  app.setPath("userData", process.env.AGENT_TRACE_DESKTOP_E2E_DIR);
+}
 
 if (!app.requestSingleInstanceLock()) {
   app.quit();
@@ -53,11 +62,13 @@ if (!app.requestSingleInstanceLock()) {
 }
 
 async function startDesktopApp() {
-  mainWindow = createWindow();
-  showStatusPage(
-    "Starting Agent-Trace",
-    "Preparing the local collector and dashboard. First launch can take a minute while runtime files are unpacked."
-  );
+  if (!isDesktopE2E) {
+    mainWindow = createWindow();
+    showStatusPage(
+      "Starting Agent-Trace",
+      "Preparing the local collector and dashboard. First launch can take a minute while runtime files are unpacked."
+    );
+  }
 
   try {
     const collector = await startCollectorService();
@@ -67,11 +78,27 @@ async function startDesktopApp() {
     const dashboard = await startDashboardService(collector.url);
     dashboardUrl = dashboard.url;
 
-    await mainWindow.loadURL(`${dashboard.url}/runs`);
+    if (mainWindow) await mainWindow.loadURL(`${dashboard.url}/runs`);
+    completeDesktopE2E({ collectorUrl: collector.url, dashboardUrl: dashboard.url });
   } catch (error) {
     const message = error instanceof Error ? error.message : String(error);
-    showErrorPage(message);
+    if (mainWindow) showErrorPage(message);
+    completeDesktopE2E({ error: message });
   }
+}
+
+function completeDesktopE2E(result) {
+  const directory = process.env.AGENT_TRACE_DESKTOP_E2E_DIR;
+
+  if (!directory) return;
+  fs.mkdirSync(directory, { recursive: true });
+  fs.writeFileSync(
+    path.join(directory, "lifecycle-result.json"),
+    JSON.stringify({ ...result, pid: process.pid, packaged: app.isPackaged }, null, 2),
+    "utf8"
+  );
+  if (result.error) process.exitCode = 1;
+  setTimeout(() => app.quit(), 100);
 }
 
 async function startUsageScannerService(collectorUrl) {

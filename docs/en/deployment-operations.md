@@ -97,6 +97,15 @@ The matching `TOOLTRACE_*` names remain migration aliases on supported paths. Ne
 
 Do not copy only the main database file while the Collector is writing.
 
+## Maintenance and capacity
+
+- `GET /maintenance/storage`: database byte size and Run/Event/Usage/Tombstone counts.
+- `POST /maintenance/prune`: delete history before a cutoff, optionally restricted by status.
+- `POST /maintenance/compact`: checkpoint WAL and vacuum SQLite during a quiet local period.
+- `pnpm --filter @agent-trace/server benchmark:capacity`: enforce the 100,000 Run / 1,000,000 Event latency, heap, and database-size budgets.
+- `pnpm --filter @agent-trace/desktop test:e2e`: launch and stop the real Electron/Collector/Dashboard lifecycle.
+- `desktop-release-validation.yml`: install the previous NSIS release, upgrade, launch, exit, and uninstall.
+
 ## Operational checks
 
 - `/health`: Collector availability.

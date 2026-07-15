@@ -154,6 +154,27 @@ export type DashboardRun = Omit<Run, "metadata" | "status"> & {
   metadata?: DashboardRunMetadata;
 };
 
+export type DashboardRunSort =
+  | "startedAt"
+  | "name"
+  | "status"
+  | "duration"
+  | "tokens"
+  | "cost";
+
+export type DashboardRunFilters = {
+  q?: string;
+  status?: string;
+  source?: string;
+  model?: string;
+  startedAfter?: string;
+  startedBefore?: string;
+  minCostUsd?: number;
+  maxCostUsd?: number;
+  sort?: DashboardRunSort;
+  order?: "asc" | "desc";
+};
+
 export type DashboardRunPage = {
   runs: DashboardRun[];
   pagination: {

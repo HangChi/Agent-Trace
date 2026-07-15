@@ -70,6 +70,10 @@ Event 表示 Run 内的步骤：
 
 保存当前扫描时间、客户端诊断和扫描错误。固定记录键为 `current`。
 
+### run_tombstones
+
+保存用户已删除的 Run ID、删除时间和原因。它是 Scanner 替换语义与用户删除意图之间的持久 Seam：上游历史仍存在时也不会重建 Run，除非用户显式解除墓碑。
+
 ## 写入数据流
 
 ### SDK
@@ -101,8 +105,9 @@ Event 表示 Run 内的步骤：
 
 Dashboard 不直接访问 SQLite，而是调用 Collector：
 
-- Run 列表读模型聚合 Event 与 usage snapshot，生成来源、模型、Token、成本、命令和工具摘要。
-- Event 读模型先区分 display/hidden，再筛选、排序和分页，并计算摘要与确定性诊断。
+- Run 列表的搜索、状态、来源、模型、日期、成本、排序、计数和分页下推到 SQLite；只为当前页 Run 读取 Event 摘要和 usage snapshot。
+- Event 读模型在 SQL 内完成 display/hidden、筛选、facet、汇总、排序和分页；完整 Trace 诊断通过独立 `/runs/:id/insights` Interface 计算。
+- Collector 通过 `/changes` 发布 SSE 修改通知，Dashboard 仅在有数据变化时刷新，连接失败才启用低频轮询。
 - 确定性诊断返回关联 `eventIds`；Web 端使用事件 ID 精确查询并生成 Trace Rail 锚点，实现跨分页、筛选和 display/hidden 范围的定位，不增加新的 Collector API 或持久化字段。
 - 存在会话级 scan snapshot 时，Run Token/成本摘要优先使用该快照，避免和事件估算重复相加。
 - 列表默认每页 50 条、最大 200；Event 默认每页 100 条、最大 500。
@@ -129,3 +134,4 @@ Dashboard 不直接访问 SQLite，而是调用 Collector：
 - [ADR-0002：统一 Run/Event 模型](adr/0002-unified-run-event-model.md)
 - [ADR-0003：Usage Snapshot 与 Trace Event 分离](adr/0003-separate-usage-snapshots-from-traces.md)
 - [ADR-0004：Dashboard 默认使用有界分页 Read Model](adr/0004-bounded-dashboard-read-model.md)
+- [ADR-0005：Run Tombstone 与本地数据维护](adr/0005-run-tombstones-and-maintenance.md)

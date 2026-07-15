@@ -13,7 +13,9 @@
     "pack:win": "node scripts/package-win.mjs dir",
     "prepare:icon": "node scripts/generate-icon.mjs",
     "prepare:resources": "node scripts/prepare-dist.mjs",
-    "test": "node scripts/check.mjs"
+    "test": "node scripts/check.mjs",
+    "test:e2e": "node scripts/lifecycle.e2e.mjs",
+    "test:upgrade": "powershell -ExecutionPolicy Bypass -File scripts/installer-upgrade.e2e.ps1 -PreviousInstaller release/Agent-Trace-Setup-0.2.0.exe -CurrentInstaller release/Agent-Trace-Setup-0.2.1.exe"
   },
   "devDependencies": {
     "@agent-trace/cli": "workspace:*",

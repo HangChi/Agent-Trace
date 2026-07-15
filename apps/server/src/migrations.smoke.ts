@@ -26,7 +26,7 @@ function testFreshDatabase() {
     assert.equal(getUserVersion(sqlite), currentSchemaVersion);
     assert.deepEqual(
       getNames(sqlite, "table"),
-      ["events", "runs", "usage_scan_state", "usage_sessions"]
+      ["events", "run_tombstones", "runs", "usage_scan_state", "usage_sessions"]
     );
     assert.deepEqual(getColumnNames(sqlite, "runs"), [
       "id",
@@ -41,8 +41,12 @@ function testFreshDatabase() {
     ]);
     assert.deepEqual(getNames(sqlite, "index"), [
       "events_run_id_idx",
+      "events_run_id_status_timestamp_idx",
       "events_run_id_timestamp_idx",
-      "runs_started_at_idx"
+      "events_run_id_type_timestamp_idx",
+      "runs_started_at_idx",
+      "runs_status_started_at_idx",
+      "usage_sessions_session_id_idx"
     ]);
   } finally {
     sqlite.close();

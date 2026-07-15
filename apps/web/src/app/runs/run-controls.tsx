@@ -45,7 +45,7 @@ export function RefreshButton({
   );
 }
 
-export function AutoRefresh({ intervalMs = 2000 }: { intervalMs?: number }) {
+export function AutoRefresh({ collectorUrl }: { collectorUrl: string }) {
   const router = useRouter();
   const [enabled, setEnabled] = useState<boolean | null>(null);
 
@@ -72,16 +72,33 @@ export function AutoRefresh({ intervalMs = 2000 }: { intervalMs?: number }) {
       return;
     }
 
-    const timer = window.setInterval(() => {
+    let fallbackTimer: number | undefined;
+    const refresh = () => {
+      if (document.visibilityState !== "visible") return;
       if (document.querySelector('input[data-run-checkbox="true"]:checked')) {
         return;
       }
 
       router.refresh();
-    }, intervalMs);
+    };
+    const startFallback = () => {
+      fallbackTimer ??= window.setInterval(refresh, 15_000);
+    };
+    const stopFallback = () => {
+      if (fallbackTimer !== undefined) window.clearInterval(fallbackTimer);
+      fallbackTimer = undefined;
+    };
+    const source = new EventSource(`${collectorUrl}/changes`);
 
-    return () => window.clearInterval(timer);
-  }, [enabled, intervalMs, router]);
+    source.addEventListener("change", refresh);
+    source.addEventListener("open", stopFallback);
+    source.addEventListener("error", startFallback);
+
+    return () => {
+      source.close();
+      stopFallback();
+    };
+  }, [collectorUrl, enabled, router]);
 
   return null;
 }

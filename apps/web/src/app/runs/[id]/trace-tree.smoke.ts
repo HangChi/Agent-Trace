@@ -107,8 +107,8 @@ for (const { insight, en, zh } of localizedInsights) {
 }
 
 const detailPageSource = readFileSync(new URL("./page.tsx", import.meta.url), "utf8");
-if (!detailPageSource.includes("const traceInsights = summary.insights ?? [];")) {
-  throw new Error("Expected missing summary insights to normalize to an empty array.");
+if (!detailPageSource.includes("const traceInsights = insightRequest.insights ?? summary.insights ?? [];")) {
+  throw new Error("Expected the dedicated insight read model to fall back safely.");
 }
 
 console.log("Agent-Trace trace tree smoke test passed.");

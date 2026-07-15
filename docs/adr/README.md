@@ -8,6 +8,7 @@ ADR 记录长期有效、会影响后续设计选择的决定。状态使用 `Pr
 | [0002](0002-unified-run-event-model.md) | Accepted | 使用统一 Run/Event 模型承接多来源 |
 | [0003](0003-separate-usage-snapshots-from-traces.md) | Accepted | Usage Snapshot 与 Trace Event 分离 |
 | [0004](0004-bounded-dashboard-read-model.md) | Accepted | Dashboard 默认使用有界分页 Read Model |
+| [0005](0005-run-tombstones-and-maintenance.md) | Accepted | Run Tombstone 防止扫描复活，并提供容量与保留期维护 |
 
 ## 新增 ADR
 

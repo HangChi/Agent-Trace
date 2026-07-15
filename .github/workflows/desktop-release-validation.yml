@@ -1,0 +1,30 @@
+name: Desktop release validation
+
+on:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  install-upgrade:
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v4
+      - uses: pnpm/action-setup@v4
+        with:
+          version: 11.0.7
+          run_install: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 22.12.0
+          cache: pnpm
+      - run: pnpm install --frozen-lockfile
+      - run: pnpm desktop:build:win
+      - name: Install previous version, upgrade, launch, exit, and uninstall
+        shell: powershell
+        run: >-
+          ./apps/desktop/scripts/installer-upgrade.e2e.ps1
+          -PreviousInstaller ./apps/desktop/release/Agent-Trace-Setup-0.2.0.exe
+          -CurrentInstaller ./apps/desktop/release/Agent-Trace-Setup-0.2.1.exe

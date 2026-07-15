@@ -17,6 +17,7 @@ The Collector must not be exposed directly to an untrusted network. CORS restric
 | Method | Path | Purpose |
 | --- | --- | --- |
 | GET | `/health` | Collector health |
+| GET | `/changes` | SSE change notifications |
 | POST | `/runs` | Create a Run |
 | PATCH | `/runs/:id` | Update a Run |
 | POST | `/events` | Create an Event |
@@ -31,7 +32,12 @@ The Collector must not be exposed directly to an untrusted network. CORS restric
 | DELETE | `/runs` | Delete multiple Runs |
 | GET | `/runs/:id` | Get one Run |
 | GET | `/runs/:id/events` | Paginated Event read model |
+| GET | `/runs/:id/insights` | Deterministic full-Trace insights |
 | DELETE | `/runs/:id` | Delete one Run |
+| DELETE | `/runs/:id/tombstone` | Allow a deleted Run id to be collected again |
+| GET | `/maintenance/storage` | Database size and row counts |
+| POST | `/maintenance/prune` | Retention cleanup by date and status |
+| POST | `/maintenance/compact` | Checkpoint WAL and vacuum SQLite |
 
 ## Error behavior
 
@@ -64,11 +70,19 @@ This behavior prevents observability failures from blocking the upstream Agent.
 - `includeUntracked=1|true`
 - `page` (minimum 1)
 - `pageSize` (default 50, maximum 200)
+- `q`, `status`, `source`, and `model`
+- `startedAfter`, `startedBefore`, `minCostUsd`, and `maxCostUsd`
+- `sort=startedAt|name|status|duration|tokens|cost`
+- `order=asc|desc`
 - `legacy=1|true`
 
 `GET /runs/:id/events` accepts `visibility`, `page`, `pageSize`, `q`, `status`, `type`, `category`, and `legacy`.
 
 Default responses are bounded page objects. `legacy=1|true` returns old, unbounded arrays and should only be used during client migration.
+
+Event pagination performs filtering, facets, aggregates, ordering, and pagination in SQLite. Full-Trace diagnostics use the separate `/runs/:id/insights` route. Dashboard live refresh listens to `/changes`; it falls back to a 15-second poll only when SSE is unavailable.
+
+Deleting a Run creates a tombstone, preventing Hook, OTel, and Transcript Scanner ingestion from recreating it. Delete `/runs/:id/tombstone` before intentionally collecting that id again. Maintenance routes expose capacity, retention cleanup, and compaction.
 
 ## Examples
 

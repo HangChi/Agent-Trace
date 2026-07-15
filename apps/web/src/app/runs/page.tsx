@@ -1,6 +1,7 @@
 import Link from "next/link";
 import type {
   DashboardRun,
+  DashboardRunFilters,
   DashboardRunMetadata,
   DashboardRunPage,
   DashboardRunSummary,
@@ -57,9 +58,31 @@ type RunsSearchParams = Promise<{
   page?: string | string[];
   runs?: string | string[];
   scanner?: string | string[];
+  q?: string | string[];
+  status?: string | string[];
+  source?: string | string[];
+  model?: string | string[];
+  startedAfter?: string | string[];
+  startedBefore?: string | string[];
+  minCostUsd?: string | string[];
+  maxCostUsd?: string | string[];
+  sort?: string | string[];
+  order?: string | string[];
 }>;
 
 type RunMode = "tracked" | "all";
+type RunFilterState = {
+  q: string;
+  status: string;
+  source: string;
+  model: string;
+  startedAfter: string;
+  startedBefore: string;
+  minCostUsd: string;
+  maxCostUsd: string;
+  sort: NonNullable<DashboardRunFilters["sort"]>;
+  order: NonNullable<DashboardRunFilters["order"]>;
+};
 
 const collectorUrl = process.env.AGENT_TRACE_API_URL ?? process.env.TOOLTRACE_API_URL ?? "http://localhost:4319";
 const runsBulkDeleteFormId = "runs-bulk-delete-form";
@@ -139,8 +162,9 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
   const requestedPage = parsePageParam(params.page);
   const runMode = parseRunMode(params.runs);
   const scannerMode = parseScannerMode(params.scanner);
+  const runFilters = parseRunFilters(params);
   const [{ page: runPage, error }, scannerStatus, usageResult, exchangeRate] = await Promise.all([
-    getRunPage(locale, requestedPage, runMode),
+    getRunPage(locale, requestedPage, runMode, runFilters),
     fetchScannerStatus(collectorUrl),
     getUsageSummary(locale),
     getUsdCnyRate()
@@ -159,10 +183,10 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
 
   return (
     <main id="main-content" className="min-h-dvh bg-background text-foreground">
-      <AutoRefresh />
+      <AutoRefresh collectorUrl={collectorUrl} />
       <ConsoleHeader
         locale={locale}
-        path={runsHref(locale, pagination.page, scannerMode, runMode)}
+        path={runsHref(locale, pagination.page, scannerMode, runMode, runFilters)}
         collectorUrl={collectorUrl}
       />
 
@@ -197,6 +221,50 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
           ]}
         />
 
+        <form
+          action="/runs"
+          className="mt-5 grid gap-3 rounded-xl border border-border bg-card p-4 shadow-sm md:grid-cols-4 xl:grid-cols-8"
+        >
+          {locale === "en" ? <input type="hidden" name="lang" value="en" /> : null}
+          {runMode === "all" ? <input type="hidden" name="runs" value="all" /> : null}
+          {scannerMode === "all" ? <input type="hidden" name="scanner" value="all" /> : null}
+          <label className="md:col-span-2 text-xs font-medium text-muted-foreground">
+            {locale === "zh" ? "搜索" : "Search"}
+            <input name="q" defaultValue={runFilters.q} placeholder={locale === "zh" ? "名称、ID、会话或来源" : "Name, ID, session, or source"} className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" />
+          </label>
+          <RunFilterSelect label={locale === "zh" ? "状态" : "Status"} name="status" value={runFilters.status} options={[["", locale === "zh" ? "全部" : "All"], ["running", locale === "zh" ? "进行中" : "Running"], ["success", locale === "zh" ? "成功" : "Success"], ["error", locale === "zh" ? "异常" : "Error"]]} />
+          <label className="text-xs font-medium text-muted-foreground">
+            {locale === "zh" ? "来源" : "Source"}
+            <input name="source" defaultValue={runFilters.source} placeholder="codex" className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" />
+          </label>
+          <label className="text-xs font-medium text-muted-foreground">
+            {locale === "zh" ? "模型" : "Model"}
+            <input name="model" defaultValue={runFilters.model} placeholder="gpt-5" className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" />
+          </label>
+          <label className="text-xs font-medium text-muted-foreground">
+            {locale === "zh" ? "开始日期" : "From"}
+            <input type="date" name="startedAfter" defaultValue={runFilters.startedAfter} className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground" />
+          </label>
+          <label className="text-xs font-medium text-muted-foreground">
+            {locale === "zh" ? "结束日期" : "To"}
+            <input type="date" name="startedBefore" defaultValue={runFilters.startedBefore} className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground" />
+          </label>
+          <RunFilterSelect label={locale === "zh" ? "排序" : "Sort"} name="sort" value={runFilters.sort} options={[["startedAt", locale === "zh" ? "开始时间" : "Started"], ["name", locale === "zh" ? "名称" : "Name"], ["status", locale === "zh" ? "状态" : "Status"], ["duration", locale === "zh" ? "耗时" : "Duration"], ["tokens", "Tokens"], ["cost", locale === "zh" ? "成本" : "Cost"]]} />
+          <label className="text-xs font-medium text-muted-foreground">
+            {locale === "zh" ? "最低成本 (USD)" : "Min cost (USD)"}
+            <input type="number" min="0" step="0.0001" name="minCostUsd" defaultValue={runFilters.minCostUsd} className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" />
+          </label>
+          <label className="text-xs font-medium text-muted-foreground">
+            {locale === "zh" ? "最高成本 (USD)" : "Max cost (USD)"}
+            <input type="number" min="0" step="0.0001" name="maxCostUsd" defaultValue={runFilters.maxCostUsd} className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground" />
+          </label>
+          <RunFilterSelect label={locale === "zh" ? "方向" : "Order"} name="order" value={runFilters.order} options={[["desc", locale === "zh" ? "降序" : "Descending"], ["asc", locale === "zh" ? "升序" : "Ascending"]]} />
+          <div className="flex items-end gap-2 md:col-span-2">
+            <Button type="submit" size="sm">{locale === "zh" ? "应用筛选" : "Apply filters"}</Button>
+            <Button variant="outline" size="sm" asChild><Link href={runsHref(locale, 1, scannerMode, runMode)}>{locale === "zh" ? "重置" : "Reset"}</Link></Button>
+          </div>
+        </form>
+
         <Card className="mt-5 overflow-hidden py-0">
           <div className="flex flex-col gap-3 border-b border-border bg-surface-raised px-4 py-4 sm:flex-row sm:items-center sm:justify-between sm:px-5">
             <div>
@@ -219,7 +287,8 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                     locale,
                     1,
                     scannerMode,
-                    runMode === "all" ? "tracked" : "all"
+                    runMode === "all" ? "tracked" : "all",
+                    runFilters
                   )}
                 >
                   {runMode === "all" ? (
@@ -431,6 +500,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                   pagination={pagination}
                   runMode={runMode}
                   scannerMode={scannerMode}
+                  filters={runFilters}
                 />
               ) : null}
             </>
@@ -446,6 +516,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
             hiddenCount={hiddenScannerCount}
             locale={locale}
             runMode={runMode}
+            filters={runFilters}
             showAll={scannerMode === "all"}
           />
         ) : null}
@@ -495,7 +566,8 @@ function ColumnResizeHandle({
 async function getRunPage(
   locale: Locale,
   page: number,
-  runMode: RunMode
+  runMode: RunMode,
+  filters: RunFilterState
 ): Promise<{ page: DashboardRunPage; error?: string }> {
   try {
     const query = new URLSearchParams({
@@ -506,6 +578,8 @@ async function getRunPage(
     if (runMode === "all") {
       query.set("includeUntracked", "1");
     }
+
+    appendRunFilters(query, filters);
 
     const response = await fetch(`${collectorUrl}/runs?${query}`, {
       cache: "no-store"
@@ -623,11 +697,41 @@ function parseRunMode(value: string | string[] | undefined): RunMode {
   return raw === "all" ? "all" : "tracked";
 }
 
+function parseRunFilters(params: Awaited<RunsSearchParams>): RunFilterState {
+  const value = (input: string | string[] | undefined) =>
+    (Array.isArray(input) ? input[0] : input)?.trim() ?? "";
+  const sort = value(params.sort);
+
+  return {
+    q: value(params.q),
+    status: value(params.status),
+    source: value(params.source),
+    model: value(params.model),
+    startedAfter: value(params.startedAfter),
+    startedBefore: value(params.startedBefore),
+    minCostUsd: value(params.minCostUsd),
+    maxCostUsd: value(params.maxCostUsd),
+    sort: sort === "name" || sort === "status" || sort === "duration" || sort === "tokens" || sort === "cost"
+      ? sort
+      : "startedAt",
+    order: value(params.order) === "asc" ? "asc" : "desc"
+  };
+}
+
+function appendRunFilters(params: URLSearchParams, filters: RunFilterState) {
+  for (const key of ["q", "status", "source", "model", "startedAfter", "startedBefore", "minCostUsd", "maxCostUsd"] as const) {
+    if (filters[key]) params.set(key, filters[key]);
+  }
+  if (filters.sort !== "startedAt") params.set("sort", filters.sort);
+  if (filters.order !== "desc") params.set("order", filters.order);
+}
+
 function runsHref(
   locale: Locale,
   page: number,
   scannerMode: "detected" | "all",
-  runMode: RunMode
+  runMode: RunMode,
+  filters?: RunFilterState
 ) {
   const params = new URLSearchParams();
 
@@ -643,9 +747,34 @@ function runsHref(
     params.set("runs", "all");
   }
 
+  if (filters) appendRunFilters(params, filters);
+
   const query = params.toString();
 
   return localizedHref(query ? `/runs?${query}` : "/runs", locale);
+}
+
+function RunFilterSelect({
+  label,
+  name,
+  value,
+  options
+}: {
+  label: string;
+  name: string;
+  value: string;
+  options: Array<[string, string]>;
+}) {
+  return (
+    <label className="text-xs font-medium text-muted-foreground">
+      {label}
+      <select name={name} defaultValue={value} className="mt-1 h-9 w-full rounded-md border border-input bg-background px-2 text-sm text-foreground">
+        {options.map(([optionValue, optionLabel]) => (
+          <option key={optionValue} value={optionValue}>{optionLabel}</option>
+        ))}
+      </select>
+    </label>
+  );
 }
 
 function ScannerStatus({
@@ -653,6 +782,7 @@ function ScannerStatus({
   diagnostics,
   hiddenCount,
   runMode,
+  filters,
   showAll,
   locale
 }: {
@@ -660,6 +790,7 @@ function ScannerStatus({
   diagnostics: ScannerDiagnostic[];
   hiddenCount: number;
   runMode: RunMode;
+  filters: RunFilterState;
   showAll: boolean;
   locale: Locale;
 }) {
@@ -682,7 +813,7 @@ function ScannerStatus({
           </div>
         </div>
         <Button variant="outline" size="sm" asChild>
-          <Link href={runsHref(locale, currentPage, nextMode, runMode)}>
+          <Link href={runsHref(locale, currentPage, nextMode, runMode, filters)}>
             <ListFilter className="h-4 w-4" aria-hidden />
             {toggleLabel}
           </Link>
@@ -760,12 +891,14 @@ function RunsPaginationControls({
   locale,
   pagination,
   runMode,
-  scannerMode
+  scannerMode,
+  filters
 }: {
   locale: Locale;
   pagination: DashboardRunPage["pagination"];
   runMode: RunMode;
   scannerMode: "detected" | "all";
+  filters: RunFilterState;
 }) {
   const text = copy[locale];
   const previousPage = Math.max(1, pagination.page - 1);
@@ -791,7 +924,7 @@ function RunsPaginationControls({
       >
         {pagination.page > 1 ? (
           <Button variant="outline" size="sm" asChild>
-            <Link href={runsHref(locale, previousPage, scannerMode, runMode)}>
+            <Link href={runsHref(locale, previousPage, scannerMode, runMode, filters)}>
               <ChevronLeft className="h-4 w-4" aria-hidden />
               {text.detail.previousPage}
             </Link>
@@ -820,7 +953,7 @@ function RunsPaginationControls({
                 asChild
               >
                 <Link
-                  href={runsHref(locale, item, scannerMode, runMode)}
+                  href={runsHref(locale, item, scannerMode, runMode, filters)}
                   aria-current={item === pagination.page ? "page" : undefined}
                   aria-label={locale === "zh" ? `第 ${item} 页` : `Page ${item}`}
                 >
@@ -832,7 +965,7 @@ function RunsPaginationControls({
         </div>
         {pagination.page < pagination.totalPages ? (
           <Button variant="outline" size="sm" asChild>
-            <Link href={runsHref(locale, nextPage, scannerMode, runMode)}>
+            <Link href={runsHref(locale, nextPage, scannerMode, runMode, filters)}>
               {text.detail.nextPage}
               <ChevronRight className="h-4 w-4" aria-hidden />
             </Link>

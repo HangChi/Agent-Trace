@@ -53,6 +53,8 @@ Set a positive `AGENT_TRACE_USD_CNY_RATE` to disable exchange-rate requests.
 
 ## Deletion and retention
 
-Deleting a Run removes it and its Events from Agent-Trace SQLite. It does not modify Codex, Claude Code, OpenCode, or other source history, so a later scan can recreate the session.
+Deleting a Run removes it and its Events from Agent-Trace SQLite and stores a Run tombstone. It does not modify Codex, Claude Code, OpenCode, or other source history, but Hook, OTel, and Transcript Scanner ingestion will not recreate the Run while the tombstone exists. `DELETE /runs/:id/tombstone` explicitly allows collection again.
+
+Use `GET /maintenance/storage` for capacity counters, `POST /maintenance/prune` for date/status retention cleanup, and `POST /maintenance/compact` to reclaim SQLite space. Pruning keeps tombstones by default.
 
 To clear all local Agent-Trace data, stop all writers before removing the database and matching WAL/SHM files. This action is irreversible.

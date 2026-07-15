@@ -97,15 +97,16 @@ export default async function RunDetailPage({
   const page = parsePage(query.page);
   const view = parseDetailView(query.view);
   const focusedEventId = getSearchParam(query.focus).trim();
-  const [eventRequest, runRequest, treeRequest] = await Promise.all([
+  const [eventRequest, runRequest, treeRequest, insightRequest] = await Promise.all([
     getEventPage(id, locale, filters, visibility, page),
     getRun(id, locale),
     view === "tree"
       ? getTreeEvents(id, locale, filters, visibility)
-      : Promise.resolve({ events: undefined, error: undefined })
+      : Promise.resolve({ events: undefined, error: undefined }),
+    getTraceInsights(id, locale)
   ]);
   const { result } = eventRequest;
-  const error = eventRequest.error ?? runRequest.error ?? treeRequest.error;
+  const error = eventRequest.error ?? runRequest.error ?? treeRequest.error ?? insightRequest.error;
   const run = runRequest.run;
   const events = result?.events ?? [];
   const renderedEvents = view === "tree" ? (treeRequest.events ?? []) : events;
@@ -124,12 +125,12 @@ export default async function RunDetailPage({
   const totalDurationMs = summary.totalDurationMs;
   const failedEvents = summary.failedEvents;
   const failureInsights = inspectFailures(summary.errorEvents);
-  const traceInsights = summary.insights ?? [];
+  const traceInsights = insightRequest.insights ?? summary.insights ?? [];
   const sourceMetadata = summary.sourceMetadata;
 
   return (
     <main id="main-content" className="min-h-dvh bg-background text-foreground">
-      <AutoRefresh />
+      <AutoRefresh collectorUrl={collectorUrl} />
       <TraceLocationFocus
         key={focusedEventId}
         targetId={focusedEventId ? traceEventTargetId(focusedEventId) : undefined}
@@ -452,6 +453,28 @@ async function getRun(
     return { run: (await response.json()) as DashboardRun };
   } catch (error) {
     return { error: error instanceof Error ? error.message : copy[locale].common.unavailable };
+  }
+}
+
+async function getTraceInsights(
+  runId: string,
+  locale: Locale
+): Promise<{ insights?: DashboardTraceInsight[]; error?: string }> {
+  try {
+    const response = await fetch(`${collectorUrl}/runs/${runId}/insights`, { cache: "no-store" });
+
+    if (!response.ok) {
+      return {
+        error: locale === "zh"
+          ? `Collector 诊断接口返回 ${response.status}`
+          : `Collector insights returned ${response.status}`
+      };
+    }
+
+    const payload = (await response.json()) as { insights?: DashboardTraceInsight[] };
+    return { insights: payload.insights ?? [] };
+  } catch (error) {
+    return { error: error instanceof Error ? error.message : "Collector is unreachable" };
   }
 }
 
