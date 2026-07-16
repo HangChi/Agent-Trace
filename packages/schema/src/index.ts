@@ -164,6 +164,25 @@ export const createAnalyticsBudgetSchema = z.object({
   "At least one budget limit is required"
 );
 
+export const replayTaskStatusSchema = z.enum([
+  "queued",
+  "running",
+  "completed",
+  "error",
+  "cancelled",
+  "timeout"
+]);
+
+export const createReplayTaskSchema = z.object({
+  sourceRunId: z.string().min(1),
+  sourceEventId: z.string().min(1),
+  input: z.unknown().optional(),
+  mockOutput: z.unknown().optional(),
+  simulateError: z.boolean().default(false),
+  timeoutMs: z.number().int().min(100).max(30_000).default(5_000),
+  delayMs: z.number().int().min(0).max(30_000).default(0)
+});
+
 export type TraceStatus = z.infer<typeof traceStatusSchema>;
 export type TraceEventType = z.infer<typeof traceEventTypeSchema>;
 export type TraceError = z.infer<typeof traceErrorSchema>;
@@ -181,6 +200,8 @@ export type CreateEvaluationCase = z.infer<typeof createEvaluationCaseSchema>;
 export type CreateEvaluationResult = z.infer<typeof createEvaluationResultSchema>;
 export type AnalyticsDimension = z.infer<typeof analyticsDimensionSchema>;
 export type CreateAnalyticsBudget = z.infer<typeof createAnalyticsBudgetSchema>;
+export type ReplayTaskStatus = z.infer<typeof replayTaskStatusSchema>;
+export type CreateReplayTask = z.infer<typeof createReplayTaskSchema>;
 
 export type EvaluationDatasetSummary = CreateEvaluationDataset & {
   id: string;
@@ -241,6 +262,28 @@ export type AnalyticsBudgetAlert = {
   limit: number;
   actual: number;
   ratio: number;
+};
+
+export type ReplaySandboxPolicy = {
+  network: "disabled";
+  toolExecution: "mock-only";
+  filesystem: "temporary";
+  environment: "sanitized";
+};
+
+export type ReplayTask = {
+  id: string;
+  sourceRunId: string;
+  sourceEventId: string;
+  replayRunId?: string;
+  status: ReplayTaskStatus;
+  policy: ReplaySandboxPolicy;
+  timeoutMs: number;
+  error?: string;
+  createdAt: string;
+  startedAt?: string;
+  completedAt?: string;
+  workspaceCleaned: boolean;
 };
 
 export type DashboardModelUsage = {

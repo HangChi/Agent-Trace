@@ -181,4 +181,12 @@ Switching to metadata mode does not remove previews already stored in SQLite.
 | Cost is missing | Scanner `costUsd` or an exact `AGENT_TRACE_MODEL_PRICES_JSON` entry. |
 | Sensitive preview exists | Stop services, delete the relevant Run/database, then switch to metadata mode. |
 
+## Safe replay and debug sandbox
+
+Choose **Safe replay** on a Run detail page, or open **Replay** from the header and enter a source Run id. Select an Event, optionally override JSON input and mock output, simulate an error or delay, and set a timeout from 100 to 30000 ms. Blank overrides reuse the source Event data.
+
+Tasks can be queued, running, completed, failed, cancelled, or timed out. A completed task links to its new replay Run and to a source-versus-replay comparison. Queued and running tasks can be cancelled; cancellation and timeout terminate the worker and clean the temporary directory.
+
+Replay only runs the built-in fixed mock worker. It does not run user code, shell commands, or real tool calls. Task and generated Run/Event records remain in local SQLite. See [privacy and security](privacy-security.md) for the full boundary.
+
 See [deployment and operations](deployment-operations.md) for ports, paths, environment variables, and backups.

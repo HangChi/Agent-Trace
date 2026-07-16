@@ -8,6 +8,7 @@ import {
   createTraceEventSchema,
   privacySettingsSchema,
   runOrganizationSchema,
+  createReplayTaskSchema,
   updateRunSchema
 } from "@agent-trace/schema";
 import { Hono } from "hono";
@@ -58,6 +59,13 @@ import {
 import { getScannerStatus, getUsageSummary } from "./usage-storage.js";
 import { getCurrentRevision, subscribeToChanges } from "./change-feed.js";
 import { ingestOtlpTraces } from "./otlp-traces.js";
+import {
+  cancelReplayTask,
+  createReplayTask,
+  getReplayTask,
+  listReplayTasks,
+  ReplaySandboxError
+} from "./replay-sandbox.js";
 
 const loopbackDashboardOrigin = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?$/;
 
@@ -229,6 +237,42 @@ export function createApp() {
   app.get("/analytics/alerts", async (c) => c.json({
     alerts: await getAnalyticsBudgetAlerts()
   }));
+
+  app.get("/sandbox/replays", (c) => c.json({
+    tasks: listReplayTasks(c.req.query("sourceRunId"), parseNumber(c.req.query("limit")))
+  }));
+
+  app.post("/sandbox/replays", async (c) => {
+    const parsed = createReplayTaskSchema.safeParse(await readJson(c.req));
+    if (!parsed.success) {
+      return c.json({ error: "invalid_replay_task", issues: parsed.error.issues }, 400);
+    }
+    try {
+      return c.json({ task: await createReplayTask(parsed.data) }, 202);
+    } catch (error) {
+      if (error instanceof ReplaySandboxError) {
+        return c.json({ error: error.code }, error.status);
+      }
+      throw error;
+    }
+  });
+
+  app.get("/sandbox/replays/:id", (c) => {
+    const task = getReplayTask(c.req.param("id"));
+    return task ? c.json({ task }) : c.json({ error: "replay_task_not_found" }, 404);
+  });
+
+  app.delete("/sandbox/replays/:id", (c) => {
+    try {
+      const task = cancelReplayTask(c.req.param("id"));
+      return task ? c.json({ task }) : c.json({ error: "replay_task_not_found" }, 404);
+    } catch (error) {
+      if (error instanceof ReplaySandboxError) {
+        return c.json({ error: error.code }, error.status);
+      }
+      throw error;
+    }
+  });
 
   app.get("/evaluations/datasets", async (c) => c.json({
     datasets: await listEvaluationDatasets()

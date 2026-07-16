@@ -352,4 +352,12 @@ node packages/cli/dist/index.js usage --once \
 | Run 长期处于 running | Collector 每分钟检查一次；默认将超过 30 分钟且缺少活动的运行标记为 `error`。 |
 | 干净工作区测试找不到 SDK | 先运行 `pnpm build`，再运行 `pnpm test`。 |
 
+## 安全回放与调试沙箱
+
+在 Run 详情点击“安全回放”，或从顶部“回放”进入控制台并填写源 Run ID。选择一个事件后，可以覆盖 JSON 输入、设置 Mock 输出、模拟错误与延迟，并配置 100–30000 毫秒超时。覆盖项留空时沿用源事件数据。
+
+任务会经历排队、运行、完成、失败、取消或超时状态。完成后可打开新的回放 Run，或与源 Run 进入差异对比。排队中和运行中的任务可以取消；超时与取消都会终止 Worker 并清理临时目录。
+
+该功能只执行内置固定 Mock Worker，不运行用户代码、Shell 或真实工具调用。生成的任务和 Run/Event 会保存在本地 SQLite；更完整的能力边界见[隐私与安全](privacy-security.md)。
+
 更多数据与网络边界见[隐私与安全](privacy-security.md)，全部配置项见[部署与运维](deployment-operations.md)。

@@ -17,6 +17,7 @@ tags:
   - name: Usage
   - name: Analytics
   - name: Evaluations
+  - name: Sandbox
 paths:
   /health:
     get:
@@ -740,6 +741,63 @@ paths:
       responses:
         "201": { description: Weighted quality score recorded }
         "404": { description: Evaluation case or Run not found }
+  /sandbox/replays:
+    get:
+      tags: [Sandbox]
+      summary: List safe replay tasks
+      operationId: listReplayTasks
+      parameters:
+        - name: sourceRunId
+          in: query
+          schema: { type: string }
+        - name: limit
+          in: query
+          schema: { type: integer, minimum: 1, maximum: 200, default: 50 }
+      responses:
+        "200": { description: Replay task list }
+    post:
+      tags: [Sandbox]
+      summary: Create a mock-only replay task
+      operationId: createReplayTask
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [sourceRunId, sourceEventId]
+              properties:
+                sourceRunId: { type: string, minLength: 1 }
+                sourceEventId: { type: string, minLength: 1 }
+                input: {}
+                mockOutput: {}
+                simulateError: { type: boolean, default: false }
+                delayMs: { type: integer, minimum: 0, maximum: 30000, default: 0 }
+                timeoutMs: { type: integer, minimum: 100, maximum: 30000, default: 5000 }
+      responses:
+        "202": { description: Replay task queued }
+        "400": { description: Request failed validation }
+        "404": { description: Source Run or Event not found }
+        "413": { description: Replay payload is too large }
+  /sandbox/replays/{id}:
+    get:
+      tags: [Sandbox]
+      summary: Get one replay task
+      operationId: getReplayTask
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200": { description: Replay task }
+        "404": { description: Replay task not found }
+    delete:
+      tags: [Sandbox]
+      summary: Cancel a queued or running replay task
+      operationId: cancelReplayTask
+      parameters:
+        - $ref: "#/components/parameters/RunId"
+      responses:
+        "200": { description: Replay task cancelled or current terminal task returned }
+        "404": { description: Replay task not found }
 components:
   parameters:
     RunId:

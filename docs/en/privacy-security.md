@@ -62,3 +62,11 @@ Deleting a Run removes it and its Events from Agent-Trace SQLite and stores a Ru
 Use `GET /maintenance/storage` for capacity counters, `POST /maintenance/prune` for date/status retention cleanup, and `POST /maintenance/compact` to reclaim SQLite space. Pruning keeps tombstones by default.
 
 To clear all local Agent-Trace data, stop all writers before removing the database and matching WAL/SHM files. This action is irreversible.
+
+## Safe replay boundary
+
+- The replay API accepts only input overrides, mock output, simulated errors, delay, and timeout. It does not accept executable code, shell commands, script paths, or real tool configuration.
+- The child process runs the repository's fixed worker with a minimal sanitized environment and a per-task temporary directory. Completion, timeout, and cancellation wait for process exit before cleanup.
+- “Network disabled” means the fixed worker has no network or tool-call capability. It is not enforced isolation from a container, virtual machine, or operating-system firewall.
+- Replay input, mock output, errors, tasks, and generated Run/Event records persist in SQLite and may contain sensitive data. Pre-storage field redaction still applies.
+- This implementation is intended for controlled mock debugging in a trusted single-machine development environment. It is not a general sandbox for untrusted code.

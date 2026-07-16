@@ -1,5 +1,5 @@
 import Link from "next/link";
-import { BarChart3, FlaskConical, HardDrive, Server } from "lucide-react";
+import { BarChart3, FlaskConical, HardDrive, Server, ShieldCheck } from "lucide-react";
 
 import { BrandMark } from "~/components/brand-mark";
 import { ConsoleSettings } from "~/components/console-settings";
@@ -63,6 +63,13 @@ export function ConsoleHeader({
           >
             <FlaskConical className="size-3.5" aria-hidden />
             <span className="hidden lg:inline">{locale === "zh" ? "评测" : "Evaluations"}</span>
+          </Link>
+          <Link
+            href={localizedHref("/sandbox", locale)}
+            className="inline-flex h-9 items-center gap-1.5 rounded-lg border border-border bg-surface-raised px-2.5 text-xs font-medium text-muted-foreground shadow-[var(--shadow-control)] transition-colors hover:bg-accent hover:text-foreground"
+          >
+            <ShieldCheck className="size-3.5" aria-hidden />
+            <span className="hidden xl:inline">{locale === "zh" ? "回放" : "Replay"}</span>
           </Link>
           <Link
             href={localizedHref("/maintenance", locale)}

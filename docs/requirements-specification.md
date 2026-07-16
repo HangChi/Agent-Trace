@@ -29,6 +29,7 @@
 | FR-23 | Agent 评测 | 用户可创建评测集与用例，把 Run 绑定为多维评分结果并获得加权质量分。 |
 | FR-24 | 多维分析与预算 | Dashboard 可按项目、环境、模型和来源聚合指标，设置日/月成本、Token 和 Run 数预算并查看告警。 |
 | FR-25 | Python SDK 与 OTLP | Python SDK 支持嵌套 Step、OpenAI 与 LangChain 适配；Collector 接收通用 OTLP Trace。 |
+| FR-26 | 安全回放与调试沙箱 | 用户可在网页选择源 Run/Event，以覆盖输入和 Mock 输出创建隔离回放任务；任务支持超时、取消与临时目录清理，并生成可对比的新 Run。 |
 
 ## 非功能需求
 
@@ -79,6 +80,7 @@
 | FR-22、FR-24 | Server analytics、预算与 Web 分析页 | `run-analytics.smoke.ts`、`analytics-budget.smoke.ts` |
 | FR-23 | Server evaluation 存储、API 与 Web 评测页 | `evaluations.smoke.ts` |
 | FR-25 | `packages/sdk-python`、OTLP Trace normalizer | Python unittest、`otlp-traces.smoke.ts` |
+| FR-26 | `apps/server/src/replay-sandbox.ts`、`apps/web/src/app/sandbox` | `replay-sandbox.smoke.ts`、`sandbox-page.smoke.ts` |
 | FR-15、FR-16 | `apps/desktop/main.cjs` | `apps/desktop/scripts/check.mjs` |
 | NFR-04、NFR-05、NFR-08 | migrations、分页读模型、兼容环境变量 | migrations、read-model、startup smoke |
 | NFR-10、NFR-11 | 根脚本、文档检查和 CI | `workspace-scripts.*`、`docs-check.mjs`、`.github/workflows/ci.yml` |

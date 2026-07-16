@@ -19,6 +19,7 @@ import {
   Hash,
   LocateFixed,
   Search,
+  ShieldCheck,
   Zap
 } from "lucide-react";
 
@@ -163,6 +164,14 @@ export default async function RunDetailPage({
             </h1>
             {run ? <p className="mt-1.5 break-all font-mono text-[11px] text-muted-foreground">{id}</p> : null}
           </div>
+          {run ? (
+            <Button variant="outline" size="sm" asChild>
+              <Link href={localizedHref(`/sandbox?runId=${encodeURIComponent(id)}`, locale)}>
+                <ShieldCheck className="size-4" aria-hidden />
+                {locale === "zh" ? "安全回放" : "Safe replay"}
+              </Link>
+            </Button>
+          ) : null}
           {run ? (
             <Button variant="outline" size="sm" asChild>
               <a href={`${collectorUrl}/runs/${encodeURIComponent(id)}/export`} download>

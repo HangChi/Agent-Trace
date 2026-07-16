@@ -16,7 +16,7 @@
     "smoke:read-model": "tsx src/read-model.smoke.ts",
     "smoke": "tsx src/smoke.ts",
     "smoke:start": "tsx src/start.smoke.ts",
-    "test": "tsx src/migrations.smoke.ts && tsx src/normalizers/provider-token-adapter.smoke.ts && tsx src/change-feed.smoke.ts && tsx src/smoke.ts && tsx src/start.smoke.ts && tsx src/read-model.smoke.ts && tsx src/trace-insights.smoke.ts && tsx src/usage-api.smoke.ts && tsx src/usage-storage.smoke.ts && tsx src/transcript-api.smoke.ts && tsx src/data-governance.smoke.ts && tsx src/run-export.smoke.ts && tsx src/run-analytics.smoke.ts && tsx src/evaluations.smoke.ts && tsx src/analytics-budget.smoke.ts && tsx src/otlp-traces.smoke.ts",
+    "test": "tsx src/migrations.smoke.ts && tsx src/normalizers/provider-token-adapter.smoke.ts && tsx src/change-feed.smoke.ts && tsx src/smoke.ts && tsx src/start.smoke.ts && tsx src/read-model.smoke.ts && tsx src/trace-insights.smoke.ts && tsx src/usage-api.smoke.ts && tsx src/usage-storage.smoke.ts && tsx src/transcript-api.smoke.ts && tsx src/data-governance.smoke.ts && tsx src/run-export.smoke.ts && tsx src/run-analytics.smoke.ts && tsx src/evaluations.smoke.ts && tsx src/analytics-budget.smoke.ts && tsx src/otlp-traces.smoke.ts && tsx src/replay-sandbox.smoke.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

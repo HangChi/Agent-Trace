@@ -48,6 +48,10 @@ The Collector must not be exposed directly to an untrusted network. CORS restric
 | GET | `/evaluations/datasets/:id` | Dataset cases, results, and quality report |
 | POST | `/evaluations/datasets/:id/cases` | Add a regression case |
 | POST | `/evaluations/results` | Record a weighted Run score |
+| GET | `/sandbox/replays` | List safe replay tasks |
+| POST | `/sandbox/replays` | Create a safe replay task |
+| GET | `/sandbox/replays/:id` | Get one replay task |
+| DELETE | `/sandbox/replays/:id` | Cancel a queued or running replay task |
 | DELETE | `/runs/:id` | Delete one Run |
 | DELETE | `/runs/:id/tombstone` | Allow a deleted Run id to be collected again |
 | GET | `/maintenance/storage` | Database size and row counts |
@@ -136,3 +140,9 @@ if (!response.ok) {
   throw new Error(await response.text());
 }
 ```
+
+## Safe replay and debug sandbox
+
+`POST /sandbox/replays` accepts `sourceRunId`, `sourceEventId`, and optional `input`, `mockOutput`, `simulateError`, `delayMs`, and `timeoutMs`. It returns `202` with a queued task. A completed task creates a new Run named `replay:<taskId>`. Timeout is limited to 100–30000 ms.
+
+Replay starts only the built-in fixed mock worker. It does not accept shell commands, scripts, or arbitrary user code, and it never invokes a real tool. The worker uses a sanitized environment and a dedicated temporary directory, which is removed after completion, timeout, or cancellation. “Network disabled” is a capability boundary of the fixed worker, not OS-level network isolation. Tasks and generated Run/Event records remain in local SQLite. `DELETE /sandbox/replays/:id` is idempotent: if the task is already terminal, it returns the current task with `200`, preventing a race between cancellation and natural completion from becoming a page error.
