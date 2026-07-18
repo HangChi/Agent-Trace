@@ -1,6 +1,7 @@
 import { readFileSync } from "node:fs";
 
 const page = readFileSync(new URL("./page.tsx", import.meta.url), "utf8");
+const dailyChart = readFileSync(new URL("./daily-token-chart.tsx", import.meta.url), "utf8");
 const homePage = readFileSync(new URL("../page.tsx", import.meta.url), "utf8");
 const runsPage = readFileSync(new URL("../runs/page.tsx", import.meta.url), "utf8");
 const header = readFileSync(new URL("../../components/console-header.tsx", import.meta.url), "utf8");
@@ -49,6 +50,24 @@ for (const marker of ["overflow-x-auto", "min-w-[720px]", "min-w-[820px]", "grid
 
 if (!page.includes("max-w-[1800px]")) {
   throw new Error("Token-Trace content width must align with ConsoleHeader.");
+}
+
+const periodChartSource = page.slice(
+  page.indexOf("function PeriodBarChart"),
+  page.indexOf("function TokenTraceCalendar")
+);
+if (periodChartSource.includes("aside=")) {
+  throw new Error("Weekly and monthly charts must not show a duplicated 90-day total badge.");
+}
+
+for (const marker of ['"use client"', "onPointerMove", "onKeyDown", "aria-live", "DailyTokenChart"]) {
+  if (!dailyChart.includes(marker) && !page.includes(marker)) {
+    throw new Error(`Daily token chart interaction is missing: ${marker}`);
+  }
+}
+
+if (dailyChart.includes("index % 7")) {
+  throw new Error("Daily token chart must not render decorative weekly marker circles.");
 }
 
 const homeEntry = header.indexOf('localizedHref("/runs", locale)');

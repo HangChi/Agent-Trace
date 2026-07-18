@@ -21,6 +21,7 @@ import { Card } from "~/components/ui/card";
 import { copy, localizedHref, parseLocale, type Locale } from "~/lib/i18n";
 import { cn } from "~/lib/utils";
 import { AutoRefresh } from "../runs/run-controls";
+import { DailyTokenChart } from "./daily-token-chart";
 import {
   aggregateTokenTracePoints,
   buildTokenTraceCalendar,
@@ -209,7 +210,6 @@ function TokenUsageStatistics({ result, locale }: { result: TrendResult; locale:
   const points = result.trends.points;
   const weeklyPoints = aggregateTokenTracePoints(points, "week");
   const monthlyPoints = aggregateTokenTracePoints(points, "month");
-  const maxTokens = Math.max(1, ...points.map((point) => point.totalTokens));
   const hasData = points.some((point) => point.runCount > 0 || point.totalTokens > 0);
   const totalTokens = points.reduce((total, point) => total + point.totalTokens, 0);
   const activeDays = points.filter((point) => point.totalTokens > 0).length;
@@ -217,17 +217,7 @@ function TokenUsageStatistics({ result, locale }: { result: TrendResult; locale:
     (peak, point) => !peak || point.totalTokens > peak.totalTokens ? point : peak,
     undefined
   );
-  const chartPoints = points.map((point, index) => {
-    const x = points.length > 1 ? 20 + index * (1080 / (points.length - 1)) : 560;
-    const y = 16 + (1 - point.totalTokens / maxTokens) * 126;
-
-    return { ...point, x, y };
-  });
   const labelPoints = points.filter((_, index) => index % 14 === 0 || index === points.length - 1);
-  const linePoints = chartPoints.map((point) => `${point.x},${point.y}`).join(" ");
-  const areaPath = chartPoints.length > 0
-    ? `M ${chartPoints[0]?.x} 148 ${chartPoints.map((point) => `L ${point.x} ${point.y}`).join(" ")} L ${chartPoints.at(-1)?.x} 148 Z`
-    : "";
 
   return (
     <div className="space-y-4">
@@ -274,60 +264,12 @@ function TokenUsageStatistics({ result, locale }: { result: TrendResult; locale:
 
             <div className="overflow-x-auto px-4 pb-3 pt-4 sm:px-5">
               <div className="min-w-[900px]">
-                <svg
-                  viewBox="0 0 1120 154"
-                  className="h-44 w-full"
-                  role="img"
-                  aria-label={text.recentTrend}
-                  preserveAspectRatio="none"
-                >
-                <defs>
-                  <linearGradient id="token-trace-area" x1="0" y1="0" x2="0" y2="1">
-                    <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.24" />
-                    <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.015" />
-                  </linearGradient>
-                  <linearGradient id="token-trace-line" x1="0" y1="0" x2="1" y2="0">
-                    <stop offset="0%" stopColor="var(--primary)" />
-                    <stop offset="100%" stopColor="var(--trace)" />
-                  </linearGradient>
-                </defs>
-                {[22, 64, 106, 148].map((y) => (
-                  <line
-                    key={y}
-                    x1="20"
-                    x2="1100"
-                    y1={y}
-                    y2={y}
-                    stroke="var(--border)"
-                    strokeDasharray="3 6"
-                    vectorEffect="non-scaling-stroke"
-                  />
-                ))}
-                <path d={areaPath} fill="url(#token-trace-area)" />
-                <polyline
-                  points={linePoints}
-                  fill="none"
-                  stroke="url(#token-trace-line)"
-                  strokeWidth="2.5"
-                  strokeLinejoin="round"
-                  strokeLinecap="round"
-                  vectorEffect="non-scaling-stroke"
+                <DailyTokenChart
+                  points={points}
+                  locale={locale}
+                  label={text.recentTrend}
+                  tooltipLabel={text.dailyTokenUsage}
                 />
-                {chartPoints.filter((_, index) => index % 7 === 0 || index === chartPoints.length - 1).map((point) => (
-                  <circle
-                    key={point.date}
-                    cx={point.x}
-                    cy={point.y}
-                    r="3.5"
-                    fill="var(--surface-raised)"
-                    stroke="var(--primary)"
-                    strokeWidth="2"
-                    vectorEffect="non-scaling-stroke"
-                  >
-                    <title>{`${point.date} · ${formatInteger(point.totalTokens, locale)} ${text.tokens}`}</title>
-                  </circle>
-                ))}
-                </svg>
                 <ol
                   className="grid border-t border-border/70 pt-2"
                   style={{ gridTemplateColumns: `repeat(${labelPoints.length}, minmax(0, 1fr))` }}
@@ -385,7 +327,6 @@ function PeriodBarChart({
   locale: Locale;
 }) {
   const maxTokens = Math.max(1, ...points.map((point) => point.totalTokens));
-  const totalTokens = points.reduce((total, point) => total + point.totalTokens, 0);
   const text = copy[locale].tokenTrace;
 
   return (
@@ -394,7 +335,6 @@ function PeriodBarChart({
         icon={CalendarDays}
         title={title}
         help={help}
-        aside={formatCompactNumber(totalTokens, locale)}
       />
       <div className="overflow-x-auto px-4 pb-4 pt-5 sm:px-5">
         <ol
