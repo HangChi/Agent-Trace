@@ -68,7 +68,6 @@ export default async function SandboxPage({
       <ConsoleHeader
         locale={locale}
         path={sandboxPath(runId, selectedEvent?.id)}
-        collectorUrl={collectorUrl}
       />
       <section className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <div className="flex items-start gap-3">

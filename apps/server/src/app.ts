@@ -69,7 +69,7 @@ import {
 
 const loopbackDashboardOrigin = /^https?:\/\/(?:127\.0\.0\.1|localhost)(?::\d+)?$/;
 
-export function createApp() {
+export function createApp(options: { now?: () => Date } = {}) {
   const app = new Hono();
 
   app.use(
@@ -205,7 +205,11 @@ export function createApp() {
   });
 
   app.get("/analytics/runs/trends", async (c) => {
-    return c.json(await getRunTrends(parseAnalyticsDays(c.req.query("days"))));
+    return c.json(await getRunTrends(
+      parseAnalyticsDays(c.req.query("days")),
+      undefined,
+      options.now?.()
+    ));
   });
 
   app.get("/analytics/breakdown", async (c) => {
@@ -213,7 +217,9 @@ export function createApp() {
     if (!dimension.success) return c.json({ error: "invalid_analytics_dimension" }, 400);
     return c.json(await getAnalyticsBreakdown(
       parseAnalyticsDays(c.req.query("days")),
-      dimension.data
+      dimension.data,
+      undefined,
+      options.now?.()
     ));
   });
 
@@ -235,7 +241,7 @@ export function createApp() {
   });
 
   app.get("/analytics/alerts", async (c) => c.json({
-    alerts: await getAnalyticsBudgetAlerts()
+    alerts: await getAnalyticsBudgetAlerts(undefined, options.now?.())
   }));
 
   app.get("/sandbox/replays", (c) => c.json({

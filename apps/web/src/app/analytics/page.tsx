@@ -44,7 +44,7 @@ export default async function AnalyticsPage({
 
   return (
     <main id="main-content" className="min-h-dvh bg-background text-foreground">
-      <ConsoleHeader locale={locale} path={`/analytics?dimension=${dimension}`} collectorUrl={collectorUrl} />
+      <ConsoleHeader locale={locale} path={`/analytics?dimension=${dimension}`} />
       <section className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <div className="flex items-start gap-3">
           <span className="flex size-10 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary"><BarChart3 className="size-5" /></span>

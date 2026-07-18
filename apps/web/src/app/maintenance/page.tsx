@@ -43,7 +43,7 @@ export default async function MaintenancePage({
 
   return (
     <main id="main-content" className="min-h-dvh bg-background text-foreground">
-      <ConsoleHeader locale={locale} path="/maintenance" collectorUrl={collectorUrl} />
+      <ConsoleHeader locale={locale} path="/maintenance" />
       <section className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8">
         <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
           {locale === "zh" ? "本地治理" : "Local governance"}

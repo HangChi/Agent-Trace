@@ -163,7 +163,9 @@ try {
   ]);
   assert.equal(body.regressionCount, 3);
 
-  const trendResponse = await createApp().request("/analytics/runs/trends?days=2");
+  const trendResponse = await createApp({
+    now: () => new Date("2026-07-15T12:00:00.000Z")
+  }).request("/analytics/runs/trends?days=2");
   assert.equal(trendResponse.status, 200);
   const trends = await trendResponse.json() as {
     days?: number;

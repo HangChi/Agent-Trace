@@ -3,11 +3,9 @@ import type {
   DashboardRun,
   DashboardRunMetadata,
   DashboardRunPage,
-  DashboardRunSummary,
-  DashboardRunTrends,
-  DashboardUsageSummary
+  DashboardRunSummary
 } from "@agent-trace/schema";
-import { Activity, AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Coins, Cpu, Eye, EyeOff, ListFilter, Play, Server } from "lucide-react";
+import { Activity, AlertCircle, ArrowDown, ArrowUp, ArrowUpDown, ChevronLeft, ChevronRight, Cpu, Eye, EyeOff, ListFilter, Play, Server } from "lucide-react";
 
 import {
   ConsoleHeader,
@@ -169,11 +167,9 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
   const runMode = parseRunMode(params.runs);
   const scannerMode = parseScannerMode(params.scanner);
   const runFilters = parseRunFilters(params);
-  const [{ page: runPage, error }, scannerStatus, usageResult, trendResult, exchangeRate] = await Promise.all([
+  const [{ page: runPage, error }, scannerStatus, exchangeRate] = await Promise.all([
     getRunPage(locale, requestedPage, runMode, runFilters),
     fetchScannerStatus(collectorUrl),
-    getUsageSummary(locale),
-    getRunTrends(locale),
     getUsdCnyRate()
   ]);
   const runs = runPage.runs;
@@ -194,7 +190,6 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
       <ConsoleHeader
         locale={locale}
         path={runsHref(locale, pagination.page, scannerMode, runMode, runFilters)}
-        collectorUrl={collectorUrl}
       />
 
       <section className="mx-auto w-full max-w-[1800px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8 2xl:px-10">
@@ -506,10 +501,6 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
           ) : null}
         </Card>
 
-        <RunTrendCard result={trendResult} locale={locale} />
-
-        <UsageLedger summary={usageResult.summary} error={usageResult.error} locale={locale} />
-
         {allScannerDiagnostics.length > 0 ? (
           <ScannerStatus
             currentPage={pagination.page}
@@ -720,63 +711,6 @@ function parseScannerMode(value: string | string[] | undefined): "detected" | "a
   const raw = Array.isArray(value) ? value[0] : value;
 
   return raw === "all" ? "all" : "detected";
-}
-
-async function getUsageSummary(
-  locale: Locale
-): Promise<{ summary: DashboardUsageSummary; error?: string }> {
-  const emptySummary: DashboardUsageSummary = {
-    totalTokens: 0,
-    costUsd: 0,
-    clients: [],
-    models: []
-  };
-
-  try {
-    const response = await fetch(`${collectorUrl}/usage/summary`, { cache: "no-store" });
-
-    if (!response.ok) {
-      return {
-        summary: emptySummary,
-        error: locale === "zh" ? `用量汇总返回 ${response.status}` : `Usage summary returned ${response.status}`
-      };
-    }
-
-    return { summary: (await response.json()) as DashboardUsageSummary };
-  } catch (error) {
-    return {
-      summary: emptySummary,
-      error: error instanceof Error ? error.message : copy[locale].runs.usageUnavailable
-    };
-  }
-}
-
-async function getRunTrends(
-  locale: Locale
-): Promise<{ trends: DashboardRunTrends; error?: string }> {
-  const empty = { days: 14, points: [] } satisfies DashboardRunTrends;
-
-  try {
-    const response = await fetch(`${collectorUrl}/analytics/runs/trends?days=14`, {
-      cache: "no-store"
-    });
-
-    if (!response.ok) {
-      return {
-        trends: empty,
-        error: locale === "zh"
-          ? `趋势分析返回 ${response.status}`
-          : `Trend analysis returned ${response.status}`
-      };
-    }
-
-    return { trends: (await response.json()) as DashboardRunTrends };
-  } catch (error) {
-    return {
-      trends: empty,
-      error: error instanceof Error ? error.message : locale === "zh" ? "趋势分析不可用" : "Trend analysis is unavailable"
-    };
-  }
 }
 
 function parseRunMode(value: string | string[] | undefined): RunMode {
@@ -1074,169 +1008,6 @@ function RunsPaginationControls({
   );
 }
 
-function RunTrendCard({
-  result,
-  locale
-}: {
-  result: { trends: DashboardRunTrends; error?: string };
-  locale: Locale;
-}) {
-  const maxRuns = Math.max(1, ...result.trends.points.map((point) => point.runCount));
-  const hasData = result.trends.points.some((point) => point.runCount > 0);
-
-  return (
-    <Card className="mt-5 overflow-hidden py-0">
-      <div className="border-b border-border/70 bg-surface-raised px-4 py-3.5 sm:px-5">
-        <div className="flex flex-wrap items-start justify-between gap-3">
-          <div>
-            <h2 className="text-sm font-semibold text-foreground">
-              {locale === "zh" ? "Run 趋势" : "Run trends"}
-            </h2>
-            <p className="mt-1 text-xs text-muted-foreground">
-              {locale === "zh"
-                ? "最近 14 天的运行量、成功率、Token 与成本"
-                : "Run volume, success rate, tokens, and cost over the last 14 days"}
-            </p>
-          </div>
-          <span className="rounded-md border border-border/80 bg-surface-muted px-2 py-1 font-mono text-[11px] text-muted-foreground">
-            {result.trends.days} {locale === "zh" ? "天" : "days"}
-          </span>
-        </div>
-      </div>
-      {result.error ? (
-        <div className="px-5 py-4 text-sm text-destructive">{result.error}</div>
-      ) : !hasData ? (
-        <div className="px-5 py-8 text-center text-sm text-muted-foreground">
-          {locale === "zh" ? "当前时间范围内没有 Run" : "No runs in this time range"}
-        </div>
-      ) : (
-        <ol className="grid gap-2 px-4 py-4 sm:px-5 lg:grid-cols-2">
-          {result.trends.points.map((point) => {
-            const successRate = point.runCount > 0
-              ? Math.round(point.successfulRunCount / point.runCount * 100)
-              : 0;
-
-            return (
-              <li key={point.date} className="rounded-lg border border-border/70 bg-background/60 p-3">
-                <div className="flex items-center justify-between gap-3 text-xs">
-                  <span className="font-mono font-semibold text-foreground">{point.date}</span>
-                  <span className="tabular-nums text-muted-foreground">
-                    {point.runCount} Run · {successRate}% {locale === "zh" ? "成功" : "success"}
-                  </span>
-                </div>
-                <div className="mt-2 h-1.5 overflow-hidden rounded-full bg-surface-muted">
-                  <div
-                    className="h-full rounded-full bg-primary"
-                    style={{ width: `${point.runCount / maxRuns * 100}%` }}
-                  />
-                </div>
-                <div className="mt-2 flex flex-wrap gap-x-4 gap-y-1 font-mono text-[11px] text-muted-foreground">
-                  <span>{point.totalTokens.toLocaleString()} tokens</span>
-                  <span>{formatUsd(point.costUsd)}</span>
-                  <span>{formatDurationMs(point.averageDurationMs)}</span>
-                  {point.failedRunCount > 0 ? (
-                    <span className="text-status-error">
-                      {point.failedRunCount} {locale === "zh" ? "失败" : "failed"}
-                    </span>
-                  ) : null}
-                </div>
-              </li>
-            );
-          })}
-        </ol>
-      )}
-    </Card>
-  );
-}
-
-function UsageLedger({
-  summary,
-  error,
-  locale
-}: {
-  summary: DashboardUsageSummary;
-  error?: string;
-  locale: Locale;
-}) {
-  const text = copy[locale].runs;
-  const clients = [...summary.clients].sort((a, b) => b.totalTokens - a.totalTokens);
-  const models = [...summary.models].sort((a, b) => b.totalTokens - a.totalTokens);
-
-  return (
-    <Card className="mt-5 overflow-hidden py-0">
-      <div className="flex flex-col gap-3 border-b border-border/70 bg-surface-raised px-4 py-3.5 sm:flex-row sm:items-center sm:justify-between sm:px-5">
-        <div>
-          <div className="flex items-center gap-2">
-            <Coins className="h-4 w-4 text-primary" aria-hidden />
-            <h2 className="text-sm font-semibold text-foreground">{text.usageTitle}</h2>
-          </div>
-          <p className="mt-1 text-xs text-muted-foreground">{text.usageHelp}</p>
-        </div>
-        <div className="flex items-baseline gap-4 font-mono tabular-nums">
-          <div className="text-right">
-            <div className="text-lg font-semibold text-foreground">{summary.totalTokens.toLocaleString()}</div>
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">Tokens</div>
-          </div>
-          <div className="border-l border-border/80 pl-4 text-right">
-            <div className="text-lg font-semibold text-foreground">{formatUsd(summary.costUsd)}</div>
-            <div className="text-[10px] uppercase tracking-wide text-muted-foreground">{text.usageEstimatedCost}</div>
-          </div>
-        </div>
-      </div>
-
-      {error ? <div className="border-b border-border/70 px-5 py-3 text-sm text-destructive">{error}</div> : null}
-
-      <div className="grid divide-y divide-border/70 md:grid-cols-2 md:divide-x md:divide-y-0">
-        <UsageRankList title={text.usageClients} empty={text.usageEmpty} items={clients.map((item) => ({
-          label: item.client,
-          tokens: item.totalTokens,
-          costUsd: item.costUsd
-        }))} />
-        <UsageRankList title={text.usageModels} empty={text.usageEmpty} items={models.map((item) => ({
-          label: item.model,
-          detail: item.provider,
-          tokens: item.totalTokens,
-          costUsd: item.costUsd
-        }))} />
-      </div>
-    </Card>
-  );
-}
-
-function UsageRankList({
-  title,
-  empty,
-  items
-}: {
-  title: string;
-  empty: string;
-  items: Array<{ label: string; detail?: string; tokens: number; costUsd: number }>;
-}) {
-  return (
-    <section className="min-w-0 px-4 py-4 sm:px-5" aria-label={title}>
-      <h3 className="text-xs font-semibold uppercase tracking-[0.1em] text-muted-foreground">{title}</h3>
-      {items.length === 0 ? (
-        <p className="mt-3 text-sm text-muted-foreground">{empty}</p>
-      ) : (
-        <ol className="mt-2 max-h-64 divide-y divide-border/70 overflow-auto">
-          {items.map((item) => (
-            <li key={`${item.label}-${item.detail ?? ""}`} className="flex items-center justify-between gap-4 py-2.5">
-              <div className="min-w-0">
-                <div className="truncate font-mono text-xs font-semibold text-foreground" title={item.label}>{item.label}</div>
-                {item.detail ? <div className="mt-0.5 truncate text-[11px] text-muted-foreground">{item.detail}</div> : null}
-              </div>
-              <div className="shrink-0 text-right font-mono text-xs tabular-nums">
-                <div className="font-semibold text-foreground">{item.tokens.toLocaleString()}</div>
-                <div className="text-[10px] text-muted-foreground">{formatUsd(item.costUsd)}</div>
-              </div>
-            </li>
-          ))}
-        </ol>
-      )}
-    </section>
-  );
-}
-
 function formatCountLabel(template: string, count: number) {
   return template.replace("{count}", count.toLocaleString());
 }
@@ -1519,11 +1290,6 @@ function formatCny(value: number) {
 
 function formatMoney(value: number) {
   return value < 0.01 ? value.toFixed(4) : value.toFixed(2);
-}
-
-function formatDurationMs(value: number) {
-  if (value < 1000) return `${Math.round(value)}ms`;
-  return `${(value / 1000).toFixed(1)}s`;
 }
 
 function getString(value: unknown) {

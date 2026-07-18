@@ -143,7 +143,6 @@ export default async function RunDetailPage({
       <ConsoleHeader
         locale={locale}
         path={detailPath(id, filters, visibility, pagination.page, view)}
-        collectorUrl={collectorUrl}
       />
 
       <section className="mx-auto w-full max-w-[1800px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8 2xl:px-10">
@@ -308,7 +307,6 @@ export default async function RunDetailPage({
                 {run ? <SummaryRow label={text.detail.runStatus} value={formatStatus(run.status, locale)} /> : null}
                 {run ? <SummaryRow label={text.detail.startedAt} value={formatDateTime(run.startedAt, locale)} /> : null}
                 {run?.endedAt ? <SummaryRow label={text.detail.endedAt} value={formatDateTime(run.endedAt, locale)} /> : null}
-                <SummaryRow label={text.common.collector} value={collectorUrl} />
                 <SummaryRow label="Agent" value={formatAgent(sourceMetadata.agent ?? "manual", locale)} />
                 <SummaryRow label={text.detail.surface} value={formatSurface(sourceMetadata.surface, locale) ?? "-"} />
                 <SummaryRow label={text.detail.session} value={sourceMetadata.sessionId ?? "-"} />

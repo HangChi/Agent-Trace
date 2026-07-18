@@ -61,7 +61,7 @@ export function TelemetryStrip({
                 </p>
                 <p
                   className={cn(
-                    "mt-1 truncate font-mono text-xl font-semibold leading-none tracking-[-0.025em] text-foreground tabular-nums",
+                    "mt-1 truncate font-sans text-xl font-semibold leading-none tracking-[-0.02em] text-foreground tabular-nums",
                     tone === "running" && "text-status-warning",
                     tone === "error" && "text-status-error"
                   )}
