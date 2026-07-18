@@ -1,4 +1,5 @@
-import { mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
+import { spawnSync } from "node:child_process";
+import { existsSync, mkdirSync, mkdtempSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 
@@ -110,13 +111,28 @@ try {
     throw new Error("Expected Codex OTel endpoint to include desktop surface hints.");
   }
 
+  writeFileSync(
+    join(claudeConfigDir, "settings.json"),
+    JSON.stringify({
+      hooks: {
+        UserPromptSubmit: [
+          {
+            hooks: [{ type: "command", command: "curl.exe http://127.0.0.1:1 || exit /b 0" }],
+            agentTraceManaged: true
+          }
+        ]
+      }
+    })
+  );
+
   installHooks("claude-code", {
-    collectorUrl: "http://localhost:4319",
+    collectorUrl: "http://127.0.0.1:1",
     redaction: "metadata"
   });
 
-  const claudeSettings = JSON.parse(readFileSync(join(claudeConfigDir, "settings.json"), "utf8")) as {
-    hooks?: Record<string, Array<{ hooks?: Array<{ type?: string; command?: string; url?: string }> }>>;
+  const claudeSettingsText = readFileSync(join(claudeConfigDir, "settings.json"), "utf8");
+  const claudeSettings = JSON.parse(claudeSettingsText) as {
+    hooks?: Record<string, Array<{ hooks?: Array<{ type?: string; command?: string; shell?: string; url?: string }> }>>;
   };
   const claudeHandler = claudeSettings.hooks?.UserPromptSubmit?.[0]?.hooks?.[0];
   const claudeCommand = claudeHandler?.command;
@@ -129,12 +145,68 @@ try {
     throw new Error("Expected Claude Code hook command to post to the Claude Code integration.");
   }
 
-  if (!claudeCommand.includes("||")) {
-    throw new Error("Expected Claude Code hook command to ignore collector delivery failures.");
+  if (claudeSettingsText.includes("exit /b 0")) {
+    throw new Error("Expected reinstall to replace the legacy CMD-style Claude Code hook.");
+  }
+
+  const expectedClaudeShell = process.platform === "win32" ? "powershell" : "bash";
+
+  if (claudeHandler.shell !== expectedClaudeShell) {
+    throw new Error(`Expected Claude Code hook to select ${expectedClaudeShell} explicitly.`);
   }
 
   if (process.platform === "win32" && (!claudeCommand.includes("curl.exe") || !claudeCommand.includes("-o NUL"))) {
     throw new Error("Expected Claude Code hook command to be Windows-safe on Windows.");
+  }
+
+  const claudeHookRuns =
+    process.platform === "win32"
+      ? [
+          {
+            shell: "PowerShell",
+            result: spawnSync(
+              "powershell.exe",
+              ["-NoLogo", "-NoProfile", "-NonInteractive", "-Command", claudeCommand],
+              { input: "{}", encoding: "utf8", timeout: 10_000 }
+            )
+          }
+        ]
+      : [
+          {
+            shell: "Bash",
+            result: spawnSync("bash", ["-c", claudeCommand], {
+              input: "{}",
+              encoding: "utf8",
+              timeout: 10_000
+            })
+          }
+        ];
+
+  if (process.platform === "win32") {
+    const gitExecPathRun = spawnSync("git", ["--exec-path"], { encoding: "utf8" });
+    const gitExecPath = gitExecPathRun.status === 0 ? gitExecPathRun.stdout.trim() : "";
+    const gitBashPath = gitExecPath
+      ? join(gitExecPath, "..", "..", "..", "bin", "bash.exe")
+      : "";
+
+    if (gitBashPath && existsSync(gitBashPath)) {
+      claudeHookRuns.push({
+        shell: "Git Bash",
+        result: spawnSync(gitBashPath, ["-c", claudeCommand], {
+          input: "{}",
+          encoding: "utf8",
+          timeout: 10_000
+        })
+      });
+    }
+  }
+
+  for (const { shell, result } of claudeHookRuns) {
+    if (result.status !== 0) {
+      throw new Error(
+        `Expected Claude Code hook delivery failures to be non-blocking in ${shell}, got exit ${result.status}: ${result.stderr}`
+      );
+    }
   }
 
   const postedUsageScans: Array<{ path: string; body: Record<string, unknown> }> = [];

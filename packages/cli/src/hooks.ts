@@ -322,7 +322,11 @@ function buildHandler(
   if (target === "claude-code") {
     return {
       type: "command",
-      command: process.platform === "win32" ? windowsCommand : posixCommand,
+      command:
+        process.platform === "win32"
+          ? `curl.exe -s -m 5 -o NUL -X POST "${url}" -H "Content-Type: application/json" --data-binary "@-"; exit 0`
+          : posixCommand,
+      shell: process.platform === "win32" ? "powershell" : "bash",
       timeout: 5
     };
   }

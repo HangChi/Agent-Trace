@@ -270,6 +270,7 @@ node packages/cli/dist/index.js uninstall claude-code
 
 - 仅支持用户级配置和 `metadata` 脱敏。
 - 重复安装会替换 Agent-Trace 自己管理的条目。
+- 从旧版本升级后重新运行 `install claude-code`，可替换可能包含 CMD 语法的旧 Hook；用户自定义 Hook 不受影响。
 - 修改已有配置前创建 `.agent-trace-backup.<timestamp>` 备份。
 - 卸载只移除带 Agent-Trace 标记的 Hook，不删除用户自定义条目。
 - Codex 安装会更新 `~/.codex/config.toml` 的 `[otel]` 配置；安装后需重启 Codex。

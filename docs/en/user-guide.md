@@ -139,6 +139,7 @@ Important behavior:
 - Existing user configuration is preserved.
 - A timestamped `.agent-trace-backup.*` file is created before changes.
 - Reinstalling replaces only Agent-Trace-managed entries.
+- After upgrading from an older version, rerun `install claude-code` to replace legacy hooks that may contain CMD syntax; custom hooks are not changed.
 - Restart Codex after changing OTel settings.
 
 Uninstall:
