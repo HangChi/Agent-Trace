@@ -12,10 +12,10 @@ flowchart LR
     Codex["Codex"] --> Hooks["全局 Hooks"]
     Claude["Claude Code"] --> Hooks
     Codex --> OTel["OTel JSON 日志"]
-    Histories["本地客户端历史"] --> Scanner["CLI + tokscale"]
+    Histories["本地客户端历史"] --> Scanner["源码: CLI + tokscale<br/>桌面: Rust 原生扫描"]
     Scanner --> Transcript["Transcript Collector"]
 
-    SDK -->|"/runs /events"| Collector["Hono Collector"]
+    SDK -->|"/runs /events"| Collector["源码: Hono Collector<br/>桌面: Rust/Axum Collector"]
     Hooks -->|"/integrations/*/hook"| Normalizer["Hook Normalizer"]
     OTel -->|"/integrations/codex/otel/v1/logs"| Normalizer
     Scanner -->|"/integrations/usage-scan"| Collector
@@ -25,7 +25,7 @@ flowchart LR
     Collector --> DB[("SQLite")]
     DB --> ReadModel["Dashboard Read Model"]
     ReadModel --> Web["Next.js Dashboard"]
-    Desktop["Electron Desktop"] --> Collector
+    Desktop["Tauri Desktop"] --> Collector
     Desktop --> Scanner
     Desktop --> Web
 ```
@@ -39,7 +39,9 @@ flowchart LR
 | `packages/cli` | 编排开发服务，安装 Hooks，运行 `tokscale`，协调历史和 transcript。 | tokscale、Node.js |
 | `apps/server` | HTTP 接入、规范化、SQLite 迁移/存储、分页读模型和诊断。 | Hono、Drizzle、better-sqlite3 |
 | `apps/web` | 运行列表、详情、筛选、树形追踪、成本和 Scanner 状态界面。 | Next.js、React、共享 Schema |
-| `apps/desktop` | 启动/停止本地服务、托盘与关闭偏好、资源解包和 Windows 打包。 | Electron、electron-builder |
+| `crates/agent-trace-core` | 桌面专用 Collector、SQLite、Hooks/OTLP、读模型、回放和原生 Usage Scanner。 | Rust、Axum、rusqlite |
+| `apps/desktop-tauri` | 进程内启动 Rust Collector、托盘、静态 UI 和 Windows 打包。 | Tauri、WebView2、NSIS |
+| `apps/desktop` | 旧 Electron 实现，仅作为迁移期回退入口。 | Electron、electron-builder |
 
 ## 核心数据模型
 

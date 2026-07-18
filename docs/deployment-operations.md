@@ -5,7 +5,7 @@
 Agent-Trace 当前支持两种本地运行模型：
 
 - 源码模式：CLI 编排 Hono Collector、Next.js Dashboard 和 usage watcher。
-- Windows 桌面模式：Electron 主进程管理打包后的 Server、Web、CLI 运行时及本地数据。
+- Windows 桌面模式：Tauri 启动进程内 Rust Collector 和静态 WebView UI，并管理托盘与本地数据。
 
 Collector 没有认证，不提供面向公网的部署配置。
 
@@ -48,12 +48,11 @@ curl http://127.0.0.1:4319/health
 
 ## Windows 桌面构建
 
-桌面包只配置 Windows x64 和 NSIS。
+桌面包只配置 Windows x64 和 NSIS。构建机需要 Rust stable、MSVC C++ Build Tools、Windows SDK，以及 pnpm 安装的 Tauri CLI。
 
 开发运行：
 
 ```bash
-pnpm build
 pnpm desktop:dev
 ```
 
@@ -69,16 +68,16 @@ pnpm desktop:pack:win
 pnpm desktop:build:win
 ```
 
-构建产物位于 `apps/desktop/release`。安装器按用户安装，允许选择目录；当前 NSIS 配置在卸载时删除 Electron `userData`，因此数据库和偏好也会被删除。
+构建产物位于 `target/release/bundle/nsis`。安装器按当前用户安装；UI 资源直接编入 Tauri 应用，安装包不包含 Electron、Node、Next Server、CLI 压缩包或 `tokscale` sidecar。首次安装若系统没有 Evergreen WebView2 Runtime，NSIS 会通过微软 bootstrapper 下载运行时。
 
-打包流程先把 Server、Web 和 CLI 生产运行时制作为归档，再由 Electron 放入 `resources/archives`。首次启动或归档变化时，桌面端把它们解压到 `userData/runtime`。
+旧 Electron 构建仍可用 `pnpm desktop:build:electron:win` 和 `pnpm desktop:pack:electron:win` 手动执行，但不再是默认桌面交付链路。
 
 ## 端口行为
 
 | 服务 | 默认 | 行为 |
 | --- | --- | --- |
 | Collector | 4319 | 固定使用配置端口；被其他程序占用时桌面启动失败并提示。 |
-| Dashboard | 3000 | 未显式配置时，桌面端从 3000 到 3099 寻找可用端口。 |
+| Dashboard | 3000 | 仅源码 Next.js 模式使用；Tauri 静态 UI 不监听端口。 |
 
 源码 Server 默认监听 `127.0.0.1`。Dashboard 使用 `AGENT_TRACE_API_URL` 指向 Collector。
 
@@ -91,11 +90,11 @@ pnpm desktop:build:win
 
 ### 桌面模式
 
-- 数据库：Electron `userData/agent-trace.db`。
-- 偏好：Electron `userData/preferences.json`。
-- 解压运行时：Electron `userData/runtime/`。
+- 数据库：Tauri `app_data_dir/agent-trace.db`。
+- UI 与 Collector：编入单一桌面可执行文件，不创建解压运行时目录。
+- 覆盖数据库路径：`AGENT_TRACE_DB_PATH`。
 
-具体 `userData` 绝对路径由 Electron 和当前操作系统用户决定。应用启动时会把实际数据库路径注入 Server。
+具体 `app_data_dir` 绝对路径由 Tauri 和当前 Windows 用户决定。桌面 Collector 固定只监听 `127.0.0.1:4319`。
 
 ## 环境变量
 

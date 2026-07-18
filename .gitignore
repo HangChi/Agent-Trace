@@ -1,4 +1,6 @@
 node_modules/
+target/
+apps/desktop-tauri/src-tauri/gen/
 .pnpm-store/
 dist/
 .next/

@@ -21,15 +21,16 @@ Agent-Trace 把模型调用、工具执行、Token、成本、耗时、错误和
 - Python SDK：嵌套 Step、同步/异步装饰器，以及 OpenAI 和 LangChain 适配。
 - Codex/Claude Code Hooks：无需修改 Agent 源码即可采集生命周期与工具元数据。
 - Codex OTel：接收 OTLP/HTTP JSON 日志中的模型与官方 Token 用量。
-- 本地 Usage Scanner：通过 `tokscale` 汇总多客户端会话、Token 与 API 等价成本。
+- 本地 Usage Scanner：源码模式通过 `tokscale` 汇总多客户端会话；桌面模式由 Rust 原生只读扫描 Codex/Claude JSONL。
 - Trace 分析：事件筛选、时间线、父子调用树、失败检查、重试/慢步骤/Token 热点诊断。
 - 本地治理：Run 项目与标签、维护中心、保留期清理、墓碑恢复和可配置写入前字段脱敏。
-- 本地交付：Hono Collector、双语 Next.js Dashboard 和 Windows Electron 桌面包。
+- 本地交付：源码模式保留 Hono/Next.js；Windows 桌面包使用 Tauri、静态 UI 和全 Rust Collector，不携带 Node/Electron。
 
 ## 运行要求
 
 - Node.js `>=22.12.0`；仓库的 `.nvmrc` 使用 Node.js 22。
 - pnpm `>=11.0.7 <12`；`packageManager` 和 CI 固定使用 11.0.7。
+- 构建桌面包还需要 Rust stable、MSVC C++ Build Tools 和 Windows SDK。
 - Windows 桌面安装包只能在 Windows x64 环境构建。
 
 ## 快速开始
@@ -106,7 +107,9 @@ node packages/cli/dist/index.js usage clients --home <path>
 | --- | --- |
 | `apps/server` | Hono Collector、SQLite、集成入口与读模型 |
 | `apps/web` | Next.js Dashboard |
-| `apps/desktop` | Electron 主进程与 Windows 打包 |
+| `apps/desktop-tauri` | Tauri 桌面壳、静态 UI 与 Windows NSIS 打包 |
+| `crates/agent-trace-core` | Rust Collector、SQLite、Hooks/OTLP、分析、回放与原生 Usage Scanner |
+| `apps/desktop` | 旧 Electron 实现，仅保留为迁移期回退入口 |
 | `packages/schema` | Zod 契约与共享 TypeScript 类型 |
 | `packages/sdk-js` | JavaScript/TypeScript Tracing SDK |
 | `packages/sdk-python` | Python Tracing SDK 与框架适配 |
@@ -117,6 +120,7 @@ node packages/cli/dist/index.js usage clients --home <path>
 
 ```bash
 pnpm verify
+pnpm desktop:check:rust
 ```
 
 等价于依次运行构建、测试、类型检查和 lint；lint 同时执行文档链接、API 路由、环境变量和 CLI 命令一致性检查。测试范围与已知边界见[测试文档](docs/testing.md)。

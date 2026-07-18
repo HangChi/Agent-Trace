@@ -14,6 +14,7 @@
 1. [用户手册](user-guide.md)：启动、接入、查看与排障。
 2. [隐私与安全](privacy-security.md)：采集内容、本地存储和成本含义。
 3. [部署与运维](deployment-operations.md)：端口、数据目录、环境变量和桌面构建。
+4. [Tauri 桌面架构](desktop-tauri.md)：桌面专用 Rust 重构范围、兼容边界和构建产物。
 
 ### 产品与项目管理
 
@@ -50,15 +51,16 @@
 | 使用机器可读接口契约 | [OpenAPI](openapi.yaml) |
 | 开发或验证代码 | [开发指南](development-guide.md) · [测试文档](testing.md) |
 | 构建 Windows 桌面包 | [部署与运维](deployment-operations.md#windows-桌面构建) |
+| 理解桌面端为何不再携带 Node | [Tauri 桌面架构](desktop-tauri.md) |
 | 理解长期架构决定 | [ADR 索引](adr/README.md) |
 
 ## 术语
 
 - **Run**：一次 Agent 执行，对应一条运行记录。
 - **Event**：Run 内的一个生命周期、模型、工具、检索、记忆或错误事件。
-- **Collector**：接收、规范化并持久化数据的本地 Hono 服务。
-- **Dashboard**：读取 Collector 数据的 Next.js 界面。
-- **Usage snapshot**：由 `tokscale` 扫描得到的本地会话 Token 与成本快照。
+- **Collector**：接收、规范化并持久化数据的本地服务；源码版为 Hono，桌面版为 Rust/Axum。
+- **Dashboard**：读取 Collector 数据的界面；源码版为 Next.js，桌面版为静态 WebView UI。
+- **Usage snapshot**：本地会话 Token 与成本快照；源码版由 `tokscale` 生成，桌面版由 Rust 原生扫描器生成。
 - **Transcript event**：从支持的本地历史中提取的 Prompt/Turn 元数据或清理后预览。
 
 完整定义及不变量见[领域词汇表](../CONTEXT.md)。
