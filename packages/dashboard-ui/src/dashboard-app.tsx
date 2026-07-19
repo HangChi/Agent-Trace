@@ -3,7 +3,7 @@
 import {
   Activity, AlertCircle, BarChart3, CheckCircle2, ChevronLeft,
   ChevronRight, Coins, Database, Eye, EyeOff, FlaskConical, HardDrive,
-  Home, Monitor, Moon, Play, RefreshCw, RotateCcw, Settings2, ShieldCheck,
+  Home, LoaderCircle, Monitor, Moon, Play, RefreshCw, RotateCcw, Settings2, ShieldCheck,
   Sun, Trash2, Workflow, Wrench, X
 } from "lucide-react";
 import type {
@@ -221,7 +221,10 @@ export function DashboardShell(props: {
         ))}
       </nav>
       <div className="at-header-actions">
-        <span className={`at-connection ${props.connected ? "" : "off"}`}>{tr(props.locale, props.connected ? "已连接" : "连接中", props.connected ? "Connected" : "Connecting")}</span>
+        <span className={`at-connection ${props.connected ? "connected" : "connecting"}`} role="status">
+          {props.connected ? <CheckCircle2 size={13} /> : <LoaderCircle className="at-spin" size={13} />}
+          <span>{tr(props.locale, props.connected ? "Collector 已连接" : "正在连接 Collector", props.connected ? "Collector connected" : "Connecting to Collector")}</span>
+        </span>
         <DashboardSettings autoRefresh={props.autoRefresh} locale={props.locale} themePreference={props.themePreference} onAutoRefresh={props.onAutoRefresh} onLocale={props.onLocale} onTheme={props.onTheme} />
       </div>
     </header>
