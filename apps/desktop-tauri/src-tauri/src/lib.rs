@@ -38,19 +38,22 @@ pub fn run() {
             let database_path = std::env::var_os("AGENT_TRACE_DB_PATH")
                 .map(std::path::PathBuf::from)
                 .unwrap_or(app.path().app_data_dir()?.join("agent-trace.db"));
-            for legacy_path in legacy_database_candidates(&database_path) {
-                match merge_compatible_database(&database_path, &legacy_path) {
-                    Ok(imported) if imported > 0 => tracing::info!(
-                        imported,
-                        source = %legacy_path.display(),
-                        "legacy Agent-Trace data imported"
-                    ),
-                    Ok(_) => {}
-                    Err(error) => tracing::warn!(
-                        %error,
-                        source = %legacy_path.display(),
-                        "legacy Agent-Trace data import skipped"
-                    ),
+            let explicit_legacy_database = std::env::var_os("AGENT_TRACE_LEGACY_DB_PATH").is_some();
+            if should_import_legacy_databases(&database_path, explicit_legacy_database) {
+                for legacy_path in legacy_database_candidates(&database_path) {
+                    match merge_compatible_database(&database_path, &legacy_path) {
+                        Ok(imported) if imported > 0 => tracing::info!(
+                            imported,
+                            source = %legacy_path.display(),
+                            "legacy Agent-Trace data imported"
+                        ),
+                        Ok(_) => {}
+                        Err(error) => tracing::warn!(
+                            %error,
+                            source = %legacy_path.display(),
+                            "legacy Agent-Trace data import skipped"
+                        ),
+                    }
                 }
             }
             let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), COLLECTOR_PORT);
@@ -221,6 +224,10 @@ fn legacy_database_candidates(destination: &Path) -> Vec<PathBuf> {
     candidates
 }
 
+fn should_import_legacy_databases(destination: &Path, explicitly_configured: bool) -> bool {
+    explicitly_configured || !destination.is_file()
+}
+
 fn show_main_window(app: &tauri::AppHandle) {
     if let Some(window) = app.get_webview_window("main") {
         let _ = window.show();
@@ -234,6 +241,17 @@ mod tests {
     use std::time::Duration;
 
     use super::*;
+
+    #[test]
+    fn imports_discovered_legacy_databases_only_before_desktop_database_exists() {
+        let directory = tempfile::tempdir().unwrap();
+        let destination = directory.path().join("agent-trace.db");
+
+        assert!(should_import_legacy_databases(&destination, false));
+        std::fs::write(&destination, []).unwrap();
+        assert!(!should_import_legacy_databases(&destination, false));
+        assert!(should_import_legacy_databases(&destination, true));
+    }
 
     #[tokio::test]
     async fn takeover_claims_the_port_after_a_reused_collector_exits() {
