@@ -5,12 +5,13 @@
   "type": "module",
   "exports": {
     ".": "./src/index.ts",
-    "./theme.css": "./src/theme.css"
+    "./theme.css": "./src/theme.css",
+    "./token-trace": "./src/token-trace.ts"
   },
   "scripts": {
     "build": "tsc -p tsconfig.json --noEmit",
     "lint": "pnpm run typecheck",
-    "test": "tsx src/smoke.ts",
+    "test": "tsx src/token-trace.smoke.ts && tsx src/smoke.ts",
     "typecheck": "tsc -p tsconfig.json --noEmit"
   },
   "dependencies": {

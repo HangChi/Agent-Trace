@@ -28,6 +28,18 @@ for (const marker of ["normalizeRunTitle", "ErrorState", "LoadingState", "Retry"
 for (const marker of ["--at-bg", "--at-primary", ".dark", ".at-table", ".at-filter"]) {
   if (!theme.includes(marker)) throw new Error(`Shared theme marker missing: ${marker}`);
 }
+for (const [label, pattern] of [
+  ["15px body text", /body \{[^}]*font-size: 15px/],
+  ["12px table headers", /\.at-table th \{[^}]*font-size: 12px/],
+  ["11px supporting text", /\.at-subtle \{[^}]*font-size: 11px/],
+  ["11px badges", /\.at-badge \{[^}]*font-size: 11px/],
+  ["14px Run names", /\.at-run-name \{[^}]*font-size: 14px/]
+]) {
+  if (!pattern.test(theme)) throw new Error(`Shared desktop typography missing: ${label}`);
+}
+for (const marker of [".at-token-tabs", ".at-token-calendar", ".at-usage-rank"]) {
+  if (!theme.includes(marker)) throw new Error(`Shared desktop Token-Trace style missing: ${marker}`);
+}
 for (const forbidden of ["next/", "localhost:3000", "electron"] ) {
   if (main.includes(forbidden) || shared.includes(forbidden) || index.includes(forbidden)) {
     throw new Error(`Unsupported desktop runtime dependency found: ${forbidden}`);
