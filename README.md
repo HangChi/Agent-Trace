@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="apps/desktop/assets/icon.svg" width="88" height="88" alt="Agent-Trace 图标" />
+  <img src="apps/desktop-tauri/assets/icon.svg" width="88" height="88" alt="Agent-Trace 图标" />
 </p>
 
 # Agent-Trace
@@ -109,7 +109,6 @@ node packages/cli/dist/index.js usage clients --home <path>
 | `apps/web` | Next.js Dashboard |
 | `apps/desktop-tauri` | Tauri 桌面壳、静态 UI 与 Windows NSIS 打包 |
 | `crates/agent-trace-core` | Rust Collector、SQLite、Hooks/OTLP、分析、回放与原生 Usage Scanner |
-| `apps/desktop` | 旧 Electron 实现，仅保留为迁移期回退入口 |
 | `packages/schema` | Zod 契约与共享 TypeScript 类型 |
 | `packages/sdk-js` | JavaScript/TypeScript Tracing SDK |
 | `packages/sdk-python` | Python Tracing SDK 与框架适配 |

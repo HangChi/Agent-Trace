@@ -344,7 +344,7 @@ node packages/cli/dist/index.js usage --once \
 
 | 现象 | 检查与处理 |
 | --- | --- |
-| Dashboard 无法打开 | 确认 CLI 仍在运行，检查 3000 端口；桌面端会在 3000 至 3099 中选择可用端口。 |
+| Dashboard 无法打开 | 源码模式确认 CLI 仍在运行并检查 3000 端口；Tauri 桌面 UI 不使用 Dashboard 端口，需检查应用窗口与 WebView2。 |
 | Collector 启动失败 | 检查 4319 端口；源码模式可设置 `AGENT_TRACE_SERVER_PORT`。 |
 | 看不到本地历史 | 运行 `usage clients --home <真实用户目录>`，根据 `actionHint` 登录或同步。 |
 | 只看到近期 Hook 事件 | 确认 usage watcher 未被 `AGENT_TRACE_USAGE_SCAN=0` 禁用，并检查 Scanner 状态。 |

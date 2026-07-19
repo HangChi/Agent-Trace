@@ -10,7 +10,7 @@
 - Codex 与 Claude Code 全局 Hooks，以及 Codex OTel JSON 日志接入。
 - `tokscale` 本地 Usage Scanner、客户端诊断、同步和 Transcript 采集。
 - Run 分页、事件筛选、时间线、父子调用树、失败检查和确定性 Trace Insight。
-- Windows Electron 桌面编排、托盘关闭偏好和 NSIS 打包。
+- Windows Tauri 桌面端、静态 UI、全 Rust Collector、原生 Usage Scanner、托盘交互和 NSIS 打包。
 - 文档一致性检查、OpenAPI、英文使用/接口/部署/安全文档与 CI。
 - SDK 通用 Step、异步自动父子链路和 Run 级组织 metadata。
 - Run 项目/环境/版本/标签/备注/收藏编辑与筛选。

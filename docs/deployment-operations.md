@@ -70,8 +70,6 @@ pnpm desktop:build:win
 
 构建产物位于 `target/release/bundle/nsis`。安装器按当前用户安装；UI 资源直接编入 Tauri 应用，安装包不包含 Electron、Node、Next Server、CLI 压缩包或 `tokscale` sidecar。首次安装若系统没有 Evergreen WebView2 Runtime，NSIS 会通过微软 bootstrapper 下载运行时。
 
-旧 Electron 构建仍可用 `pnpm desktop:build:electron:win` 和 `pnpm desktop:pack:electron:win` 手动执行，但不再是默认桌面交付链路。
-
 ## 端口行为
 
 | 服务 | 默认 | 行为 |
@@ -102,14 +100,14 @@ pnpm desktop:build:win
 
 | 变量 | 用途 | 默认值 |
 | --- | --- | --- |
-| `AGENT_TRACE_DB_PATH` | SQLite 文件路径 | 源码为 `agent-trace.db`；桌面为 userData 下文件 |
+| `AGENT_TRACE_DB_PATH` | SQLite 文件路径 | 源码为 `agent-trace.db`；桌面为 Tauri `app_data_dir` 下文件 |
 | `AGENT_TRACE_SERVER_HOST` | Collector 监听地址 | `127.0.0.1` |
 | `AGENT_TRACE_SERVER_PORT` | Collector 端口 | `4319` |
 | `PORT` | Server/Next 进程端口；Server 中优先级高于专用变量 | 由启动器设置 |
 | `AGENT_TRACE_WEB_PORT` | Dashboard 端口 | `3000` |
 | `AGENT_TRACE_API_URL` | Web 访问的 Collector 地址 | `http://localhost:4319` |
 | `AGENT_TRACE_ENDPOINT` | CLI、Scanner 和示例的通用 Collector 地址覆盖；优先级低于显式命令参数 | 未设置时使用对应 `*_COLLECTOR_URL` 或默认地址 |
-| `AGENT_TRACE_DESKTOP_PREFERENCES_PATH` | Web 更新桌面偏好的文件 | 仅桌面注入 |
+| `AGENT_TRACE_LEGACY_DB_PATH` | 首次启动时显式指定待导入的旧桌面数据库 | 未设置时检查标准旧数据目录 |
 | `AGENT_TRACE_RUNNING_STALE_MINUTES` | running Run 的 stale 阈值 | `30` |
 | `AGENT_TRACE_STALE_RUN_MINUTES` | stale 阈值的备用名称 | `30` |
 
@@ -188,7 +186,6 @@ pnpm desktop:build:win
 
 | 变量 | 默认值 | 用途 |
 | --- | --- | --- |
-| `AGENT_TRACE_DESKTOP_E2E_DIR` | 未设置 | Desktop 生命周期 E2E 的隔离 `userData` 和结果目录；仅用于测试。 |
 | `AGENT_TRACE_BENCHMARK_RUNS` | `100000` | 容量基准 Run 数。 |
 | `AGENT_TRACE_BENCHMARK_EVENTS` | `1000000` | 容量基准 Event 数。 |
 | `AGENT_TRACE_BENCHMARK_RUN_MS` | `1500` | Run 分页延迟上限（ms）。 |
@@ -212,7 +209,7 @@ pnpm desktop:build:win
 
 ### Dashboard 端口占用
 
-桌面端未显式配置时会自动选择后续端口；显式 `AGENT_TRACE_WEB_PORT` 被占用时会失败。源码模式可更换该变量。
+只有源码模式的 Next.js Dashboard 使用 `AGENT_TRACE_WEB_PORT`，默认端口为 3000。Tauri 桌面使用内嵌静态 UI，不监听 Dashboard 端口。
 
 ### Scanner 不更新
 

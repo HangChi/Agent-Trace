@@ -5,7 +5,7 @@
 [English documentation](en/README.md)
 
 > [!NOTE]
-> 文档最后完成代码交叉校验的日期为 2026-07-15。`pnpm docs:check` 会检查相对链接、Collector 路由、OpenAPI、环境变量和 CLI 命令的一致性。
+> 文档最后完成代码交叉校验的日期为 2026-07-19。`pnpm docs:check` 会检查相对链接、Node/Rust Collector 路由、OpenAPI、环境变量、CLI 命令和已弃用桌面路径的一致性。
 
 ## 按角色阅读
 

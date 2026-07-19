@@ -41,7 +41,6 @@ flowchart LR
 | `apps/web` | 运行列表、详情、筛选、树形追踪、成本和 Scanner 状态界面。 | Next.js、React、共享 Schema |
 | `crates/agent-trace-core` | 桌面专用 Collector、SQLite、Hooks/OTLP、读模型、回放和原生 Usage Scanner。 | Rust、Axum、rusqlite |
 | `apps/desktop-tauri` | 进程内启动 Rust Collector、托盘、静态 UI 和 Windows 打包。 | Tauri、WebView2、NSIS |
-| `apps/desktop` | 旧 Electron 实现，仅作为迁移期回退入口。 | Electron、electron-builder |
 
 ## 核心数据模型
 
@@ -125,8 +124,8 @@ Dashboard 不直接访问 SQLite，而是调用 Collector：
 
 - Collector 启动时运行数据库迁移并立即协调 stale Run。
 - 后续每 60 秒协调一次；默认 stale 阈值为 30 分钟，可由环境变量调整。
-- 桌面端先启动/复用 Collector，再非阻塞启动 Scanner，最后启动 Dashboard。
-- Desktop 只允许一个实例；第二个实例会唤起已有窗口。
+- 桌面端在进程内启动 Collector，随后异步运行 Scanner；静态 Dashboard 已作为 Tauri 资源嵌入 WebView，不需要单独启动服务。
+- 当前实现没有单实例锁；应避免同时启动多个桌面实例，因为它们会竞争固定的 Collector 端口。
 - Scanner 启动或周期失败只记录错误，不关闭 Collector 或 Dashboard。
 
 ## 边界与约束

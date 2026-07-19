@@ -3,8 +3,9 @@
   "version": "0.4.0",
   "private": true,
   "scripts": {
-    "build": "cargo tauri build",
-    "dev": "cargo tauri dev",
+    "build": "tauri build",
+    "build:exe": "tauri build --no-bundle",
+    "dev": "tauri dev",
     "lint": "node scripts/check-ui.mjs && cargo clippy -p agent-trace-desktop --all-targets -- -D warnings",
     "test": "node scripts/check-ui.mjs && cargo test -p agent-trace-core"
   },

@@ -1,5 +1,5 @@
 <p align="center">
-  <img src="apps/desktop/assets/icon.svg" width="88" height="88" alt="Agent-Trace icon" />
+  <img src="apps/desktop-tauri/assets/icon.svg" width="88" height="88" alt="Agent-Trace icon" />
 </p>
 
 # Agent-Trace
@@ -21,15 +21,16 @@ Agent-Trace collects model calls, tool execution, tokens, API-equivalent cost, l
 - Python SDK with nested steps, sync/async decorators, and OpenAI/LangChain adapters.
 - Global Codex and Claude Code Hooks for lifecycle and tool metadata.
 - Codex OTLP/HTTP JSON ingestion for model and official token telemetry.
-- Local `tokscale` scanning for multi-client sessions, tokens, and cost.
+- Source-mode `tokscale` scanning for multi-client sessions, tokens, and cost; the desktop uses a native read-only Rust scanner for Codex and Claude Code history.
 - Event filters, timelines, parent-child trace trees, failure inspection, and performance diagnostics.
 - Local governance with Run projects/tags, retention maintenance, tombstone recovery, and configurable pre-storage field redaction.
-- Local Hono collector, bilingual Next.js dashboard, and Windows Electron packaging.
+- Local Hono/Next.js source mode plus a Windows Tauri desktop with a static UI and an all-Rust Collector; the installed desktop does not ship Node.js or Electron.
 
 ## Requirements
 
 - Node.js `>=22.12.0`; `.nvmrc` selects Node.js 22.
 - pnpm `>=11.0.7 <12`; `packageManager` and CI pin 11.0.7.
+- Rust stable, MSVC C++ Build Tools, and the Windows SDK are required to build the desktop application.
 - Windows x64 is required to build the desktop installer.
 
 ## Quick start
@@ -103,7 +104,8 @@ For sensitive projects, set `AGENT_TRACE_HISTORY_CONTENT=metadata` before the fi
 | --- | --- |
 | `apps/server` | Hono collector, SQLite, integrations, and read models |
 | `apps/web` | Next.js dashboard |
-| `apps/desktop` | Electron main process and Windows packaging |
+| `apps/desktop-tauri` | Tauri shell, static desktop UI, and Windows NSIS packaging |
+| `crates/agent-trace-core` | Rust Collector, SQLite, integrations, analytics, replay, and native Usage Scanner |
 | `packages/schema` | Shared Zod contracts and TypeScript types |
 | `packages/sdk-js` | JavaScript/TypeScript tracing SDK |
 | `packages/sdk-python` | Python tracing SDK and framework adapters |
@@ -114,9 +116,10 @@ For sensitive projects, set `AGENT_TRACE_HISTORY_CONTENT=metadata` before the fi
 
 ```bash
 pnpm verify
+pnpm desktop:check:rust
 ```
 
-This runs build, test, type checking, lint, and documentation consistency checks.
+These commands run build, test, type checking, lint, documentation consistency, and Rust desktop checks.
 
 ## Data, privacy, and cost
 

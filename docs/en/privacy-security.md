@@ -45,7 +45,8 @@ Changing modes does not remove previews already stored in SQLite.
 
 Core tracing and local display do not require an Agent-Trace cloud service. External access may occur when:
 
-- installing dependencies or building Electron packages;
+- installing dependencies, downloading Rust crates, or building Tauri packages;
+- installing the Windows desktop when WebView2 is missing, because the NSIS bootstrapper downloads it from Microsoft;
 - explicitly running a supported `tokscale sync`;
 - fetching the default USD/CNY exchange rate.
 

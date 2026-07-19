@@ -17,9 +17,10 @@ await checkRelativeMarkdownLinks(documentationFiles);
 await checkApiRoutes();
 await checkDocumentedEnvironmentVariables();
 await checkCliCommands();
+await checkRetiredDesktopReferences();
 
 console.log(
-  `documentation checks passed (${documentationFiles.length} Markdown files, API routes, environment variables, CLI commands)`,
+  `documentation checks passed (${documentationFiles.length} Markdown files, source/Tauri API routes, environment variables, CLI commands)`,
 );
 
 async function checkRelativeMarkdownLinks(files) {
@@ -50,6 +51,7 @@ async function checkRelativeMarkdownLinks(files) {
 
 async function checkApiRoutes() {
   const source = await readText("apps/server/src/app.ts");
+  const desktopSource = await readText("crates/agent-trace-core/src/api.rs");
   const apiReference = await readText("docs/api-reference.md");
   const openApi = await readText("docs/openapi.yaml");
   const sourceRoutes = new Set(
@@ -63,8 +65,14 @@ async function checkApiRoutes() {
     ),
   );
   const openApiRoutes = parseOpenApiRoutes(openApi);
+  const desktopRoutes = new Set(
+    [...parseRustRoutes(desktopSource)].map((route) =>
+      route.replace(/\{([^}]+)\}/g, ":$1"),
+    ),
+  );
 
   assertSameSet(sourceRoutes, documentedRoutes, "Collector routes vs API route table");
+  assertSameSet(sourceRoutes, desktopRoutes, "Source Collector routes vs Tauri Collector routes");
   assertSameSet(
     new Set([...sourceRoutes].map((route) => route.replace(/:([A-Za-z0-9_]+)/g, "{$1}"))),
     openApiRoutes,
@@ -72,9 +80,27 @@ async function checkApiRoutes() {
   );
 }
 
+function parseRustRoutes(source) {
+  const routes = new Set();
+  const blocks = [
+    ...source.matchAll(
+      /^\s*\.route\(\s*"([^"]+)"([\s\S]*?)(?=^\s*\.route\(|^\s*\.layer\()/gm,
+    ),
+  ];
+
+  for (const [, route, handlers] of blocks) {
+    for (const [, method] of handlers.matchAll(/\b(get|post|patch|put|delete)\(/g)) {
+      routes.add(`${method.toUpperCase()} ${route}`);
+    }
+  }
+
+  return routes;
+}
+
 async function checkDocumentedEnvironmentVariables() {
   const sourceFiles = [
     ...(await listFiles("apps", isRuntimeSource)),
+    ...(await listFiles("crates", isRuntimeSource)),
     ...(await listFiles("packages", isRuntimeSource)),
     ...(await listFiles("examples", isRuntimeSource)),
   ];
@@ -92,6 +118,7 @@ async function checkDocumentedEnvironmentVariables() {
     await readText("README.md"),
     await readText("docs/user-guide.md"),
     await readText("docs/deployment-operations.md"),
+    await readText("docs/desktop-tauri.md"),
   ].join("\n");
   const missing = [...sourceVariables].filter((name) => !documentation.includes(`${name}`));
 
@@ -137,12 +164,37 @@ async function listFiles(relativeDirectory, predicate) {
   return entries
     .filter((entry) => entry.isFile())
     .map((entry) => path.relative(workspaceRoot, path.join(entry.parentPath, entry.name)))
-    .filter((file) => !file.includes(`${path.sep}node_modules${path.sep}`) && predicate(file))
+    .filter((file) => {
+      const segments = file.split(path.sep);
+      const isGenerated = segments.some((segment) =>
+        ["node_modules", ".next", "dist", "target"].includes(segment),
+      );
+      return !isGenerated && predicate(file);
+    })
     .sort();
 }
 
 function isRuntimeSource(file) {
-  return /\.(?:[cm]?[jt]s|tsx)$/.test(file) && !/\.(?:smoke|test)\.[cm]?[jt]s$/.test(file);
+  return /\.(?:[cm]?[jt]s|tsx|rs)$/.test(file) && !/\.(?:smoke|test)\.[cm]?[jt]s$/.test(file);
+}
+
+async function checkRetiredDesktopReferences() {
+  const files = [
+    "package.json",
+    "pnpm-workspace.yaml",
+    ...(await listFiles(".github", (file) => /\.ya?ml$/.test(file))),
+    ...documentationFiles.filter(
+      (file) => !["CHANGELOG.md", "docs/development-history.md", "docs/desktop-tauri.md"].includes(file),
+    ),
+  ];
+  const failures = [];
+
+  for (const file of files) {
+    const content = await readText(file);
+    if (/apps\/desktop(?!-tauri)/.test(content)) failures.push(file);
+  }
+
+  assertEmpty(failures, "Retired apps/desktop references");
 }
 
 async function readText(relativeFile) {
