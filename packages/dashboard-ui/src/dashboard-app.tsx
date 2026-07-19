@@ -3,8 +3,8 @@
 import {
   Activity, AlertCircle, BarChart3, CheckCircle2, ChevronLeft,
   ChevronRight, Coins, Database, Eye, EyeOff, FlaskConical, HardDrive,
-  Home, Languages, Moon, Play, RefreshCw, RotateCcw, Settings2, ShieldCheck,
-  Sun, Trash2, Workflow, Wrench
+  Home, Monitor, Moon, Play, RefreshCw, RotateCcw, Settings2, ShieldCheck,
+  Sun, Trash2, Workflow, Wrench, X
 } from "lucide-react";
 import type {
   AnalyticsBreakdown, AnalyticsBudget, AnalyticsBudgetAlert, DashboardEventPage,
@@ -19,6 +19,7 @@ import { TokenTraceView } from "./token-trace-view";
 export { TokenTraceView } from "./token-trace-view";
 
 type PageContext = {
+  autoRefresh: boolean;
   client: CollectorClient;
   locale: DashboardLocale;
   navigate: DashboardNavigate;
@@ -27,6 +28,20 @@ type PageContext = {
 
 type Resource<T> = { data?: T; error?: string; loading: boolean; reload: () => void };
 type JsonObject = Record<string, unknown>;
+type ThemePreference = "system" | "light" | "dark";
+
+const themeStorageKey = "agent-trace-theme";
+const autoRefreshStorageKey = "agent-trace:auto-refresh";
+const autoRefreshIntervalMs = 30_000;
+
+function readThemePreference(): ThemePreference {
+  const stored = window.localStorage.getItem(themeStorageKey);
+  return stored === "light" || stored === "dark" ? stored : "system";
+}
+
+function readAutoRefreshPreference() {
+  return window.localStorage.getItem(autoRefreshStorageKey) !== "off";
+}
 
 export class CollectorClient {
   constructor(private readonly base: string) {}
@@ -53,7 +68,7 @@ export class CollectorClient {
   }
 }
 
-function useResource<T>(key: string, load: () => Promise<T>): Resource<T> {
+function useResource<T>(key: string, load: () => Promise<T>, autoRefresh = false): Resource<T> {
   const [version, setVersion] = useState(0);
   const [state, setState] = useState<Omit<Resource<T>, "reload">>({ loading: true });
   useEffect(() => {
@@ -65,6 +80,11 @@ function useResource<T>(key: string, load: () => Promise<T>): Resource<T> {
     );
     return () => { active = false; };
   }, [key, version]);
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const timer = window.setInterval(() => setVersion(value => value + 1), autoRefreshIntervalMs);
+    return () => window.clearInterval(timer);
+  }, [autoRefresh, key]);
   return { ...state, reload: () => setVersion(value => value + 1) };
 }
 
@@ -102,13 +122,20 @@ export function DashboardApp({ apiBase, routerMode = "browser", initialPath = "/
   const { route, navigate } = useDashboardRoute(routerMode, initialPath);
   const client = useMemo(() => new CollectorClient(apiBase.replace(/\/$/, "")), [apiBase]);
   const [connected, setConnected] = useState(false);
-  const [dark, setDark] = useState(false);
+  const [themePreference, setThemePreference] = useState<ThemePreference>("system");
+  const [systemDark, setSystemDark] = useState(false);
+  const [autoRefresh, setAutoRefresh] = useState(true);
   const locale: DashboardLocale = route.query.get("lang") === "en" ? "en" : "zh";
+  const dark = themePreference === "dark" || (themePreference === "system" && systemDark);
 
   useEffect(() => {
-    const stored = localStorage.getItem("agent-trace-theme");
-    const next = stored === "dark" || (stored === null && matchMedia("(prefers-color-scheme: dark)").matches);
-    setDark(next);
+    const media = window.matchMedia("(prefers-color-scheme: dark)");
+    const syncSystemTheme = () => setSystemDark(media.matches);
+    setThemePreference(readThemePreference());
+    setAutoRefresh(readAutoRefreshPreference());
+    syncSystemTheme();
+    media.addEventListener("change", syncSystemTheme);
+    return () => media.removeEventListener("change", syncSystemTheme);
   }, []);
   useEffect(() => { document.documentElement.classList.toggle("dark", dark); }, [dark]);
   useEffect(() => {
@@ -119,24 +146,34 @@ export function DashboardApp({ apiBase, routerMode = "browser", initialPath = "/
     return () => { active = false; window.clearInterval(timer); };
   }, [client]);
 
-  const changeLocale = () => {
+  const changeLocale = (nextLocale: DashboardLocale) => {
     const query = new URLSearchParams(route.query);
-    locale === "zh" ? query.set("lang", "en") : query.delete("lang");
+    nextLocale === "en" ? query.set("lang", "en") : query.delete("lang");
     navigate(withQuery(route.path, query));
   };
-  const context = { client, locale, navigate, route };
+  const changeTheme = (nextTheme: ThemePreference) => {
+    window.localStorage.setItem(themeStorageKey, nextTheme);
+    setThemePreference(nextTheme);
+  };
+  const changeAutoRefresh = (enabled: boolean) => {
+    window.localStorage.setItem(autoRefreshStorageKey, enabled ? "on" : "off");
+    setAutoRefresh(enabled);
+  };
+  const context = { autoRefresh, client, locale, navigate, route };
 
   return (
     <div className="at-app">
       <DashboardShell
+        autoRefresh={autoRefresh}
         connected={connected}
-        dark={dark}
         locale={locale}
         navigate={navigate}
         path={route.path}
         routerMode={routerMode}
+        themePreference={themePreference}
+        onAutoRefresh={changeAutoRefresh}
         onLocale={changeLocale}
-        onTheme={() => { const next = !dark; localStorage.setItem("agent-trace-theme", next ? "dark" : "light"); setDark(next); }}
+        onTheme={changeTheme}
       />
       <main className="at-main" key={connected ? "connected" : "connecting"}>{renderRoute(context)}</main>
     </div>
@@ -157,8 +194,10 @@ function renderRoute(context: PageContext) {
 }
 
 export function DashboardShell(props: {
-  connected: boolean; dark: boolean; locale: DashboardLocale; navigate: DashboardNavigate;
-  path: string; routerMode: DashboardRouterMode; onLocale: () => void; onTheme: () => void;
+  autoRefresh: boolean; connected: boolean; locale: DashboardLocale; navigate: DashboardNavigate;
+  path: string; routerMode: DashboardRouterMode; themePreference: ThemePreference;
+  onAutoRefresh: (enabled: boolean) => void; onLocale: (locale: DashboardLocale) => void;
+  onTheme: (theme: ThemePreference) => void;
 }) {
   const links = [
     ["/runs", tr(props.locale, "首页", "Home"), Home],
@@ -183,11 +222,73 @@ export function DashboardShell(props: {
       </nav>
       <div className="at-header-actions">
         <span className={`at-connection ${props.connected ? "" : "off"}`}>{tr(props.locale, props.connected ? "已连接" : "连接中", props.connected ? "Connected" : "Connecting")}</span>
-        <button type="button" title={tr(props.locale, "切换语言", "Switch language")} onClick={props.onLocale}><Languages size={15} />{props.locale === "zh" ? "中" : "EN"}</button>
-        <button type="button" title={tr(props.locale, "切换主题", "Switch theme")} onClick={props.onTheme}>{props.dark ? <Sun size={15} /> : <Moon size={15} />}</button>
+        <DashboardSettings autoRefresh={props.autoRefresh} locale={props.locale} themePreference={props.themePreference} onAutoRefresh={props.onAutoRefresh} onLocale={props.onLocale} onTheme={props.onTheme} />
       </div>
     </header>
   );
+}
+
+function DashboardSettings(props: {
+  autoRefresh: boolean;
+  locale: DashboardLocale;
+  themePreference: ThemePreference;
+  onAutoRefresh: (enabled: boolean) => void;
+  onLocale: (locale: DashboardLocale) => void;
+  onTheme: (theme: ThemePreference) => void;
+}) {
+  const [open, setOpen] = useState(false);
+  const themeOptions = [
+    { value: "system" as const, label: tr(props.locale, "跟随系统", "System"), icon: Monitor },
+    { value: "light" as const, label: tr(props.locale, "浅色", "Light"), icon: Sun },
+    { value: "dark" as const, label: tr(props.locale, "深色", "Dark"), icon: Moon }
+  ];
+  const localeOptions: Array<{ value: DashboardLocale; label: string }> = [
+    { value: "zh", label: "中文" },
+    { value: "en", label: "English" }
+  ];
+  const refreshOptions = [
+    { value: true, label: tr(props.locale, "开启", "On") },
+    { value: false, label: tr(props.locale, "关闭", "Off") }
+  ];
+
+  useEffect(() => {
+    if (!open) return;
+    const closeOnEscape = (event: KeyboardEvent) => {
+      if (event.key === "Escape") setOpen(false);
+    };
+    window.addEventListener("keydown", closeOnEscape);
+    return () => window.removeEventListener("keydown", closeOnEscape);
+  }, [open]);
+
+  return <>
+    <button type="button" className="at-settings-trigger" aria-label={tr(props.locale, "设置", "Settings")} onClick={() => setOpen(true)}>
+      <Settings2 size={15} /><span>{tr(props.locale, "设置", "Settings")}</span>
+    </button>
+    {open ? <div className="at-dialog-backdrop" role="presentation" onMouseDown={event => {
+      if (event.target === event.currentTarget) setOpen(false);
+    }}>
+      <section className="at-settings" role="dialog" aria-modal="true" aria-labelledby="at-settings-title">
+        <div className="at-settings-head">
+          <div><h2 id="at-settings-title">{tr(props.locale, "设置", "Settings")}</h2><p>{tr(props.locale, "调整本机界面与刷新偏好。", "Configure local appearance and refresh preferences.")}</p></div>
+          <button type="button" className="at-icon-button" onClick={() => setOpen(false)} aria-label={tr(props.locale, "关闭设置", "Close settings")}><X size={16} /></button>
+        </div>
+        <SettingsRow title={tr(props.locale, "外观", "Appearance")} description={tr(props.locale, "选择跟随系统、浅色或深色主题。", "Choose system, light, or dark appearance.")}>
+          <div className="at-segmented three">{themeOptions.map(option => { const Icon = option.icon; return <button key={option.value} type="button" aria-pressed={props.themePreference === option.value} onClick={() => props.onTheme(option.value)}><Icon size={14} />{option.label}</button>; })}</div>
+        </SettingsRow>
+        <SettingsRow title={tr(props.locale, "语言", "Language")} description={tr(props.locale, "统一切换所有界面文案。", "Switch all interface copy consistently.")}>
+          <div className="at-segmented">{localeOptions.map(option => <button key={option.value} type="button" aria-pressed={props.locale === option.value} onClick={() => { props.onLocale(option.value); setOpen(false); }}>{option.label}</button>)}</div>
+        </SettingsRow>
+        <SettingsRow title={tr(props.locale, "自动刷新", "Auto refresh")} description={tr(props.locale, "每 30 秒自动更新页面数据。", "Refresh page data every 30 seconds.")}>
+          <div className="at-segmented">{refreshOptions.map(option => <button key={String(option.value)} type="button" aria-pressed={props.autoRefresh === option.value} onClick={() => props.onAutoRefresh(option.value)}>{option.label}</button>)}</div>
+        </SettingsRow>
+        <p className="at-settings-note">{tr(props.locale, "设置仅保存在当前设备。", "Settings are stored on this device only.")}</p>
+      </section>
+    </div> : null}
+  </>;
+}
+
+function SettingsRow({ title, description, children }: { title: string; description: string; children: ReactNode }) {
+  return <section className="at-settings-row"><div><h3>{title}</h3><p>{description}</p></div>{children}</section>;
 }
 
 export function RunsView(context: PageContext) {
@@ -202,7 +303,7 @@ export function RunsView(context: PageContext) {
   const resource = useResource(`runs:${query}`, () => Promise.all([
     client.get<DashboardRunPage>(`/runs?${query}`),
     client.get<DashboardScannerStatus>("/usage/scanner").catch((): DashboardScannerStatus => ({ diagnostics: [] }))
-  ]));
+  ]), context.autoRefresh);
   const [selected, setSelected] = useState<string[]>([]);
   if (resource.loading && !resource.data) return <LoadingState locale={locale} />;
   if (resource.error || !resource.data) return <ErrorState locale={locale} error={resource.error} retry={resource.reload} />;
@@ -288,7 +389,7 @@ export function RunDetailView(context: PageContext & { id: string }) {
     client.get<DashboardRun>(`/runs/${encodeURIComponent(id)}`),
     client.get<DashboardEventPage>(`/runs/${encodeURIComponent(id)}/events?${query}`),
     client.get<{ insights: DashboardTraceInsight[] }>(`/runs/${encodeURIComponent(id)}/insights`).catch(() => ({ insights: [] }))
-  ]));
+  ]), context.autoRefresh);
   if (resource.loading && !resource.data) return <LoadingState locale={locale} />;
   if (resource.error || !resource.data) return <ErrorState locale={locale} error={resource.error} retry={resource.reload} />;
   const [run, events, insights] = resource.data;
@@ -327,7 +428,7 @@ export function RunDetailView(context: PageContext & { id: string }) {
 
 export function RunCompareView(context: PageContext) {
   const ids = (context.route.query.get("ids") || "").split(",").filter(Boolean).slice(0, 5);
-  const resource = useResource(`compare:${ids.join()}`, () => context.client.get<DashboardRunComparison>(`/analytics/runs/compare?ids=${encodeURIComponent(ids.join(","))}`));
+  const resource = useResource(`compare:${ids.join()}`, () => context.client.get<DashboardRunComparison>(`/analytics/runs/compare?ids=${encodeURIComponent(ids.join(","))}`), context.autoRefresh);
   if (ids.length < 2) return <StatePanel title={tr(context.locale, "请选择 2–5 个 Run", "Select 2–5 runs")} body={tr(context.locale, "返回列表后勾选需要比较的记录。", "Select runs from the list.")} />;
   if (resource.loading && !resource.data) return <LoadingState locale={context.locale} />;
   if (resource.error || !resource.data) return <ErrorState locale={context.locale} error={resource.error} retry={resource.reload} />;
@@ -336,7 +437,7 @@ export function RunCompareView(context: PageContext) {
 
 export function AnalyticsView(context: PageContext) {
   const dimension = context.route.query.get("dimension") || "model";
-  const resource = useResource(`analytics:${dimension}`, () => Promise.all([context.client.get<AnalyticsBreakdown>(`/analytics/breakdown?dimension=${dimension}&days=30`), context.client.get<{ budgets: AnalyticsBudget[] }>("/analytics/budgets"), context.client.get<{ alerts: AnalyticsBudgetAlert[] }>("/analytics/alerts")]));
+  const resource = useResource(`analytics:${dimension}`, () => Promise.all([context.client.get<AnalyticsBreakdown>(`/analytics/breakdown?dimension=${dimension}&days=30`), context.client.get<{ budgets: AnalyticsBudget[] }>("/analytics/budgets"), context.client.get<{ alerts: AnalyticsBudgetAlert[] }>("/analytics/alerts")]), context.autoRefresh);
   if (resource.loading && !resource.data) return <LoadingState locale={context.locale} />;
   if (resource.error || !resource.data) return <ErrorState locale={context.locale} error={resource.error} retry={resource.reload} />;
   const [breakdown, budgets, alerts] = resource.data;
@@ -366,7 +467,7 @@ export function AnalyticsView(context: PageContext) {
 
 export function EvaluationsView(context: PageContext) {
   const selected = context.route.query.get("dataset") || "";
-  const resource = useResource(`evaluations:${selected}`, () => Promise.all([context.client.get<{ datasets: EvaluationDatasetSummary[] }>("/evaluations/datasets"), selected ? context.client.get<EvaluationDatasetReport>(`/evaluations/datasets/${encodeURIComponent(selected)}`) : Promise.resolve(undefined)]));
+  const resource = useResource(`evaluations:${selected}`, () => Promise.all([context.client.get<{ datasets: EvaluationDatasetSummary[] }>("/evaluations/datasets"), selected ? context.client.get<EvaluationDatasetReport>(`/evaluations/datasets/${encodeURIComponent(selected)}`) : Promise.resolve(undefined)]), context.autoRefresh);
   if (resource.loading && !resource.data) return <LoadingState locale={context.locale} />;
   if (resource.error || !resource.data) return <ErrorState locale={context.locale} error={resource.error} retry={resource.reload} />;
   const [datasets, report] = resource.data;
@@ -379,7 +480,7 @@ export function EvaluationsView(context: PageContext) {
 export function SandboxView(context: PageContext) {
   const runId = context.route.query.get("runId") || "";
   const key = `sandbox:${runId}`;
-  const resource = useResource(key, () => Promise.all([context.client.get<{ tasks: ReplayTask[] }>(`/sandbox/replays?limit=100${runId ? `&sourceRunId=${encodeURIComponent(runId)}` : ""}`), runId ? context.client.get<DashboardRun>(`/runs/${encodeURIComponent(runId)}`).catch(() => undefined) : Promise.resolve(undefined), runId ? context.client.get<DashboardEventPage>(`/runs/${encodeURIComponent(runId)}/events?page=1&pageSize=100&visibility=display`).catch(() => undefined) : Promise.resolve(undefined)]));
+  const resource = useResource(key, () => Promise.all([context.client.get<{ tasks: ReplayTask[] }>(`/sandbox/replays?limit=100${runId ? `&sourceRunId=${encodeURIComponent(runId)}` : ""}`), runId ? context.client.get<DashboardRun>(`/runs/${encodeURIComponent(runId)}`).catch(() => undefined) : Promise.resolve(undefined), runId ? context.client.get<DashboardEventPage>(`/runs/${encodeURIComponent(runId)}/events?page=1&pageSize=100&visibility=display`).catch(() => undefined) : Promise.resolve(undefined)]), context.autoRefresh);
   if (resource.loading && !resource.data) return <LoadingState locale={context.locale} />;
   if (resource.error || !resource.data) return <ErrorState locale={context.locale} error={resource.error} retry={resource.reload} />;
   const [tasks, run, events] = resource.data;
@@ -390,7 +491,7 @@ export function SandboxView(context: PageContext) {
 }
 
 export function MaintenanceView(context: PageContext) {
-  const resource = useResource("maintenance", () => Promise.all([context.client.get<JsonObject>("/maintenance/storage"), context.client.get<{ tombstones: Array<{ runId: string; deletedAt: string }> }>("/maintenance/tombstones?limit=50"), context.client.get<PrivacySettings>("/maintenance/privacy")]));
+  const resource = useResource("maintenance", () => Promise.all([context.client.get<JsonObject>("/maintenance/storage"), context.client.get<{ tombstones: Array<{ runId: string; deletedAt: string }> }>("/maintenance/tombstones?limit=50"), context.client.get<PrivacySettings>("/maintenance/privacy")]), context.autoRefresh);
   if (resource.loading && !resource.data) return <LoadingState locale={context.locale} />;
   if (resource.error || !resource.data) return <ErrorState locale={context.locale} error={resource.error} retry={resource.reload} />;
   const [stats, tombstones, privacy] = resource.data;

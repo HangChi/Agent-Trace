@@ -27,6 +27,7 @@ type TokenTraceClient = {
 };
 
 type TokenTraceViewProps = {
+  autoRefresh: boolean;
   client: TokenTraceClient;
   locale: DashboardLocale;
   navigate: DashboardNavigate;
@@ -46,7 +47,7 @@ type DisplayTrendPoint = TokenTraceAggregatePoint & { label: string };
 const emptyUsage: DashboardUsageSummary = { totalTokens: 0, costUsd: 0, clients: [], models: [] };
 const emptyTrends: DashboardRunTrends = { days: 90, points: [] };
 
-export function TokenTraceView({ client, locale, navigate, route }: TokenTraceViewProps) {
+export function TokenTraceView({ autoRefresh, client, locale, navigate, route }: TokenTraceViewProps) {
   const [version, setVersion] = useState(0);
   const [state, setState] = useState<TokenTraceState>({
     loading: true,
@@ -72,6 +73,12 @@ export function TokenTraceView({ client, locale, navigate, route }: TokenTraceVi
     });
     return () => { active = false; };
   }, [client, version]);
+
+  useEffect(() => {
+    if (!autoRefresh) return;
+    const timer = window.setInterval(() => setVersion((value) => value + 1), 30_000);
+    return () => window.clearInterval(timer);
+  }, [autoRefresh]);
 
   const view = parseTokenTraceView(route.query.get("view") ?? undefined);
   const period = parseTokenTracePeriod(route.query.get("period") ?? undefined);
