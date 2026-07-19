@@ -13,10 +13,14 @@ const MAX_FILES: usize = 5_000;
 const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
 
 pub(crate) fn scan(home: &Path) -> Value {
-    scan_with_pricing(home, PricingCatalog::load())
+    let include_titles = match std::env::var("AGENT_TRACE_HISTORY_CONTENT") {
+        Ok(mode) => !mode.eq_ignore_ascii_case("metadata"),
+        Err(_) => true,
+    };
+    scan_with_pricing(home, PricingCatalog::load(), include_titles)
 }
 
-fn scan_with_pricing(home: &Path, pricing: PricingCatalog) -> Value {
+fn scan_with_pricing(home: &Path, pricing: PricingCatalog, include_titles: bool) -> Value {
     let scanned_at = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     let mut rows = Vec::new();
     let mut diagnostics = Vec::new();
@@ -32,7 +36,7 @@ fn scan_with_pricing(home: &Path, pricing: PricingCatalog) -> Value {
         rows.extend(
             codex_files
                 .iter()
-                .filter_map(|path| scan_codex(path, &pricing)),
+                .filter_map(|path| scan_codex(path, &pricing, include_titles)),
         );
         diagnostics.push(json!({
             "client": "codex", "available": true, "source": "native-rust",
@@ -52,7 +56,7 @@ fn scan_with_pricing(home: &Path, pricing: PricingCatalog) -> Value {
         rows.extend(
             claude_files
                 .iter()
-                .filter_map(|path| scan_claude(path, &pricing)),
+                .filter_map(|path| scan_claude(path, &pricing, include_titles)),
         );
         diagnostics.push(json!({
             "client": "claude", "available": true, "source": "native-rust",
@@ -243,12 +247,13 @@ impl Usage {
     }
 }
 
-fn scan_codex(path: &Path, pricing: &PricingCatalog) -> Option<Value> {
+fn scan_codex(path: &Path, pricing: &PricingCatalog, include_title: bool) -> Option<Value> {
     let mut latest_usage = Usage::default();
     let mut model = String::new();
     let mut first = None::<String>;
     let mut last = None::<String>;
     let mut messages = 0_i64;
+    let mut title = String::new();
     for value in json_lines(path) {
         update_timestamps(&value, &mut first, &mut last);
         if model.is_empty() {
@@ -265,6 +270,22 @@ fn scan_codex(path: &Path, pricing: &PricingCatalog) -> Option<Value> {
         if value.pointer("/payload/type").and_then(Value::as_str) == Some("message") {
             messages += 1;
         }
+        if include_title
+            && title.is_empty()
+            && value.get("type").and_then(Value::as_str) == Some("event_msg")
+            && value.pointer("/payload/type").and_then(Value::as_str) == Some("user_message")
+            && let Some(prompt) = value
+                .pointer("/payload/message")
+                .or_else(|| value.pointer("/payload/text"))
+                .and_then(Value::as_str)
+        {
+            title = compact_conversation_title(
+                prompt
+                    .rsplit_once("## My request for Codex:")
+                    .map(|(_, request)| request)
+                    .unwrap_or(prompt),
+            );
+        }
     }
     usage_row(
         ("codex", "openai"),
@@ -272,20 +293,28 @@ fn scan_codex(path: &Path, pricing: &PricingCatalog) -> Option<Value> {
         model,
         latest_usage,
         messages,
-        (first, last),
+        (first, last, title),
         pricing,
     )
 }
 
-fn scan_claude(path: &Path, pricing: &PricingCatalog) -> Option<Value> {
+fn scan_claude(path: &Path, pricing: &PricingCatalog, include_title: bool) -> Option<Value> {
     let mut usage = Usage::default();
     let mut model = String::new();
     let mut first = None::<String>;
     let mut last = None::<String>;
     let mut messages = 0_i64;
+    let mut title = String::new();
     for value in json_lines(path) {
         update_timestamps(&value, &mut first, &mut last);
         if let Some(message) = value.get("message") {
+            if include_title
+                && title.is_empty()
+                && value.get("type").and_then(Value::as_str) == Some("user")
+                && let Some(prompt) = claude_user_prompt(message)
+            {
+                title = compact_conversation_title(&prompt);
+            }
             if model.is_empty() {
                 model = find_string(message, &["model"]).unwrap_or_default();
             }
@@ -301,7 +330,7 @@ fn scan_claude(path: &Path, pricing: &PricingCatalog) -> Option<Value> {
         model,
         usage,
         messages,
-        (first, last),
+        (first, last, title),
         pricing,
     )
 }
@@ -312,7 +341,7 @@ fn usage_row(
     model: String,
     usage: Usage,
     messages: i64,
-    timestamps: (Option<String>, Option<String>),
+    session: (Option<String>, Option<String>, String),
     pricing: &PricingCatalog,
 ) -> Option<Value> {
     let total = usage.total();
@@ -327,12 +356,51 @@ fn usage_row(
         "inputTokens": usage.input, "outputTokens": usage.output,
         "cacheReadTokens": usage.cache_read, "cacheWriteTokens": usage.cache_write,
         "reasoningTokens": usage.reasoning, "totalTokens": total,
-        "messageCount": messages, "startedAt": timestamps.0, "lastUsedAt": timestamps.1,
+        "messageCount": messages, "startedAt": session.0, "lastUsedAt": session.1,
     });
     if let Some(cost) = cost {
         row["costUsd"] = json!(cost);
     }
+    if !session.2.is_empty() {
+        row["title"] = json!(session.2);
+    }
     Some(row)
+}
+
+fn claude_user_prompt(message: &Value) -> Option<String> {
+    let content = message.get("content")?;
+    if let Some(text) = content.as_str() {
+        return Some(text.to_owned());
+    }
+    let blocks = content.as_array()?;
+    if blocks
+        .iter()
+        .any(|block| block.get("type").and_then(Value::as_str) == Some("tool_result"))
+    {
+        return None;
+    }
+    let text = blocks
+        .iter()
+        .filter_map(|block| block.get("text").and_then(Value::as_str))
+        .collect::<Vec<_>>()
+        .join(" ");
+    (!text.is_empty()).then_some(text)
+}
+
+fn compact_conversation_title(value: &str) -> String {
+    let cleaned = value
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ")
+        .trim_start_matches("[image]")
+        .trim()
+        .to_owned();
+    let characters = cleaned.chars().collect::<Vec<_>>();
+    if characters.len() > 80 {
+        format!("{}…", characters[..79].iter().collect::<String>())
+    } else {
+        cleaned
+    }
 }
 
 fn json_lines(path: &Path) -> impl Iterator<Item = Value> {
@@ -443,13 +511,22 @@ mod tests {
     use super::*;
 
     #[test]
-    fn scans_codex_and_claude_without_prompt_content() {
+    fn scans_codex_and_claude_with_bounded_titles_but_without_arbitrary_content() {
         let directory = tempfile::tempdir().unwrap();
         let codex_dir = directory.path().join(".codex/sessions");
         let claude_dir = directory.path().join(".claude/projects/test");
         fs::create_dir_all(&codex_dir).unwrap();
         fs::create_dir_all(&claude_dir).unwrap();
         let mut codex = File::create(codex_dir.join("codex-session.jsonl")).unwrap();
+        writeln!(
+            codex,
+            "{}",
+            json!({
+                "type": "event_msg", "timestamp": "2026-01-01T00:00:00Z",
+                "payload": { "type": "user_message", "message": "## My request for Codex:\nFix collector startup" }
+            })
+        )
+        .unwrap();
         writeln!(
             codex,
             "{}",
@@ -466,17 +543,37 @@ mod tests {
             claude,
             "{}",
             json!({
+                "type": "user", "timestamp": "2026-01-01T00:00:00Z",
+                "message": { "content": "Review trace failures" }
+            })
+        )
+        .unwrap();
+        writeln!(
+            claude,
+            "{}",
+            json!({
                 "timestamp": "2026-01-01T00:00:00Z", "message": {
                     "model": "claude-sonnet", "usage": { "input_tokens": 30, "output_tokens": 10 }
                 }
             })
         )
         .unwrap();
-        let result = scan_with_pricing(directory.path(), PricingCatalog::built_in());
+        let result = scan_with_pricing(directory.path(), PricingCatalog::built_in(), true);
         assert_eq!(result["rows"].as_array().unwrap().len(), 2);
         assert_eq!(result["rows"][0]["totalTokens"], 110);
+        assert_eq!(result["rows"][0]["title"], "Fix collector startup");
+        assert_eq!(result["rows"][1]["title"], "Review trace failures");
         assert_close(result["rows"][0]["costUsd"].as_f64(), 0.001_005);
         assert!(!result.to_string().contains("do not store"));
+
+        let metadata = scan_with_pricing(directory.path(), PricingCatalog::built_in(), false);
+        assert!(
+            metadata["rows"]
+                .as_array()
+                .unwrap()
+                .iter()
+                .all(|row| row.get("title").is_none())
+        );
     }
 
     #[test]

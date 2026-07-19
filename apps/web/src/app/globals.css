@@ -3,8 +3,8 @@
 @custom-variant dark (&:is(.dark *));
 
 @theme inline {
-  --font-sans: "Noto Sans SC", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei UI",
-    "Microsoft YaHei", "Segoe UI Variable Text", "Segoe UI", ui-sans-serif, system-ui,
+  --font-sans: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei",
+    "PingFang SC", "Noto Sans SC", "Noto Sans CJK SC", ui-sans-serif, system-ui,
     -apple-system, BlinkMacSystemFont, sans-serif;
   --font-mono: "IBM Plex Mono", "Cascadia Mono", "Cascadia Code", ui-monospace,
     SFMono-Regular, Menlo, Monaco, Consolas, monospace;

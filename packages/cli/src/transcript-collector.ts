@@ -3,6 +3,7 @@ import { basename, join } from "node:path";
 
 import { readOpenCodeSession } from "./opencode-session.js";
 import {
+  cleanPromptPreview,
   parseClaudeTranscript,
   parseCodexTranscript,
   parseWorkBuddyTitle,
@@ -101,7 +102,7 @@ export async function collectTranscriptDetails(
       sessionId,
       title: client === "workbuddy"
         ? parseWorkBuddyTitle(text) || `workbuddy:${sessionId}`
-        : `${client === "claude" ? "claude-code" : client}:${sessionId}`,
+        : transcriptTitle(client, sessionId, events),
       model: first.model,
       provider: first.provider,
       contentMode,
@@ -112,6 +113,20 @@ export async function collectTranscriptDetails(
   }
 
   return { clients: transcriptClients, sessionKeys, transcripts };
+}
+
+function transcriptTitle(client: string, sessionId: string, events: TranscriptEvent[]) {
+  const prompt = events.find((event) => event.kind === "prompt" && event.text)?.text;
+  const title = cleanPromptPreview(prompt)
+    .replace(/^\[(?:image|\d+ images)\]\s*/i, "")
+    .trim();
+  if (title) {
+    const characters = Array.from(title);
+    return characters.length > 80
+      ? `${characters.slice(0, 79).join("")}…`
+      : title;
+  }
+  return `${client === "claude" ? "claude-code" : client}:${sessionId}`;
 }
 
 function groupRows(rows: UsageRowLike[]) {

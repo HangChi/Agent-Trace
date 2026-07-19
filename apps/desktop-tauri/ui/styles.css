@@ -1,6 +1,6 @@
 :root {
   color-scheme: light;
-  font-family: "Noto Sans SC", "Noto Sans CJK SC", "PingFang SC", "Microsoft YaHei UI", "Segoe UI Variable Text", "Segoe UI", system-ui, sans-serif;
+  font-family: "Segoe UI Variable Text", "Segoe UI", "Microsoft YaHei UI", "Microsoft YaHei", "PingFang SC", "Noto Sans SC", "Noto Sans CJK SC", system-ui, sans-serif;
   --bg: #f5f7fb;
   --surface: #ffffff;
   --surface-2: #f1f4f9;
@@ -121,12 +121,15 @@ textarea.control { min-height: 92px; padding: 9px 11px; resize: vertical; }
 .grid.two { grid-template-columns: repeat(2, minmax(0, 1fr)); }
 .grid.sidebar { grid-template-columns: minmax(280px, .75fr) minmax(0, 1.6fr); }
 .table-wrap { max-width: 100%; overflow: auto; }
-table { width: 100%; border-collapse: collapse; font-size: 12px; font-variant-numeric: tabular-nums; }
-th { position: sticky; top: 0; z-index: 1; height: 42px; padding: 10px 13px; color: var(--muted); background: color-mix(in srgb, var(--surface-2) 88%, var(--surface)); text-align: left; font-size: 10px; font-weight: 650; letter-spacing: .08em; text-transform: uppercase; }
-td { padding: 13px; border-top: 1px solid var(--border); vertical-align: top; }
+table { width: 100%; border-collapse: collapse; font-size: 13px; line-height: 1.45; font-variant-numeric: tabular-nums; }
+th { position: sticky; top: 0; z-index: 1; height: 44px; padding: 10px 13px; color: var(--muted); background: color-mix(in srgb, var(--surface-2) 88%, var(--surface)); text-align: left; font-size: 11px; font-weight: 600; letter-spacing: .035em; }
+td { padding: 14px 13px; border-top: 1px solid var(--border); vertical-align: top; }
 tr.clickable { cursor: pointer; }
 tr.clickable:hover td { background: color-mix(in srgb, var(--primary-soft) 55%, var(--surface)); }
 td strong { font-weight: 600; }
+.run-name { display: block; font-size: 14px; line-height: 1.35; font-weight: 650; letter-spacing: -.01em; }
+.run-id { margin-top: 4px; font-size: 11px; line-height: 1.35; }
+.numeric { font-variant-numeric: tabular-nums; }
 .status { display: inline-flex; align-items: center; min-height: 20px; padding: 2px 7px; border: 1px solid transparent; border-radius: 999px; font: 700 9px/1 "IBM Plex Mono", "Cascadia Mono", monospace; letter-spacing: .06em; text-transform: uppercase; background: var(--surface-2); }
 .status.success, .status.completed { color: var(--success); border-color: color-mix(in srgb, var(--success) 30%, var(--border)); background: color-mix(in srgb, var(--success) 8%, var(--surface)); }
 .status.error, .status.timeout { color: var(--danger); border-color: color-mix(in srgb, var(--danger) 30%, var(--border)); background: color-mix(in srgb, var(--danger) 8%, var(--surface)); }

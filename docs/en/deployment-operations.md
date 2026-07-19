@@ -33,13 +33,13 @@ pnpm desktop:build:win
 
 `desktop:pack:win` creates a release executable without an installer. `desktop:build:win` writes the NSIS installer to `target/release/bundle/nsis`. The installer is per-user and uses the Microsoft bootstrapper when the Evergreen WebView2 Runtime is missing. The installed application does not contain Node.js, Electron, a Next server, CLI archives, or a `tokscale` sidecar.
 
-Closing the main window hides it to the tray. The tray menu can reopen the window or exit the application. The current implementation has no single-instance lock, so a second instance is rejected when it cannot bind the fixed Collector port.
+Closing the main window hides it to the tray. The tray menu can reopen the window or exit the application. The current implementation has no single-instance lock; another desktop or source instance can reuse a compatible Collector already listening on the fixed port.
 
 ## Ports
 
 | Service | Default | Behavior |
 | --- | --- | --- |
-| Collector | 4319 | Source mode reuses an existing service when `/health` identifies a compatible Agent-Trace Collector and reports other owners clearly. Tauri binds `127.0.0.1:4319` and fails when occupied. |
+| Collector | 4319 | Source and desktop modes reuse an existing service when `/health` identifies a compatible Agent-Trace Collector and report unrelated owners clearly. |
 | Dashboard | 3000 | Used only by the source-mode Next.js Dashboard. The Tauri static UI does not listen on a Dashboard port. |
 
 ## Data locations
@@ -114,4 +114,4 @@ Do not copy only the main database file while the Collector is writing.
 
 Any non-loopback source deployment must add network isolation and access control outside Agent-Trace.
 
-If source mode finds port 4319 occupied by a compatible Agent-Trace Collector, such as the desktop application still running in the tray, it reuses that Collector for the Dashboard and Scanner. It does not silently reuse an unrelated service; stop that service or select another `AGENT_TRACE_SERVER_PORT` instead.
+If either mode finds port 4319 occupied by a compatible Agent-Trace Collector, it reuses that Collector. Source mode then starts only its Next.js Dashboard and scanner; desktop mode starts only its embedded UI and does not open another database or native scanner. If the owning Collector exits, restart the remaining application so it can take ownership. An unrelated service is never reused; stop it or select another `AGENT_TRACE_SERVER_PORT` for source mode.

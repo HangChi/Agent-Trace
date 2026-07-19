@@ -29,6 +29,7 @@ try {
       {
         client: "codex",
         sessionId,
+        title: "Fix the trace",
         model: "gpt-5.5",
         provider: "openai",
         startedAt: "2026-07-12T11:00:00.000Z",
@@ -94,7 +95,7 @@ try {
   const runs = runRows(await json(app.request("/runs?includeUntracked=1")));
   const run = runs.find((item: any) => item.id === `run_codex_${sessionId}`);
   const workBuddyRun = runs.find((item: any) => item.id === `run_workbuddy_${workBuddySessionId}`);
-  if (!run || !workBuddyRun || workBuddyRun.name !== "WorkBuddy session") {
+  if (!run || run.name !== "Fix the trace" || !workBuddyRun || workBuddyRun.name !== "WorkBuddy session") {
     throw new Error("Expected Codex and WorkBuddy transcript-backed usage sessions to become runs.");
   }
 
@@ -143,6 +144,19 @@ try {
       })
     })
   );
+  await json(
+    app.request(`/runs/run_codex_${sessionId}`, {
+      method: "PATCH",
+      headers: { "content-type": "application/json" },
+      body: JSON.stringify({ name: `codex:${sessionId}` })
+    })
+  );
+  await postScan(app, payload);
+  const renamedRun = runRows(await json(app.request("/runs?includeUntracked=1")))
+    .find((item: any) => item.id === `run_codex_${sessionId}`);
+  if (renamedRun?.name !== "Fix the trace") {
+    throw new Error("Expected transcript scan to replace a generated hook Run name.");
+  }
 
   const visible = await json(
     app.request(`/runs/run_codex_${sessionId}/events?visibility=display&page=1&pageSize=100`)

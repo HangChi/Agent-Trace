@@ -97,7 +97,7 @@ pnpm --filter simple-agent dev
 pnpm desktop:dev
 ```
 
-Tauri 进程会启动进程内 Rust Collector、静态 WebView UI 和原生 Usage Scanner；不要同时启动占用 `4319` 的源码 Collector。
+Tauri 进程通常会启动进程内 Rust Collector、静态 WebView UI 和原生 Usage Scanner；如果 `4319` 上已有通过 `/health` 验证的 Agent-Trace Collector，则桌面端会复用它并只启动静态 WebView UI。
 
 ## 根脚本
 

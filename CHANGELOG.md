@@ -26,6 +26,8 @@
 
 ### Fixed
 
+- 桌面端现在会安全复用已运行的源码 Collector，不再因 Web 端占用 4319 而闪退；非 Agent-Trace 端口占用仍会明确失败。
+- Codex 与 Claude Code 历史会话现在使用清理后的首条用户消息作为可读 Run 标题，并只替换系统生成的 ID 名称；Web 与 Tauri 桌面列表的字体和数据排版保持一致。
 - Tauri 原生 Usage Scanner 现在按精确模型价格计算 API 等价成本，并让 Run 读模型保留扫描成本；Windows 托盘始终使用可辨识的应用图标，退出时也不会被 SSE 长连接阻塞。
 - 源码模式现在会验证并复用已运行的 Agent-Trace Collector，避免桌面端仍在托盘时因 4319 端口冲突导致 Web 开发进程崩溃；非兼容占用会返回明确错误。
 - Claude Code Hooks 现在显式选择平台 Shell，采集服务不可用时在 PowerShell、Git Bash 和 POSIX Bash 中均不会阻断 Agent；重新安装会迁移旧的 CMD 风格托管条目。

@@ -239,6 +239,8 @@ try {
     first.transcripts.length !== 3 ||
     first.sessionKeys.join(",") !== `codex:${codexId},claude:${claudeId},workbuddy:${workBuddyId}` ||
     first.clients.join(",") !== "codex,claude,opencode,workbuddy" ||
+    first.transcripts.find((detail) => detail.client === "codex")?.title !== "fix it" ||
+    first.transcripts.find((detail) => detail.client === "claude")?.title !== "real prompt" ||
     second.transcripts.length !== 0 ||
     second.sessionKeys.length !== 3
   ) {
@@ -257,7 +259,8 @@ try {
   const metadata = await collectTranscriptDetails(transcriptHome, rows, "metadata", cache);
   if (
     metadata.transcripts.length !== 3 ||
-    metadata.transcripts.some((detail) => detail.events.some((event) => event.text !== undefined))
+    metadata.transcripts.some((detail) => detail.events.some((event) => event.text !== undefined)) ||
+    metadata.transcripts.some((detail) => ["fix it", "real prompt"].includes(detail.title))
   ) {
     throw new Error("Expected changing to metadata mode to rewrite every transcript without prompt text.");
   }

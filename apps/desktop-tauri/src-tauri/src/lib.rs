@@ -4,7 +4,9 @@ use std::{
     sync::Mutex,
 };
 
-use agent_trace_core::{RunningCollector, merge_compatible_database, start_collector};
+use agent_trace_core::{
+    CollectorRuntime, RunningCollector, merge_compatible_database, start_or_reuse_collector,
+};
 use tauri::{
     Manager,
     menu::{Menu, MenuItem},
@@ -49,26 +51,36 @@ pub fn run() {
                 }
             }
             let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), COLLECTOR_PORT);
-            let collector = tauri::async_runtime::block_on(start_collector(database_path, address))
-                .map_err(|error| format!("Agent-Trace Collector could not start: {error}"))?;
-            let usage_home = app.path().home_dir()?;
-            let usage_collector = collector.collector();
-            let usage_scanner = tauri::async_runtime::spawn(async move {
-                loop {
-                    let collector = usage_collector.clone();
-                    let home = usage_home.clone();
-                    let _ = tauri::async_runtime::spawn_blocking(move || {
-                        if let Err(error) = collector.scan_usage_home(&home) {
-                            tracing::warn!(%error, "native usage scan failed");
+            let runtime =
+                tauri::async_runtime::block_on(start_or_reuse_collector(database_path, address))
+                    .map_err(|error| format!("Agent-Trace Collector could not start: {error}"))?;
+            let (collector, usage_scanner) = match runtime {
+                CollectorRuntime::Owned(collector) => {
+                    let usage_home = app.path().home_dir()?;
+                    let usage_collector = collector.collector();
+                    let usage_scanner = tauri::async_runtime::spawn(async move {
+                        loop {
+                            let collector = usage_collector.clone();
+                            let home = usage_home.clone();
+                            let _ = tauri::async_runtime::spawn_blocking(move || {
+                                if let Err(error) = collector.scan_usage_home(&home) {
+                                    tracing::warn!(%error, "native usage scan failed");
+                                }
+                            })
+                            .await;
+                            tokio::time::sleep(std::time::Duration::from_secs(300)).await;
                         }
-                    })
-                    .await;
-                    tokio::time::sleep(std::time::Duration::from_secs(300)).await;
+                    });
+                    (Some(collector), Some(usage_scanner))
                 }
-            });
+                CollectorRuntime::Reused { address } => {
+                    tracing::info!(%address, "reusing an existing Agent-Trace Collector");
+                    (None, None)
+                }
+            };
             app.manage(DesktopState {
-                collector: Mutex::new(Some(collector)),
-                usage_scanner: Mutex::new(Some(usage_scanner)),
+                collector: Mutex::new(collector),
+                usage_scanner: Mutex::new(usage_scanner),
             });
 
             let open = MenuItem::with_id(app, "open", "Open Agent-Trace", true, None::<&str>)?;

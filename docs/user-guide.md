@@ -329,7 +329,7 @@ node packages/cli/dist/index.js usage --once --sync --home C:\Users\alice
 
 ### 历史内容模式
 
-- `preview`：默认模式。Claude、Codex 和 OpenCode 的用户 Prompt 可保存清理后的最多 240 个字符预览，同时保存 Turn Token、工具名和时间。
+- `preview`：默认模式。Claude、Codex 和 OpenCode 的用户 Prompt 可保存清理后的最多 240 个字符预览，同时保存 Turn Token、工具名和时间；桌面原生扫描器使用最多 80 个字符的首条有效消息作为 Run 标题。
 - `metadata`：不保存 Prompt 文本，只保留时间、Token、工具和会话元数据。
 
 使用纯元数据模式：
@@ -345,7 +345,7 @@ node packages/cli/dist/index.js usage --once \
 | 现象 | 检查与处理 |
 | --- | --- |
 | Dashboard 无法打开 | 源码模式确认 CLI 仍在运行并检查 3000 端口；Tauri 桌面 UI 不使用 Dashboard 端口，需检查应用窗口与 WebView2。 |
-| Collector 启动失败 | 检查 4319 端口。源码模式会复用通过 `/health` 验证的现有 Agent-Trace Collector；其他程序占用时可关闭它或设置 `AGENT_TRACE_SERVER_PORT`。 |
+| Collector 启动失败 | 检查 4319 端口。源码和桌面模式都会复用通过 `/health` 验证的现有 Agent-Trace Collector；其他程序占用时可关闭它，源码模式也可设置 `AGENT_TRACE_SERVER_PORT`。 |
 | 看不到本地历史 | 运行 `usage clients --home <真实用户目录>`，根据 `actionHint` 登录或同步。 |
 | 只看到近期 Hook 事件 | 确认 usage watcher 未被 `AGENT_TRACE_USAGE_SCAN=0` 禁用，并检查 Scanner 状态。 |
 | 某模型显示未定价 | 桌面内置价目、扫描结果与 `AGENT_TRACE_MODEL_PRICES_JSON` 均没有该模型的精确条目。 |

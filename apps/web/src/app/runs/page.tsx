@@ -185,7 +185,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
   const hiddenScannerCount = allScannerDiagnostics.length - scannerDiagnostics.length;
 
   return (
-    <main id="main-content" className="min-h-dvh bg-background text-foreground">
+    <main id="main-content" className="min-h-dvh bg-background font-sans text-foreground">
       <AutoRefresh collectorUrl={collectorUrl} />
       <ConsoleHeader
         locale={locale}
@@ -263,7 +263,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
               <div className="min-w-0">
                 <div className="flex items-center gap-2">
                   <span className="h-4 w-0.5 rounded-full bg-primary" aria-hidden />
-                  <h2 className="text-sm font-semibold tracking-[-0.01em] text-foreground">{text.runs.recent}</h2>
+                  <h2 className="text-[15px] font-semibold leading-5 tracking-[-0.015em] text-foreground">{text.runs.recent}</h2>
                   <span className="inline-flex h-5 min-w-5 items-center justify-center rounded-md border border-border/80 bg-surface-muted px-1.5 text-xs text-muted-foreground tabular-nums">
                     {totalRuns.toLocaleString()}
                   </span>
@@ -271,7 +271,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                     {formatCountLabel(text.runs.perPage, runsPageSize)}
                   </span>
                 </div>
-                <p className="mt-1 text-xs text-muted-foreground">{text.runs.latest}</p>
+                <p className="mt-1 text-[13px] leading-5 text-muted-foreground">{text.runs.latest}</p>
               </div>
               <Button variant="outline" size="sm" asChild>
                 <Link
@@ -330,7 +330,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                   storageKey={runsTableColumnStorageKey}
                 >
                   <Table
-                    className="table-fixed"
+                    className="table-fixed text-[13px] leading-[1.45]"
                     containerClassName="max-h-[72vh] overflow-auto"
                     style={{
                       minWidth: "var(--runs-table-width)",
@@ -408,12 +408,12 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                             <StatusDot status={run.status} />
                             <div className="min-w-0">
                               <Link
-                                className="block break-all text-sm font-semibold text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
+                                className="block break-all text-[15px] font-semibold leading-5 tracking-[-0.012em] text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
                                 href={localizedHref(`/runs/${run.id}`, locale)}
                               >
                                 {run.name}
                               </Link>
-                              <p className="mt-1 break-all font-mono text-[11px] leading-4 text-muted-foreground">
+                              <p className="mt-1 break-all text-[12px] font-normal leading-[1.45] tracking-[0.005em] text-muted-foreground">
                                 {run.id}
                               </p>
                               {run.metadata?.project || run.metadata?.tags?.length ? (
@@ -455,10 +455,10 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                             locale={locale}
                           />
                         </TableCell>
-                        <TableCell className="py-4 align-top text-[13px] text-muted-foreground tabular-nums">
+                        <TableCell className="py-4 align-top text-[13px] leading-5 text-muted-foreground tabular-nums">
                           <div>{formatDateTime(run.startedAt, locale)}</div>
                         </TableCell>
-                        <TableCell className="py-4 text-right align-top text-xs tabular-nums">
+                        <TableCell className="py-4 text-right align-top text-[13px] leading-5 tabular-nums">
                           <div
                             className={cn(
                               "tabular-nums",
@@ -1109,7 +1109,7 @@ function SourceCell({ metadata, locale }: { metadata?: DashboardRunMetadata; loc
     <div>
       <SourceBadge agent={agent} locale={locale} />
       {details.length > 0 ? (
-        <div className="mt-1.5 font-mono text-[11px] leading-4 text-muted-foreground">
+        <div className="mt-1.5 text-[12px] leading-5 text-muted-foreground">
           {details.join(" / ")}
         </div>
       ) : null}
@@ -1125,7 +1125,7 @@ function ModelCell({ summary }: { summary?: DashboardRunSummary }) {
   }
 
   return (
-    <div className="min-w-0 whitespace-normal font-mono text-xs" title={models.join(" / ")}>
+    <div className="min-w-0 whitespace-normal text-[13px] leading-5" title={models.join(" / ")}>
       <div className="truncate font-semibold text-foreground">{models[0]}</div>
       {models.length > 1 ? (
         <div className="mt-1 text-[11px] text-muted-foreground">+{models.length - 1}</div>
@@ -1152,7 +1152,7 @@ function SummaryCell({ summary, locale }: { summary?: DashboardRunSummary; local
         {counts.map((item) => (
           <span
             key={item}
-            className="rounded-md border border-border/80 bg-surface-muted px-1.5 py-0.5 text-[11px] text-muted-foreground"
+            className="rounded-md border border-border/80 bg-surface-muted px-1.5 py-0.5 text-[12px] leading-4 text-muted-foreground"
           >
             {item}
           </span>
@@ -1191,12 +1191,12 @@ function CostCell({
   }
 
   return (
-    <div className="whitespace-normal font-mono text-xs tabular-nums" title={title || undefined}>
-      <div className="font-semibold text-foreground">
-        {cost.estimated ? <span className="mr-1 text-[10px] text-muted-foreground">{text.runs.costEstimated}</span> : null}
-        <span>{formatUsd(cost.usd)}</span>
+    <div className="whitespace-normal text-xs tabular-nums" title={title || undefined}>
+      <div className="text-foreground">
+        {cost.estimated ? <span className="mr-1 text-[11px] font-medium text-muted-foreground">{text.runs.costEstimated}</span> : null}
+        <span className="text-[13px] font-semibold tracking-[-0.01em]">{formatUsd(cost.usd)}</span>
       </div>
-      <div className="text-[11px] text-muted-foreground">
+      <div className="text-[12px] leading-4 text-muted-foreground">
         {cost.cny !== undefined ? formatCny(cost.cny) : text.runs.costUsdOnly}
       </div>
       {cost.unpricedModels.length > 0 ? (
@@ -1228,9 +1228,9 @@ function TokenCell({
   }
 
   return (
-    <div className="whitespace-normal font-mono text-xs tabular-nums" title={getTokenUsageTitle(locale)}>
-      <div className="font-semibold text-foreground">{total.toLocaleString()}</div>
-      <div className="text-[11px] text-muted-foreground">
+    <div className="whitespace-normal text-xs tabular-nums" title={getTokenUsageTitle(locale)}>
+      <div className="text-[13px] font-semibold leading-5 tracking-[-0.01em] text-foreground">{total.toLocaleString()}</div>
+      <div className="text-[12px] leading-[1.45] text-muted-foreground">
         {formatTokenUsageParts(tokenUsage, locale).join(" / ")}
       </div>
       {tokenUsage?.estimated ? (

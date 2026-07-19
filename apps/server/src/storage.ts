@@ -1852,6 +1852,12 @@ export function replaceTranscriptSnapshot(
           })
           .where(eq(runs.id, trace.run.id))
           .run();
+      } else if (hasGeneratedTranscriptName(existingRun.name, trace)) {
+        transaction
+          .update(runs)
+          .set({ name: runValues.name })
+          .where(eq(runs.id, trace.run.id))
+          .run();
       }
 
       const currentEventIds = new Set(trace.events.map((event) => event.id));
@@ -1922,6 +1928,14 @@ export function replaceTranscriptSnapshot(
 
     publishChange("event");
   });
+}
+
+function hasGeneratedTranscriptName(name: string, trace: TranscriptTrace) {
+  const metadata = asRecord(trace.run.metadata);
+  const sessionId = getString(metadata.sessionId);
+  if (!sessionId) return false;
+  const agent = trace.client === "claude" ? "claude-code" : trace.client;
+  return name === `${agent}:${sessionId}` || name === `${trace.client}:${sessionId}`;
 }
 
 function groupUsageBySession(rows: Array<typeof usageSessions.$inferSelect>) {

@@ -15,7 +15,7 @@ CORS only controls browser access. It does not protect non-browser clients and m
 | TypeScript SDK | Caller-provided input/output, errors, latency, metadata | No automatic redaction; omitted data is not inferred |
 | Codex/Claude Hooks | Lifecycle/session IDs, source, working directory, tool/skill/MCP names, shell commands, status, latency, model, controlled payload sizes | Raw user prompts, normal tool payloads/results, files, full final answer, hidden reasoning |
 | Codex OTel | Normalized session, model, tool, command, token, and status metadata | User prompt logging is configured off |
-| Usage Scanner | Client/session/model/provider, tokens, messages, time, cost, diagnostics | Full source logs are not submitted directly |
+| Usage Scanner | Client/session/model/provider, tokens, messages, time, cost, diagnostics; desktop preview mode also stores a cleaned first user message of at most 80 characters as the Run title | Full source logs, complete prompts, and assistant responses are not submitted directly; desktop metadata mode omits the title preview |
 | Transcript preview | Cleaned prompt preview, time, tokens, tools, session metadata | Assistant prose, full tool results, file contents |
 | Transcript metadata | Time, tokens, tools, session metadata | Prompt text |
 
@@ -31,7 +31,7 @@ The SDK serializes values supplied by the caller. Remove credentials, personal d
 
 ## Prompt preview mode
 
-- `preview` (default): stores a cleaned preview up to 240 characters.
+- `preview` (default): source transcript events store a cleaned preview up to 240 characters; the native desktop scanner may also store up to 80 characters as the Run title.
 - `metadata`: stores no prompt text.
 
 ```powershell

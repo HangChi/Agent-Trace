@@ -2814,6 +2814,7 @@ fn upsert_history_run(
 ) -> anyhow::Result<()> {
     let client = string_field(row, "client", "unknown")?;
     let session_id = string_field(row, "sessionId", "usage")?;
+    let title = string_field(row, "title", "")?;
     let already_tracked: bool = transaction.query_row(
         "SELECT EXISTS(
            SELECT 1 FROM runs
@@ -2824,6 +2825,7 @@ fn upsert_history_run(
         |record| record.get(0),
     )?;
     if already_tracked {
+        update_generated_run_name(transaction, client, session_id, title)?;
         return Ok(());
     }
 
@@ -2870,7 +2872,11 @@ fn upsert_history_run(
         }
     });
     let short_session: String = session_id.chars().take(18).collect();
-    let run_name = format!("{client}:{short_session}");
+    let run_name = if title.is_empty() {
+        format!("{client}:{short_session}")
+    } else {
+        title.to_owned()
+    };
     transaction.execute(
         "INSERT INTO runs (id,name,status,started_at,ended_at,input_json,output_json,error,metadata_json)
          VALUES (?1,?2,'success',?3,?4,NULL,NULL,NULL,?5)
@@ -2893,6 +2899,37 @@ fn upsert_history_run(
          ON CONFLICT(id) DO UPDATE SET timestamp=excluded.timestamp,name=excluded.name,
            metadata_json=excluded.metadata_json",
         params![event_id, run_id, format!("{client} session usage"), ended_at, event_metadata.to_string()],
+    )?;
+    Ok(())
+}
+
+fn update_generated_run_name(
+    transaction: &rusqlite::Transaction<'_>,
+    client: &str,
+    session_id: &str,
+    title: &str,
+) -> anyhow::Result<()> {
+    if title.is_empty() {
+        return Ok(());
+    }
+    let agent = if client == "claude" {
+        "claude-code"
+    } else {
+        client
+    };
+    let short_session: String = session_id.chars().take(18).collect();
+    transaction.execute(
+        "UPDATE runs SET name=?1
+         WHERE json_extract(metadata_json, '$.sessionId')=?2
+           AND name IN (?3, ?4, ?5, ?6)",
+        params![
+            title,
+            session_id,
+            format!("{agent}:{session_id}"),
+            format!("{client}:{session_id}"),
+            format!("{agent}:{short_session}"),
+            format!("{client}:{short_session}")
+        ],
     )?;
     Ok(())
 }
@@ -3010,7 +3047,7 @@ mod tests {
     }
 
     #[test]
-    fn native_usage_snapshot_materializes_history_runs_without_prompt_content() {
+    fn native_usage_snapshot_materializes_history_runs_with_a_readable_title() {
         let (_directory, storage) = storage();
         storage
             .replace_usage_snapshot(&json!({
@@ -3021,6 +3058,7 @@ mod tests {
                     "provider": "openai", "inputTokens": 80, "outputTokens": 20,
                     "cacheReadTokens": 10, "cacheWriteTokens": 0, "reasoningTokens": 5,
                     "totalTokens": 110, "costUsd": 0.42, "messageCount": 4,
+                    "title": "Fix collector startup",
                     "startedAt": "2026-01-01T00:00:00.000Z",
                     "lastUsedAt": "2026-01-01T00:05:00.000Z",
                     "prompt": "must not be stored"
@@ -3035,6 +3073,7 @@ mod tests {
             .unwrap();
         assert_eq!(page.runs.len(), 1);
         let run = &page.runs[0];
+        assert_eq!(run.name, "Fix collector startup");
         assert_eq!(run.metadata.as_ref().unwrap()["historyScan"], true);
         assert_eq!(
             run.metadata.as_ref().unwrap()["summary"]["tokenUsage"]["total"],

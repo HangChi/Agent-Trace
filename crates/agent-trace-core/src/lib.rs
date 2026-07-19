@@ -10,7 +10,11 @@ pub use database::{CURRENT_SCHEMA_VERSION, Database, merge_compatible_database};
 use std::{net::SocketAddr, path::PathBuf, time::Duration};
 
 use anyhow::Context;
-use tokio::{net::TcpListener, sync::oneshot};
+use tokio::{
+    io::{AsyncReadExt, AsyncWriteExt},
+    net::{TcpListener, TcpStream},
+    sync::oneshot,
+};
 
 const COLLECTOR_SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(200);
 
@@ -19,6 +23,11 @@ pub struct RunningCollector {
     shutdown: Option<oneshot::Sender<()>>,
     task: tokio::task::JoinHandle<anyhow::Result<()>>,
     collector: Collector,
+}
+
+pub enum CollectorRuntime {
+    Owned(RunningCollector),
+    Reused { address: SocketAddr },
 }
 
 impl RunningCollector {
@@ -69,13 +78,53 @@ pub async fn start_collector(
     })
 }
 
+pub async fn start_or_reuse_collector(
+    database_path: PathBuf,
+    address: SocketAddr,
+) -> anyhow::Result<CollectorRuntime> {
+    if is_compatible_collector(address).await {
+        return Ok(CollectorRuntime::Reused { address });
+    }
+
+    match start_collector(database_path, address).await {
+        Ok(collector) => Ok(CollectorRuntime::Owned(collector)),
+        Err(error) => {
+            if is_compatible_collector(address).await {
+                Ok(CollectorRuntime::Reused { address })
+            } else {
+                Err(error)
+            }
+        }
+    }
+}
+
+async fn is_compatible_collector(address: SocketAddr) -> bool {
+    let Ok(Ok(mut stream)) =
+        tokio::time::timeout(Duration::from_secs(1), TcpStream::connect(address)).await
+    else {
+        return false;
+    };
+    if stream
+        .write_all(b"GET /health HTTP/1.1\r\nHost: localhost\r\nConnection: close\r\n\r\n")
+        .await
+        .is_err()
+    {
+        return false;
+    }
+    let mut response = String::new();
+    if !matches!(
+        tokio::time::timeout(Duration::from_secs(1), stream.read_to_string(&mut response)).await,
+        Ok(Ok(_))
+    ) {
+        return false;
+    }
+    response.starts_with("HTTP/1.1 200 OK")
+        && response.contains(r#""ok":true"#)
+        && response.contains(r#""service":"agent-trace""#)
+}
+
 #[cfg(test)]
 mod tests {
-    use tokio::{
-        io::{AsyncReadExt, AsyncWriteExt},
-        net::TcpStream,
-    };
-
     use super::*;
 
     #[tokio::test]
@@ -129,5 +178,26 @@ mod tests {
             .await
             .expect("collector shutdown must not wait forever for SSE clients")
             .unwrap();
+    }
+
+    #[tokio::test]
+    async fn compatible_collector_is_reused_when_the_desktop_port_is_occupied() {
+        let directory = tempfile::tempdir().unwrap();
+        let collector = start_collector(
+            directory.path().join("web.db"),
+            "127.0.0.1:0".parse().unwrap(),
+        )
+        .await
+        .unwrap();
+        let address = collector.address;
+
+        let runtime = start_or_reuse_collector(directory.path().join("desktop.db"), address)
+            .await
+            .expect("a compatible Agent-Trace collector should be reused");
+        assert!(
+            matches!(runtime, CollectorRuntime::Reused { address: reused } if reused == address)
+        );
+
+        collector.stop().await.unwrap();
     }
 }

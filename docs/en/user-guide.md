@@ -159,7 +159,7 @@ node packages/cli/dist/index.js usage clients --home <path> --json
 
 Prompt content modes:
 
-- `preview` (default): store a cleaned prompt preview of at most 240 characters.
+- `preview` (default): store a cleaned prompt preview of at most 240 characters; the native desktop scanner uses at most 80 characters from the first valid message as the Run title.
 - `metadata`: store timestamps, token counts, tools, and session metadata without prompt text.
 
 For sensitive projects:
@@ -175,7 +175,7 @@ Switching to metadata mode does not remove previews already stored in SQLite.
 
 | Symptom | Check |
 | --- | --- |
-| Collector does not start | Check port 4319. Source mode reuses an existing Collector only when `/health` identifies Agent-Trace; otherwise stop the owner or set `AGENT_TRACE_SERVER_PORT`. |
+| Collector does not start | Check port 4319. Source and desktop modes reuse an existing Collector only when `/health` identifies Agent-Trace; otherwise stop the owner or set `AGENT_TRACE_SERVER_PORT` for source mode. |
 | Dashboard does not load | Port 3000 and `AGENT_TRACE_API_URL`. |
 | Hooks produce no Runs | Collector URL, managed Hook entries, Codex restart, and `examples/agent-hook-smoke.mjs`. |
 | Scanner is stale | `AGENT_TRACE_USAGE_SCAN`, `usage clients`, client sync, and the real user home. |

@@ -74,7 +74,7 @@ pnpm desktop:build:win
 
 | 服务 | 默认 | 行为 |
 | --- | --- | --- |
-| Collector | 4319 | 源码模式会复用通过 `/health` 验证的现有 Agent-Trace Collector；其他占用会明确报错。桌面模式固定绑定该端口，占用时启动失败并提示。 |
+| Collector | 4319 | 源码和桌面模式都会复用通过 `/health` 验证的现有 Agent-Trace Collector；其他占用会明确报错。 |
 | Dashboard | 3000 | 仅源码 Next.js 模式使用；Tauri 静态 UI 不监听端口。 |
 
 源码 Server 默认监听 `127.0.0.1`。Dashboard 使用 `AGENT_TRACE_API_URL` 指向 Collector。
@@ -205,7 +205,7 @@ pnpm desktop:build:win
 
 ### Collector 端口占用
 
-源码模式会请求已有服务的 `/health`：若返回兼容的 Agent-Trace 标识，则复用该 Collector（例如已在托盘运行的桌面端），只启动 Dashboard 和 Scanner；若不是，则明确报错。此时应关闭占用进程或设置其他 `AGENT_TRACE_SERVER_PORT`，并确保 CLI/Hooks/Web 指向相同地址。桌面模式不会复用已有 Collector。
+源码模式和桌面模式都会请求已有服务的 `/health`：若返回兼容的 Agent-Trace 标识，则复用该 Collector；若不是，则明确报错。源码模式复用桌面 Collector 时只启动 Next.js Dashboard 和 Scanner；桌面模式复用源码 Collector 时不会再启动第二个原生 Scanner 或打开另一份数据库，而是直接使用现有 Collector。关闭被复用的 Collector 后，需要重启另一端以接管 4319。其他占用应关闭，或在源码模式设置其他 `AGENT_TRACE_SERVER_PORT` 并确保 CLI/Hooks/Web 指向相同地址。
 
 ### Dashboard 端口占用
 
