@@ -75,6 +75,9 @@ for (const marker of ["eventVisibilityLabel", "dimensionLabel", "periodLabel", "
 }
 assert.ok(tokenTrace.includes('text(locale, "Token 用量", "Token usage")'));
 
+const runsView = dashboard.slice(dashboard.indexOf("export function RunsView"), dashboard.indexOf("export function RunDetailView"));
+assert.doesNotMatch(runsView, /<PageHead\b/, "The runs dashboard must start with summary metrics, without an introductory page header.");
+
 for (const marker of [
   "view=overview&period=",
   "view=calendar&month=",

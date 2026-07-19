@@ -58,7 +58,8 @@ a { color: inherit; text-decoration: none; }
 .at-app { min-height: 100vh; }
 .at-header { position: sticky; z-index: 30; top: 0; display: flex; min-height: 64px; align-items: center; gap: 18px; border-bottom: 1px solid var(--at-border); background: color-mix(in srgb, var(--at-card) 94%, transparent); padding: 0 clamp(16px, 1.5vw, 24px); backdrop-filter: blur(18px); }
 .at-brand { display: flex; align-items: center; gap: 10px; min-width: 174px; }
-.at-logo { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 10px; background: linear-gradient(135deg, var(--at-primary), var(--at-trace)); color: white; box-shadow: 0 5px 14px color-mix(in srgb, var(--at-primary) 25%, transparent); }
+.at-logo { display: grid; width: 36px; height: 36px; place-items: center; border-radius: 10px; box-shadow: 0 5px 14px color-mix(in srgb, #4f46e5 25%, transparent); }
+.at-logo svg { width: 36px; height: 36px; }
 .at-brand strong { display: block; font-size: 14px; }
 .at-brand small { display: block; margin-top: 2px; color: var(--at-muted); font-family: var(--at-mono); font-size: 7px; font-weight: 600; letter-spacing: .22em; }
 .at-nav { display: flex; flex: 1; gap: 6px; }

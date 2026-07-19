@@ -193,6 +193,16 @@ function renderRoute(context: PageContext) {
   return <StatePanel title={tr(context.locale, "页面不存在", "Page not found")} body={path} />;
 }
 
+function BrandIcon() {
+  return <svg aria-hidden="true" viewBox="0 0 64 64">
+    <rect width="64" height="64" rx="15" fill="#4f46e5" />
+    <path d="M15 32h12c7 0 7-12 15-12h7M27 32c7 0 7 12 15 12h7" fill="none" stroke="#fff" strokeWidth="4.5" strokeLinecap="round" strokeLinejoin="round" />
+    <circle cx="15" cy="32" r="4" fill="#c7d2fe" />
+    <circle cx="49" cy="20" r="4" fill="#67e8f9" />
+    <circle cx="49" cy="44" r="4" fill="#fff" />
+  </svg>;
+}
+
 export function DashboardShell(props: {
   autoRefresh: boolean; connected: boolean; locale: DashboardLocale; navigate: DashboardNavigate;
   path: string; routerMode: DashboardRouterMode; themePreference: ThemePreference;
@@ -210,7 +220,7 @@ export function DashboardShell(props: {
   return (
     <header className="at-header">
       <a className="at-brand" href={hrefFor(props.routerMode, "/runs")} onClick={linkClick(props.navigate, "/runs")}>
-        <span className="at-logo"><Workflow size={20} /></span>
+        <span className="at-logo"><BrandIcon /></span>
         <div><strong>Agent-Trace</strong><small>{tr(props.locale, "本地可观测性", "LOCAL OBSERVABILITY")}</small></div>
       </a>
       <nav className="at-nav">
@@ -330,7 +340,6 @@ export function RunsView(context: PageContext) {
   };
   return (
     <>
-      <PageHead locale={locale} eyebrow={tr(locale, "本地 Agent 可观测性", "LOCAL AGENT OBSERVABILITY")} title={tr(locale, "Agent 追踪台", "Agent console")} body={tr(locale, "集中查看 Agent 的命令、工具调用、Skills、MCP 与 Token 消耗，快速还原执行路径。", "Inspect commands, tools, skills, MCP usage, and token costs from one console.")} />
       <TelemetryStrip items={[
         [tr(locale, "全部运行", "All runs"), fmt(data.summary.totalRuns), ""],
         [tr(locale, "Agent 来源", "Agent sources"), fmt(data.summary.agents.length), sources],
