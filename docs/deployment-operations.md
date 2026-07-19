@@ -74,7 +74,7 @@ pnpm desktop:build:win
 
 | 服务 | 默认 | 行为 |
 | --- | --- | --- |
-| Collector | 4319 | 固定使用配置端口；被其他程序占用时桌面启动失败并提示。 |
+| Collector | 4319 | 源码模式会复用通过 `/health` 验证的现有 Agent-Trace Collector；其他占用会明确报错。桌面模式固定绑定该端口，占用时启动失败并提示。 |
 | Dashboard | 3000 | 仅源码 Next.js 模式使用；Tauri 静态 UI 不监听端口。 |
 
 源码 Server 默认监听 `127.0.0.1`。Dashboard 使用 `AGENT_TRACE_API_URL` 指向 Collector。
@@ -127,7 +127,7 @@ pnpm desktop:build:win
 
 | 变量 | 用途 | 默认值 |
 | --- | --- | --- |
-| `AGENT_TRACE_MODEL_PRICES_JSON` | 精确模型价格 JSON | 无 |
+| `AGENT_TRACE_MODEL_PRICES_JSON` | 覆盖或补充内置价目的精确模型价格 JSON | 未设置；桌面仍使用内置价目 |
 | `AGENT_TRACE_USD_CNY_RATE` | 固定 USD/CNY 正数汇率 | 未设置时请求汇率服务 |
 | `AGENT_TRACE_EXCHANGE_RATE_URL` | 汇率服务 URL | `https://open.er-api.com/v6/latest/USD` |
 
@@ -205,7 +205,7 @@ pnpm desktop:build:win
 
 ### Collector 端口占用
 
-确认已有服务是否为 Agent-Trace。若不是，关闭占用进程或设置其他 `AGENT_TRACE_SERVER_PORT`，并确保 CLI/Hooks/Web 指向相同地址。
+源码模式会请求已有服务的 `/health`：若返回兼容的 Agent-Trace 标识，则复用该 Collector（例如已在托盘运行的桌面端），只启动 Dashboard 和 Scanner；若不是，则明确报错。此时应关闭占用进程或设置其他 `AGENT_TRACE_SERVER_PORT`，并确保 CLI/Hooks/Web 指向相同地址。桌面模式不会复用已有 Collector。
 
 ### Dashboard 端口占用
 
@@ -228,4 +228,4 @@ pnpm desktop:build:win
 
 ### 成本未显示
 
-确认扫描行是否含 `costUsd`。否则为模型提供 `AGENT_TRACE_MODEL_PRICES_JSON` 精确条目；系统不会猜测相近模型价格。
+确认扫描行是否含 `costUsd`。桌面原生扫描器会为内置目录中的精确模型计算成本；其他模型可通过 `AGENT_TRACE_MODEL_PRICES_JSON` 提供精确条目。系统不会猜测相近模型价格。

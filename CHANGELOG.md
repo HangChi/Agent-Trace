@@ -26,6 +26,8 @@
 
 ### Fixed
 
+- Tauri 原生 Usage Scanner 现在按精确模型价格计算 API 等价成本，并让 Run 读模型保留扫描成本；Windows 托盘始终使用可辨识的应用图标，退出时也不会被 SSE 长连接阻塞。
+- 源码模式现在会验证并复用已运行的 Agent-Trace Collector，避免桌面端仍在托盘时因 4319 端口冲突导致 Web 开发进程崩溃；非兼容占用会返回明确错误。
 - Claude Code Hooks 现在显式选择平台 Shell，采集服务不可用时在 PowerShell、Git Bash 和 POSIX Bash 中均不会阻断 Agent；重新安装会迁移旧的 CMD 风格托管条目。
 - Codex 活跃/归档历史协调、Token 重复计算和 Scanner 启动可靠性。
 - 异常父子关系下的 Trace Tree 保留、诊断定位和跨分页导航。

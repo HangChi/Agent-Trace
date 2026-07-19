@@ -1,16 +1,22 @@
 use std::{
+    collections::HashMap,
     fs::{self, File},
     io::{BufRead, BufReader},
     path::{Path, PathBuf},
 };
 
 use chrono::{SecondsFormat, Utc};
+use serde::Deserialize;
 use serde_json::{Value, json};
 
 const MAX_FILES: usize = 5_000;
 const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
 
 pub(crate) fn scan(home: &Path) -> Value {
+    scan_with_pricing(home, PricingCatalog::load())
+}
+
+fn scan_with_pricing(home: &Path, pricing: PricingCatalog) -> Value {
     let scanned_at = Utc::now().to_rfc3339_opts(SecondsFormat::Millis, true);
     let mut rows = Vec::new();
     let mut diagnostics = Vec::new();
@@ -23,7 +29,11 @@ pub(crate) fn scan(home: &Path) -> Value {
     let codex_files = jsonl_files(&codex_roots);
     if codex_roots.iter().any(|root| root.is_dir()) {
         reconciled.push(json!("codex"));
-        rows.extend(codex_files.iter().filter_map(|path| scan_codex(path)));
+        rows.extend(
+            codex_files
+                .iter()
+                .filter_map(|path| scan_codex(path, &pricing)),
+        );
         diagnostics.push(json!({
             "client": "codex", "available": true, "source": "native-rust",
             "files": codex_files.len(), "actionHint": null,
@@ -39,7 +49,11 @@ pub(crate) fn scan(home: &Path) -> Value {
     let claude_files = jsonl_files(&claude_roots);
     if claude_roots.iter().any(|root| root.is_dir()) {
         reconciled.push(json!("claude"));
-        rows.extend(claude_files.iter().filter_map(|path| scan_claude(path)));
+        rows.extend(
+            claude_files
+                .iter()
+                .filter_map(|path| scan_claude(path, &pricing)),
+        );
         diagnostics.push(json!({
             "client": "claude", "available": true, "source": "native-rust",
             "files": claude_files.len(), "actionHint": null,
@@ -55,6 +69,127 @@ pub(crate) fn scan(home: &Path) -> Value {
         "source": "native-rust", "scannedAt": scanned_at, "rows": rows,
         "reconciledClients": reconciled, "diagnostics": diagnostics,
     })
+}
+
+#[derive(Clone, Deserialize)]
+#[serde(rename_all = "camelCase")]
+struct ModelPricing {
+    provider: String,
+    input: f64,
+    output: f64,
+    cached_input: Option<f64>,
+    cache_write_5m: Option<f64>,
+    cache_read: Option<f64>,
+}
+
+impl ModelPricing {
+    fn new(
+        provider: &str,
+        input: f64,
+        output: f64,
+        cached_input: Option<f64>,
+        cache_write_5m: Option<f64>,
+    ) -> Self {
+        Self {
+            provider: provider.to_owned(),
+            input,
+            output,
+            cached_input,
+            cache_write_5m,
+            cache_read: None,
+        }
+    }
+
+    fn is_valid(&self) -> bool {
+        !self.provider.is_empty()
+            && [
+                Some(self.input),
+                Some(self.output),
+                self.cached_input,
+                self.cache_write_5m,
+                self.cache_read,
+            ]
+            .into_iter()
+            .flatten()
+            .all(|value| value.is_finite() && value >= 0.0)
+    }
+
+    fn cost_usd(&self, usage: &Usage) -> f64 {
+        let cache_read_rate = self.cache_read.or(self.cached_input).unwrap_or(self.input);
+        let cost = if self.provider == "anthropic" {
+            usage.input as f64 * self.input
+                + usage.output as f64 * self.output
+                + usage.cache_read as f64 * cache_read_rate
+                + usage.cache_write as f64 * self.cache_write_5m.unwrap_or(self.input)
+        } else {
+            (usage.input + usage.cache_write) as f64 * self.input
+                + usage.output as f64 * self.output
+                + usage.cache_read as f64 * cache_read_rate
+        };
+
+        cost / 1_000_000.0
+    }
+}
+
+struct PricingCatalog(HashMap<String, ModelPricing>);
+
+impl PricingCatalog {
+    fn load() -> Self {
+        let mut catalog = Self::built_in();
+        let configured = std::env::var("AGENT_TRACE_MODEL_PRICES_JSON")
+            .or_else(|_| std::env::var("TOOLTRACE_MODEL_PRICES_JSON"));
+        if let Ok(value) = configured {
+            catalog.apply_overrides(&value);
+        }
+        catalog
+    }
+
+    fn apply_overrides(&mut self, value: &str) {
+        if let Ok(overrides) = serde_json::from_str::<HashMap<String, ModelPricing>>(value) {
+            for (model, pricing) in overrides {
+                if pricing.is_valid() {
+                    self.0.insert(normalize_model(&model), pricing);
+                }
+            }
+        }
+    }
+
+    fn built_in() -> Self {
+        let mut prices = HashMap::new();
+        prices.insert(
+            "gpt-5.6-sol".to_owned(),
+            ModelPricing::new("openai", 5.0, 30.0, Some(0.5), Some(6.25)),
+        );
+        prices.insert(
+            "gpt-5.5".to_owned(),
+            ModelPricing::new("openai", 5.0, 30.0, Some(0.5), None),
+        );
+        prices.insert(
+            "gpt-5".to_owned(),
+            ModelPricing::new("openai", 1.25, 10.0, Some(0.125), None),
+        );
+        prices.insert(
+            "codex-auto-review".to_owned(),
+            ModelPricing::new("openai", 0.25, 2.0, Some(0.025), None),
+        );
+        prices.insert(
+            "claude-opus-4-8".to_owned(),
+            ModelPricing::new("anthropic", 5.0, 25.0, Some(0.5), Some(6.25)),
+        );
+        prices.insert(
+            "deepseek-v4-pro".to_owned(),
+            ModelPricing::new("deepseek", 0.435, 0.87, Some(0.003_625), Some(0.0)),
+        );
+        Self(prices)
+    }
+
+    fn get(&self, model: &str) -> Option<&ModelPricing> {
+        self.0.get(&normalize_model(model))
+    }
+}
+
+fn normalize_model(model: &str) -> String {
+    model.trim().to_lowercase()
 }
 
 fn jsonl_files(roots: &[PathBuf]) -> Vec<PathBuf> {
@@ -108,7 +243,7 @@ impl Usage {
     }
 }
 
-fn scan_codex(path: &Path) -> Option<Value> {
+fn scan_codex(path: &Path, pricing: &PricingCatalog) -> Option<Value> {
     let mut latest_usage = Usage::default();
     let mut model = String::new();
     let mut first = None::<String>;
@@ -132,17 +267,17 @@ fn scan_codex(path: &Path) -> Option<Value> {
         }
     }
     usage_row(
-        "codex",
+        ("codex", "openai"),
         path,
         model,
-        "openai",
         latest_usage,
         messages,
         (first, last),
+        pricing,
     )
 }
 
-fn scan_claude(path: &Path) -> Option<Value> {
+fn scan_claude(path: &Path, pricing: &PricingCatalog) -> Option<Value> {
     let mut usage = Usage::default();
     let mut model = String::new();
     let mut first = None::<String>;
@@ -161,38 +296,43 @@ fn scan_claude(path: &Path) -> Option<Value> {
         }
     }
     usage_row(
-        "claude",
+        ("claude", "anthropic"),
         path,
         model,
-        "anthropic",
         usage,
         messages,
         (first, last),
+        pricing,
     )
 }
 
 fn usage_row(
-    client: &str,
+    source: (&str, &str),
     path: &Path,
     model: String,
-    provider: &str,
     usage: Usage,
     messages: i64,
     timestamps: (Option<String>, Option<String>),
+    pricing: &PricingCatalog,
 ) -> Option<Value> {
     let total = usage.total();
     if total <= 0 {
         return None;
     }
-    Some(json!({
-        "client": client,
+    let cost = pricing.get(&model).map(|price| price.cost_usd(&usage));
+    let mut row = json!({
+        "client": source.0,
         "sessionId": path.file_stem().and_then(|value| value.to_str()).unwrap_or("usage"),
-        "model": model, "provider": provider,
+        "model": model, "provider": source.1,
         "inputTokens": usage.input, "outputTokens": usage.output,
         "cacheReadTokens": usage.cache_read, "cacheWriteTokens": usage.cache_write,
         "reasoningTokens": usage.reasoning, "totalTokens": total,
         "messageCount": messages, "startedAt": timestamps.0, "lastUsedAt": timestamps.1,
-    }))
+    });
+    if let Some(cost) = cost {
+        row["costUsd"] = json!(cost);
+    }
+    Some(row)
 }
 
 fn json_lines(path: &Path) -> impl Iterator<Item = Value> {
@@ -315,7 +455,7 @@ mod tests {
             "{}",
             json!({
                 "timestamp": "2026-01-01T00:00:00Z", "secret": "do not store",
-                "payload": { "model": "gpt-5", "total_token_usage": {
+                "payload": { "model": "gpt-5.6-sol", "total_token_usage": {
                     "input_tokens": 80, "output_tokens": 20, "cached_input_tokens": 10
                 }}
             })
@@ -332,9 +472,55 @@ mod tests {
             })
         )
         .unwrap();
-        let result = scan(directory.path());
+        let result = scan_with_pricing(directory.path(), PricingCatalog::built_in());
         assert_eq!(result["rows"].as_array().unwrap().len(), 2);
         assert_eq!(result["rows"][0]["totalTokens"], 110);
+        assert_close(result["rows"][0]["costUsd"].as_f64(), 0.001_005);
         assert!(!result.to_string().contains("do not store"));
+    }
+
+    #[test]
+    fn matches_web_scan_pricing_without_double_counting_reasoning() {
+        let usage = Usage {
+            input: 749_641,
+            output: 106_336,
+            cache_read: 43_577_088,
+            cache_write: 0,
+            reasoning: 39_514,
+        };
+        let catalog = PricingCatalog::built_in();
+
+        assert_close(
+            catalog
+                .get("gpt-5.6-sol")
+                .map(|pricing| pricing.cost_usd(&usage)),
+            28.726_829,
+        );
+    }
+
+    #[test]
+    fn configured_exact_price_overrides_the_built_in_catalog() {
+        let mut catalog = PricingCatalog::built_in();
+        catalog.apply_overrides(
+            r#"{"gpt-5.6-sol":{"provider":"openai","input":2,"output":4,"cachedInput":1,"cacheWrite5m":9}}"#,
+        );
+        let usage = Usage {
+            input: 100,
+            output: 20,
+            cache_read: 60,
+            cache_write: 40,
+            ..Usage::default()
+        };
+
+        assert_close(
+            catalog
+                .get("GPT-5.6-SOL")
+                .map(|pricing| pricing.cost_usd(&usage)),
+            0.000_42,
+        );
+    }
+
+    fn assert_close(actual: Option<f64>, expected: f64) {
+        assert!(actual.is_some_and(|value| (value - expected).abs() < 0.000_000_1));
     }
 }

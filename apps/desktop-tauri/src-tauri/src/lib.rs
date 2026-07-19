@@ -74,7 +74,7 @@ pub fn run() {
             let open = MenuItem::with_id(app, "open", "Open Agent-Trace", true, None::<&str>)?;
             let quit = MenuItem::with_id(app, "quit", "Exit Agent-Trace", true, None::<&str>)?;
             let menu = Menu::with_items(app, &[&open, &quit])?;
-            TrayIconBuilder::new()
+            let mut tray = TrayIconBuilder::new()
                 .menu(&menu)
                 .show_menu_on_left_click(false)
                 .on_menu_event(|app, event| match event.id.as_ref() {
@@ -93,8 +93,11 @@ pub fn run() {
                     ) {
                         show_main_window(tray.app_handle());
                     }
-                })
-                .build(app)?;
+                });
+            if let Some(icon) = app.default_window_icon() {
+                tray = tray.icon(icon.clone());
+            }
+            tray.build(app)?;
             Ok(())
         })
         .on_window_event(|window, event| {

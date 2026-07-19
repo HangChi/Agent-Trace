@@ -54,7 +54,7 @@ Set a positive `AGENT_TRACE_USD_CNY_RATE` to disable exchange-rate requests.
 
 ## Cost interpretation
 
-`official`, `scan`, and `estimate` identify the usage source. Displayed cost is an API-equivalent estimate and is not a subscription invoice or proof of billing.
+`official`, `scan`, and `estimate` identify the usage source. The native desktop scanner uses a version-pinned exact model catalog; `AGENT_TRACE_MODEL_PRICES_JSON` can override or add exact model names without fuzzy matching. Displayed cost is an API-equivalent estimate and is not a subscription invoice or proof of billing.
 
 ## Deletion and retention
 

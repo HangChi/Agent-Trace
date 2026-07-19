@@ -1,3 +1,7 @@
 import { startCollector } from "./start.js";
 
-startCollector();
+const collector = await startCollector();
+
+if (collector === null) {
+  setInterval(() => undefined, 60_000);
+}

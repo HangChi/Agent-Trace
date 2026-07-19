@@ -79,7 +79,7 @@ $env:AGENT_TRACE_USD_CNY_RATE = "7.20"
 - `estimate` 表示缺少官方数据时的本地估算。
 - Reasoning Token 作为 output 的明细展示，不会在派生总量时重复相加。
 - Scanner 提供的正数 `costUsd` 优先。
-- 缺少扫描成本时，只对 `AGENT_TRACE_MODEL_PRICES_JSON` 中精确匹配的模型计算成本。
+- 缺少扫描成本时，桌面原生扫描器使用版本固定的内置精确价格；`AGENT_TRACE_MODEL_PRICES_JSON` 可按精确模型名覆盖或补充，系统不做模糊匹配。
 
 所有成本均为 API 等价估算，不表示订阅产品实际产生了额外扣费。
 

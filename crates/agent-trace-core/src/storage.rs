@@ -2884,7 +2884,8 @@ fn upsert_history_run(
     let event_metadata = json!({
         "category": "model", "agent": client, "source": "history-scan",
         "sessionId": session_id, "model": model, "provider": provider,
-        "messageCount": messages, "tokenUsage": token_usage
+        "messageCount": messages, "tokenUsage": token_usage,
+        "costUsd": row.get("costUsd").and_then(Value::as_f64).unwrap_or(0.0)
     });
     transaction.execute(
         "INSERT INTO events (id,run_id,parent_id,type,name,status,timestamp,duration_ms,input_json,output_json,error_json,metadata_json)
@@ -3019,7 +3020,7 @@ mod tests {
                     "client": "codex", "sessionId": "session-1", "model": "gpt-5",
                     "provider": "openai", "inputTokens": 80, "outputTokens": 20,
                     "cacheReadTokens": 10, "cacheWriteTokens": 0, "reasoningTokens": 5,
-                    "totalTokens": 110, "messageCount": 4,
+                    "totalTokens": 110, "costUsd": 0.42, "messageCount": 4,
                     "startedAt": "2026-01-01T00:00:00.000Z",
                     "lastUsedAt": "2026-01-01T00:05:00.000Z",
                     "prompt": "must not be stored"
@@ -3039,6 +3040,7 @@ mod tests {
             run.metadata.as_ref().unwrap()["summary"]["tokenUsage"]["total"],
             110
         );
+        assert_eq!(run.metadata.as_ref().unwrap()["summary"]["costUsd"], 0.42);
         assert!(
             !serde_json::to_string(run)
                 .unwrap()

@@ -39,7 +39,7 @@ Closing the main window hides it to the tray. The tray menu can reopen the windo
 
 | Service | Default | Behavior |
 | --- | --- | --- |
-| Collector | 4319 | Source mode can configure it; the Tauri desktop binds `127.0.0.1:4319` and fails clearly when the port is occupied. |
+| Collector | 4319 | Source mode reuses an existing service when `/health` identifies a compatible Agent-Trace Collector and reports other owners clearly. Tauri binds `127.0.0.1:4319` and fails when occupied. |
 | Dashboard | 3000 | Used only by the source-mode Next.js Dashboard. The Tauri static UI does not listen on a Dashboard port. |
 
 ## Data locations
@@ -113,3 +113,5 @@ Do not copy only the main database file while the Collector is writing.
 - Run list: SDK/Hook/OTel ingestion and read-model behavior.
 
 Any non-loopback source deployment must add network isolation and access control outside Agent-Trace.
+
+If source mode finds port 4319 occupied by a compatible Agent-Trace Collector, such as the desktop application still running in the tray, it reuses that Collector for the Dashboard and Scanner. It does not silently reuse an unrelated service; stop that service or select another `AGENT_TRACE_SERVER_PORT` instead.

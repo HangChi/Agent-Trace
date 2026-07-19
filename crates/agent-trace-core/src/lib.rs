@@ -7,10 +7,12 @@ mod usage_scanner;
 pub use api::{Collector, CollectorOptions};
 pub use database::{CURRENT_SCHEMA_VERSION, Database, merge_compatible_database};
 
-use std::{net::SocketAddr, path::PathBuf};
+use std::{net::SocketAddr, path::PathBuf, time::Duration};
 
 use anyhow::Context;
 use tokio::{net::TcpListener, sync::oneshot};
+
+const COLLECTOR_SHUTDOWN_TIMEOUT: Duration = Duration::from_millis(200);
 
 pub struct RunningCollector {
     pub address: SocketAddr,
@@ -28,7 +30,14 @@ impl RunningCollector {
         if let Some(shutdown) = self.shutdown.take() {
             let _ = shutdown.send(());
         }
-        self.task.await.context("collector task failed")?
+        match tokio::time::timeout(COLLECTOR_SHUTDOWN_TIMEOUT, &mut self.task).await {
+            Ok(result) => result.context("collector task failed")?,
+            Err(_) => {
+                self.task.abort();
+                let _ = self.task.await;
+                Ok(())
+            }
+        }
     }
 }
 
@@ -88,5 +97,37 @@ mod tests {
         assert!(response.starts_with("HTTP/1.1 200 OK"));
         assert!(response.contains(r#"{"ok":true,"service":"agent-trace"}"#));
         collector.stop().await.unwrap();
+    }
+
+    #[tokio::test]
+    async fn running_collector_stops_with_an_open_sse_client() {
+        let directory = tempfile::tempdir().unwrap();
+        let collector = start_collector(
+            directory.path().join("agent-trace.db"),
+            "127.0.0.1:0".parse().unwrap(),
+        )
+        .await
+        .unwrap();
+        let mut stream = TcpStream::connect(collector.address).await.unwrap();
+        stream
+            .write_all(
+                b"GET /changes HTTP/1.1\r\nHost: localhost\r\nConnection: keep-alive\r\n\r\n",
+            )
+            .await
+            .unwrap();
+        let mut response = [0_u8; 512];
+        let received = tokio::time::timeout(
+            std::time::Duration::from_secs(1),
+            stream.read(&mut response),
+        )
+        .await
+        .unwrap()
+        .unwrap();
+        assert!(received > 0);
+
+        tokio::time::timeout(std::time::Duration::from_millis(500), collector.stop())
+            .await
+            .expect("collector shutdown must not wait forever for SSE clients")
+            .unwrap();
     }
 }

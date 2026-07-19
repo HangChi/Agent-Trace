@@ -1,6 +1,7 @@
 import assert from "node:assert/strict";
 import { once } from "node:events";
 import { rmSync } from "node:fs";
+import { createServer } from "node:http";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 
@@ -59,7 +60,7 @@ try {
     startedAt: new Date(Date.now() - 31 * 60_000).toISOString()
   });
   let reconciliationCalls = 0;
-  const server = (startCollector as unknown as (
+  const server = await (startCollector as unknown as (
     port: number,
     dependencies: {
       reconcileStaleRuns: () => Promise<number>;
@@ -82,14 +83,20 @@ try {
       reconciliationTimerCleared = true;
     }
   });
+  if (server === null) throw new Error("Expected a newly started Collector.");
 
   try {
-    await once(server, "listening");
     const address = server.address();
 
     assert.notEqual(address, null);
     assert.equal(typeof address === "string" ? address : address?.address, "127.0.0.1");
-    assert.ok(logMessages.some((message) => message.includes("http://127.0.0.1:0")));
+    assert.ok(
+      logMessages.some((message) =>
+        message.includes(
+          `http://127.0.0.1:${typeof address === "string" ? 0 : address?.port}`
+        )
+      )
+    );
     assert.ok(reconciliationCallback, "expected a 60-second stale-run reconciliation callback");
     await waitFor(() => {
       const row = db.$client
@@ -116,6 +123,40 @@ try {
     });
   }
   assert.equal(reconciliationTimerCleared, true);
+
+  let existingService = "agent-trace";
+  const existingCollector = createServer((request, response) => {
+    if (request.url === "/health") {
+      response.writeHead(200, { "content-type": "application/json" });
+      response.end(JSON.stringify({ ok: true, service: existingService }));
+      return;
+    }
+
+    response.writeHead(404);
+    response.end();
+  });
+  existingCollector.listen(0, "127.0.0.1");
+  await once(existingCollector, "listening");
+
+  try {
+    const address = existingCollector.address();
+    assert.notEqual(address, null);
+    assert.notEqual(typeof address, "string");
+    const reusedCollector = await startCollector(
+      typeof address === "string" ? 0 : address?.port
+    );
+    assert.equal(reusedCollector, null);
+
+    existingService = "another-service";
+    await assert.rejects(
+      () => startCollector(typeof address === "string" ? 0 : address?.port),
+      /is already used by another application/
+    );
+  } finally {
+    await new Promise<void>((resolve, reject) => {
+      existingCollector.close((error) => (error ? reject(error) : resolve()));
+    });
+  }
 } finally {
   db.$client.close();
   rmSync(databasePath, { force: true });
