@@ -29,7 +29,11 @@ Windows 桌面交付已改为 Tauri + 全 Rust 后端。这个重构只替换桌
 - Codex：`~/.codex/sessions` 与 `~/.codex/archived_sessions`。
 - Claude Code：`~/.claude/projects`。
 
-扫描器只持久化客户端、会话 ID、模型、provider、Token 分类、消息数和时间。它不保存 JSONL 中的 Prompt、响应正文或其他任意字段。单文件上限为 16 MiB，单次最多检查 5000 个 JSONL 文件。
+扫描器只持久化客户端、会话 ID、模型、provider、Token 分类、消息数和时间。每个会话会以稳定 ID 增量物化为一个历史 Run 和摘要 Event，因此全新安装后无需旧数据库也能看到本机记录并生成趋势；已由 Hook/OTLP 跟踪的同一会话会优先保留，不创建重复历史 Run。它不保存 JSONL 中的 Prompt、响应正文或其他任意字段。单文件上限为 16 MiB，单次最多检查 5000 个 JSONL 文件。
+
+## 旧桌面数据兼容
+
+升级用户启动 Tauri 版本时会检查旧 Electron 的 `%APPDATA%/Agent-Trace/agent-trace.db` 等标准数据目录，并将兼容的 schema v7 数据以 `INSERT OR IGNORE` 合并到新桌面库。现有桌面记录和旧库文件均不会被覆盖或删除。源码模式使用自定义数据库位置时，可在首次启动前设置 `AGENT_TRACE_LEGACY_DB_PATH` 指向旧库；这项兼容迁移只服务升级用户，新安装用户的数据来源仍是原生历史扫描与后续 Hook/OTLP 采集。
 
 源码模式仍使用 `tokscale`，因此 Cursor、OpenCode 等扩展客户端的聚合和价格计算暂时属于源码版能力；桌面原生扫描器当前聚焦 Codex 与 Claude Code，并把来源标记为 `native-rust`。
 

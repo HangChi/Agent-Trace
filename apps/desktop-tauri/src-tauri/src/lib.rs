@@ -1,9 +1,10 @@
 use std::{
     net::{IpAddr, Ipv4Addr, SocketAddr},
+    path::{Path, PathBuf},
     sync::Mutex,
 };
 
-use agent_trace_core::{RunningCollector, start_collector};
+use agent_trace_core::{RunningCollector, merge_compatible_database, start_collector};
 use tauri::{
     Manager,
     menu::{Menu, MenuItem},
@@ -32,6 +33,21 @@ pub fn run() {
             let database_path = std::env::var_os("AGENT_TRACE_DB_PATH")
                 .map(std::path::PathBuf::from)
                 .unwrap_or(app.path().app_data_dir()?.join("agent-trace.db"));
+            for legacy_path in legacy_database_candidates(&database_path) {
+                match merge_compatible_database(&database_path, &legacy_path) {
+                    Ok(imported) if imported > 0 => tracing::info!(
+                        imported,
+                        source = %legacy_path.display(),
+                        "legacy Agent-Trace data imported"
+                    ),
+                    Ok(_) => {}
+                    Err(error) => tracing::warn!(
+                        %error,
+                        source = %legacy_path.display(),
+                        "legacy Agent-Trace data import skipped"
+                    ),
+                }
+            }
             let address = SocketAddr::new(IpAddr::V4(Ipv4Addr::LOCALHOST), COLLECTOR_PORT);
             let collector = tauri::async_runtime::block_on(start_collector(database_path, address))
                 .map_err(|error| format!("Agent-Trace Collector could not start: {error}"))?;
@@ -105,6 +121,30 @@ pub fn run() {
                 }
             }
         });
+}
+
+fn legacy_database_candidates(destination: &Path) -> Vec<PathBuf> {
+    let mut candidates = Vec::new();
+    if let Some(configured) = std::env::var_os("AGENT_TRACE_LEGACY_DB_PATH") {
+        candidates.push(PathBuf::from(configured));
+    }
+    for variable in ["APPDATA", "LOCALAPPDATA"] {
+        if let Some(root) = std::env::var_os(variable).map(PathBuf::from) {
+            for directory in ["Agent-Trace", "agent-trace", "dev.agent-trace.desktop"] {
+                candidates.push(root.join(directory).join("agent-trace.db"));
+            }
+        }
+    }
+    if let Ok(current) = std::env::current_dir() {
+        for root in current.ancestors().take(6) {
+            candidates.push(root.join("apps/server/agent-trace.db"));
+            candidates.push(root.join("agent-trace.db"));
+        }
+    }
+    candidates.sort();
+    candidates.dedup();
+    candidates.retain(|path| path.is_file() && path != destination);
+    candidates
 }
 
 fn show_main_window(app: &tauri::AppHandle) {

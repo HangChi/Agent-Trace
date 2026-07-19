@@ -1424,6 +1424,7 @@ impl Storage {
                     row.get("lastUsedAt").and_then(Value::as_str), scanned_at
                 ],
             )?;
+            upsert_history_run(&transaction, row, scanned_at)?;
             stored += 1;
         }
         transaction.execute(
@@ -2806,6 +2807,104 @@ fn int_field(value: &Value, key: &str) -> i64 {
     value.get(key).and_then(Value::as_i64).unwrap_or(0)
 }
 
+fn upsert_history_run(
+    transaction: &rusqlite::Transaction<'_>,
+    row: &Value,
+    scanned_at: &str,
+) -> anyhow::Result<()> {
+    let client = string_field(row, "client", "unknown")?;
+    let session_id = string_field(row, "sessionId", "usage")?;
+    let already_tracked: bool = transaction.query_row(
+        "SELECT EXISTS(
+           SELECT 1 FROM runs
+           WHERE json_extract(metadata_json, '$.sessionId') = ?1
+             AND coalesce(json_extract(metadata_json, '$.historyScan'), 0) != 1
+         )",
+        [session_id],
+        |record| record.get(0),
+    )?;
+    if already_tracked {
+        return Ok(());
+    }
+
+    let run_id = history_identifier("run", client, session_id);
+    let tombstoned: bool = transaction.query_row(
+        "SELECT EXISTS(SELECT 1 FROM run_tombstones WHERE run_id = ?1)",
+        [&run_id],
+        |record| record.get(0),
+    )?;
+    if tombstoned {
+        return Ok(());
+    }
+
+    let started_at = row
+        .get("startedAt")
+        .and_then(Value::as_str)
+        .or_else(|| row.get("lastUsedAt").and_then(Value::as_str))
+        .unwrap_or(scanned_at);
+    let ended_at = row
+        .get("lastUsedAt")
+        .and_then(Value::as_str)
+        .unwrap_or(started_at);
+    let model = string_field(row, "model", "")?;
+    let provider = string_field(row, "provider", "")?;
+    let input = int_field(row, "inputTokens");
+    let output = int_field(row, "outputTokens");
+    let cache_read = int_field(row, "cacheReadTokens");
+    let cache_write = int_field(row, "cacheWriteTokens");
+    let reasoning = int_field(row, "reasoningTokens");
+    let total = int_field(row, "totalTokens");
+    let messages = int_field(row, "messageCount");
+    let token_usage = json!({
+        "input": input, "output": output, "cacheRead": cache_read,
+        "cacheWrite": cache_write, "reasoning": reasoning, "total": total,
+        "source": "native-history-scan"
+    });
+    let metadata = json!({
+        "agent": client, "source": "history-scan", "historyScan": true,
+        "sessionId": session_id, "model": model, "provider": provider,
+        "summary": {
+            "eventCount": 1, "messageCount": messages, "failedEventCount": 0,
+            "tokenUsage": token_usage, "costUsd": row.get("costUsd").and_then(Value::as_f64).unwrap_or(0.0),
+            "models": if model.is_empty() { Vec::<String>::new() } else { vec![model.to_owned()] }
+        }
+    });
+    let short_session: String = session_id.chars().take(18).collect();
+    let run_name = format!("{client}:{short_session}");
+    transaction.execute(
+        "INSERT INTO runs (id,name,status,started_at,ended_at,input_json,output_json,error,metadata_json)
+         VALUES (?1,?2,'success',?3,?4,NULL,NULL,NULL,?5)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name,status='success',
+           started_at=excluded.started_at,ended_at=excluded.ended_at,
+           metadata_json=json_patch(coalesce(runs.metadata_json,'{}'), excluded.metadata_json)",
+        params![run_id, run_name, started_at, ended_at, metadata.to_string()],
+    )?;
+
+    let event_id = history_identifier("event", client, session_id);
+    let event_metadata = json!({
+        "category": "model", "agent": client, "source": "history-scan",
+        "sessionId": session_id, "model": model, "provider": provider,
+        "messageCount": messages, "tokenUsage": token_usage
+    });
+    transaction.execute(
+        "INSERT INTO events (id,run_id,parent_id,type,name,status,timestamp,duration_ms,input_json,output_json,error_json,metadata_json)
+         VALUES (?1,?2,NULL,'model_call',?3,'success',?4,NULL,NULL,NULL,NULL,?5)
+         ON CONFLICT(id) DO UPDATE SET timestamp=excluded.timestamp,name=excluded.name,
+           metadata_json=excluded.metadata_json",
+        params![event_id, run_id, format!("{client} session usage"), ended_at, event_metadata.to_string()],
+    )?;
+    Ok(())
+}
+
+fn history_identifier(kind: &str, client: &str, session_id: &str) -> String {
+    let mut hash = 0xcbf29ce484222325_u64;
+    for byte in client.bytes().chain([0]).chain(session_id.bytes()) {
+        hash ^= u64::from(byte);
+        hash = hash.wrapping_mul(0x100000001b3);
+    }
+    format!("history_{kind}_{client}_{hash:016x}")
+}
+
 fn analytics_dimension_expression(dimension: &str) -> anyhow::Result<&'static str> {
     Ok(match dimension {
         "project" => "coalesce(json_extract(runs.metadata_json,'$.project'),'unassigned')",
@@ -2907,5 +3006,43 @@ mod tests {
         assert!(!storage.create_run(create()).unwrap());
         assert!(storage.restore_tombstone("run-1").unwrap());
         assert!(storage.create_run(create()).unwrap());
+    }
+
+    #[test]
+    fn native_usage_snapshot_materializes_history_runs_without_prompt_content() {
+        let (_directory, storage) = storage();
+        storage
+            .replace_usage_snapshot(&json!({
+                "scannedAt": "2026-01-02T00:00:00.000Z",
+                "reconciledClients": ["codex"], "diagnostics": [],
+                "rows": [{
+                    "client": "codex", "sessionId": "session-1", "model": "gpt-5",
+                    "provider": "openai", "inputTokens": 80, "outputTokens": 20,
+                    "cacheReadTokens": 10, "cacheWriteTokens": 0, "reasoningTokens": 5,
+                    "totalTokens": 110, "messageCount": 4,
+                    "startedAt": "2026-01-01T00:00:00.000Z",
+                    "lastUsedAt": "2026-01-01T00:05:00.000Z",
+                    "prompt": "must not be stored"
+                }]
+            }))
+            .unwrap();
+        let page = storage
+            .list_runs(RunListQuery {
+                include_untracked: true,
+                ..Default::default()
+            })
+            .unwrap();
+        assert_eq!(page.runs.len(), 1);
+        let run = &page.runs[0];
+        assert_eq!(run.metadata.as_ref().unwrap()["historyScan"], true);
+        assert_eq!(
+            run.metadata.as_ref().unwrap()["summary"]["tokenUsage"]["total"],
+            110
+        );
+        assert!(
+            !serde_json::to_string(run)
+                .unwrap()
+                .contains("must not be stored")
+        );
     }
 }

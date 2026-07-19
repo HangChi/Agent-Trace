@@ -21,28 +21,22 @@
         ${stat(tr("失败", "Failed"), fmtNumber(data.summary.failedRuns))}
         ${stat(tr("最近扫描", "Last scan"), scanner.scannedAt ? fmtDate(scanner.scannedAt) : tr("尚未扫描", "Not scanned"))}
       </div>
-      <form id="run-filters" class="toolbar">
-        <input class="control grow" name="q" value="${escape(params.get("q") || "")}" placeholder="${tr("搜索 Run、Agent、项目…", "Search runs, agents, projects…")}" />
-        <select class="control" name="status">
-          ${option("", tr("全部状态", "All statuses"), params.get("status"))}
-          ${option("running", tr("运行中", "Running"), params.get("status"))}
-          ${option("success", tr("成功", "Success"), params.get("status"))}
-          ${option("error", tr("失败", "Error"), params.get("status"))}
-        </select>
-        <input class="control" name="source" value="${escape(params.get("source") || "")}" placeholder="${tr("来源", "Source")}" />
-        <input class="control" name="model" value="${escape(params.get("model") || "")}" placeholder="${tr("模型", "Model")}" />
-        <input class="control" name="project" value="${escape(params.get("project") || "")}" placeholder="${tr("项目", "Project")}" />
-        <input class="control" name="environment" value="${escape(params.get("environment") || "")}" placeholder="${tr("环境", "Environment")}" />
-        <input class="control" name="tag" value="${escape(params.get("tag") || "")}" placeholder="${tr("标签", "Tag")}" />
-        <select class="control" name="favorite">${option("", tr("全部 Run", "All runs"), params.get("favorite"))}${option("true", tr("仅收藏", "Favorites only"), params.get("favorite"))}</select>
-        <label class="field">${tr("开始于", "Started after")}<input class="control" type="date" name="startedAfter" value="${escape(params.get("startedAfter") || "")}" /></label>
-        <label class="field">${tr("结束于", "Started before")}<input class="control" type="date" name="startedBefore" value="${escape(params.get("startedBefore") || "")}" /></label>
-        <select class="control" name="sort">${option("startedAt", tr("按开始时间", "Sort by start"), params.get("sort") || "startedAt")}${option("duration", tr("按耗时", "Sort by duration"), params.get("sort"))}${option("tokens", tr("按 Token", "Sort by tokens"), params.get("sort"))}${option("cost", tr("按成本", "Sort by cost"), params.get("sort"))}</select>
-        <select class="control" name="order">${option("desc", tr("降序", "Descending"), params.get("order") || "desc")}${option("asc", tr("升序", "Ascending"), params.get("order"))}</select>
-        <button class="button primary" type="submit">${tr("筛选", "Filter")}</button>
-        <button class="button" type="button" id="clear-filters">${tr("清除", "Clear")}</button>
-        <button class="button" type="button" id="compare-selected" ${state.selectedRuns.size < 2 ? "disabled" : ""}>${tr("比较已选", "Compare selected")} (${state.selectedRuns.size})</button>
-        <button class="button danger" type="button" id="delete-selected" ${state.selectedRuns.size < 1 ? "disabled" : ""}>${tr("删除已选", "Delete selected")} (${state.selectedRuns.size})</button>
+      <form id="run-filters" class="runs-filter">
+        <label class="field filter-search">${tr("搜索", "Search")}<input class="control" name="q" value="${escape(params.get("q") || "")}" placeholder="${tr("名称、ID、会话或来源", "Name, ID, session, or source")}" /></label>
+        <label class="field">${tr("状态", "Status")}<select class="control" name="status">${option("", tr("全部", "All"), params.get("status"))}${option("running", tr("进行中", "Running"), params.get("status"))}${option("success", tr("成功", "Success"), params.get("status"))}${option("error", tr("异常", "Error"), params.get("status"))}</select></label>
+        <label class="field">${tr("来源", "Source")}<input class="control" name="source" value="${escape(params.get("source") || "")}" placeholder="codex" /></label>
+        <label class="field">${tr("模型", "Model")}<input class="control" name="model" value="${escape(params.get("model") || "")}" placeholder="gpt-5" /></label>
+        <label class="field">${tr("开始日期", "From")}<input class="control" type="date" name="startedAfter" value="${escape(params.get("startedAfter") || "")}" /></label>
+        <label class="field">${tr("结束日期", "To")}<input class="control" type="date" name="startedBefore" value="${escape(params.get("startedBefore") || "")}" /></label>
+        <details class="advanced-filters"><summary>${tr("更多筛选", "More filters")}</summary><div class="advanced-filter-grid">
+          <label class="field">${tr("项目", "Project")}<input class="control" name="project" value="${escape(params.get("project") || "")}" /></label>
+          <label class="field">${tr("环境", "Environment")}<input class="control" name="environment" value="${escape(params.get("environment") || "")}" /></label>
+          <label class="field">${tr("标签", "Tag")}<input class="control" name="tag" value="${escape(params.get("tag") || "")}" /></label>
+          <label class="field">${tr("收藏", "Favorite")}<select class="control" name="favorite">${option("", tr("全部 Run", "All runs"), params.get("favorite"))}${option("true", tr("仅收藏", "Favorites only"), params.get("favorite"))}</select></label>
+          <label class="field">${tr("排序", "Sort")}<select class="control" name="sort">${option("startedAt", tr("开始时间", "Started"), params.get("sort") || "startedAt")}${option("duration", tr("耗时", "Duration"), params.get("sort"))}${option("tokens", "Token", params.get("sort"))}${option("cost", tr("成本", "Cost"), params.get("sort"))}</select></label>
+          <label class="field">${tr("顺序", "Order")}<select class="control" name="order">${option("desc", tr("降序", "Descending"), params.get("order") || "desc")}${option("asc", tr("升序", "Ascending"), params.get("order"))}</select></label>
+        </div></details>
+        <div class="filter-actions"><button class="button primary" type="submit">${tr("应用筛选", "Apply filters")}</button><button class="button" type="button" id="clear-filters">${tr("重置", "Reset")}</button><span class="action-spacer"></span><button class="button" type="button" id="compare-selected" ${state.selectedRuns.size < 2 ? "disabled" : ""}>${tr("对比 Run", "Compare runs")} (${state.selectedRuns.size})</button><button class="button danger" type="button" id="delete-selected" ${state.selectedRuns.size < 1 ? "disabled" : ""}>${tr("删除已选", "Delete selected")} (${state.selectedRuns.size})</button></div>
       </form>
       <section class="card">
         <div class="card-head"><h2>${tr("Run 列表", "Runs")}</h2><span class="muted tiny">${fmtNumber(data.pagination.total)} ${tr("条结果", "results")}</span></div>
@@ -221,18 +215,28 @@
   function tokenOverview(usage, trends, maxTokens) {
     const active = trends.points.filter(point => point.totalTokens > 0);
     const peak = trends.points.reduce((best, point) => !best || point.totalTokens > best.totalTokens ? point : best, null);
+    const trendTotal = trends.points.reduce((sum, point) => sum + point.totalTokens, 0);
     const aggregate = period => Object.values(trends.points.reduce((groups, point) => {
       const key = period === "month" ? point.date.slice(0, 7) : weekStart(point.date);
       const item = groups[key] ||= { key, tokens: 0, runs: 0, cost: 0 };
       item.tokens += point.totalTokens; item.runs += point.runCount; item.cost += point.costUsd; return groups;
     }, {}));
     const weekly = aggregate("week").slice(-8); const monthly = aggregate("month");
-    return `<div class="stats">${stat(tr("活跃天数", "Active days"), `${active.length} / ${trends.points.length}`)}${stat(tr("日均 Token", "Daily average"), fmtNumber(active.length ? active.reduce((sum, item) => sum + item.totalTokens, 0) / active.length : 0))}${stat(tr("峰值日期", "Peak day"), peak?.date || "—")}${stat(tr("峰值 Token", "Peak tokens"), fmtNumber(peak?.totalTokens))}</div>
-      <section class="card"><div class="card-head"><h2>${tr("最近 90 天趋势", "Last 90 days")}</h2><span class="muted tiny">UTC</span></div><div class="card-body"><div class="calendar">${trends.points.map(point => `<div class="day heat-${Math.min(4, Math.ceil((point.totalTokens || 0) / maxTokens * 4))}" title="${escape(point.date)}"><strong>${escape(point.date.slice(5))}</strong><span>${fmtNumber(point.totalTokens)} tok</span><span>${point.runCount} runs · ${fmtMoney(point.costUsd)}</span></div>`).join("")}</div></div></section>
-      <div class="grid two" style="margin-top:16px"><section class="card"><div class="card-head"><h2>${tr("周汇总", "Weekly totals")}</h2></div>${aggregateTable(weekly)}</section><section class="card"><div class="card-head"><h2>${tr("月汇总", "Monthly totals")}</h2></div>${aggregateTable(monthly)}</section></div>
+    return `<section class="card"><div class="card-head"><h2>${tr("最近 90 天趋势", "Last 90 days")}</h2><span class="muted tiny">UTC</span></div><div class="trend-layout"><aside class="trend-summary"><span>${tr("总 Token", "Total tokens")}</span><strong>${fmtNumber(trendTotal)}</strong><dl><div><dt>${tr("活跃天数", "Active days")}</dt><dd>${active.length} / ${trends.points.length}</dd></div><div><dt>${tr("日均 Token", "Daily average")}</dt><dd>${fmtNumber(trendTotal / Math.max(1, trends.points.length))}</dd></div><div><dt>${tr("峰值日期", "Peak day")}</dt><dd>${peak?.date || "—"}</dd></div></dl></aside><div class="trend-chart">${tokenLineChart(trends.points, maxTokens)}</div></div></section>
+      <div class="grid two" style="margin-top:16px"><section class="card"><div class="card-head"><h2>${tr("周汇总", "Weekly totals")}</h2></div>${periodBars(weekly)}</section><section class="card"><div class="card-head"><h2>${tr("月汇总", "Monthly totals")}</h2></div>${periodBars(monthly)}</section></div>
       <div class="grid two" style="margin-top:16px"><section class="card"><div class="card-head"><h2>${tr("客户端用量", "Usage by client")}</h2></div><div class="table-wrap">${usage.clients.length ? `<table><thead><tr><th>${tr("客户端", "Client")}</th><th>Token</th><th>${tr("成本", "Cost")}</th></tr></thead><tbody>${usage.clients.map(item => `<tr><td>${escape(item.client)}</td><td class="mono">${fmtNumber(item.totalTokens)}</td><td>${fmtMoney(item.costUsd)}</td></tr>`).join("")}</tbody></table>` : empty(tr("暂无 Usage Snapshot。", "No usage snapshots."))}</div></section><section class="card"><div class="card-head"><h2>${tr("模型用量", "Usage by model")}</h2></div><div class="table-wrap">${usage.models.length ? `<table><thead><tr><th>${tr("模型", "Model")}</th><th>Provider</th><th>Token</th><th>${tr("成本", "Cost")}</th></tr></thead><tbody>${usage.models.map(item => `<tr><td>${escape(item.model)}</td><td>${escape(item.provider || "—")}</td><td class="mono">${fmtNumber(item.totalTokens)}</td><td>${fmtMoney(item.costUsd)}</td></tr>`).join("")}</tbody></table>` : empty(tr("暂无模型用量。", "No model usage."))}</div></section></div>`;
   }
-  function aggregateTable(items) { return `<div class="table-wrap"><table><thead><tr><th>${tr("周期", "Period")}</th><th>Run</th><th>Token</th><th>${tr("成本", "Cost")}</th></tr></thead><tbody>${items.map(item => `<tr><td>${escape(item.key)}</td><td>${item.runs}</td><td>${fmtNumber(item.tokens)}</td><td>${fmtMoney(item.cost)}</td></tr>`).join("")}</tbody></table></div>`; }
+  function tokenLineChart(points, maxTokens) {
+    const chart = points.map((point, index) => ({ ...point, x: 20 + index * (1080 / Math.max(1, points.length - 1)), y: 18 + (1 - point.totalTokens / maxTokens) * 124 }));
+    const line = chart.map(point => `${point.x.toFixed(1)},${point.y.toFixed(1)}`).join(" ");
+    const area = chart.length ? `M ${chart[0].x} 148 ${chart.map(point => `L ${point.x.toFixed(1)} ${point.y.toFixed(1)}`).join(" ")} L ${chart.at(-1).x} 148 Z` : "";
+    const labels = points.filter((_, index) => index % 14 === 0 || index === points.length - 1);
+    return `<svg viewBox="0 0 1120 154" preserveAspectRatio="none" role="img" aria-label="Token trend"><defs><linearGradient id="trend-area" x1="0" y1="0" x2="0" y2="1"><stop offset="0" stop-color="var(--primary)" stop-opacity=".24"/><stop offset="1" stop-color="var(--primary)" stop-opacity=".015"/></linearGradient><linearGradient id="trend-line"><stop offset="0" stop-color="var(--primary)"/><stop offset="1" stop-color="var(--trace)"/></linearGradient></defs>${[22,64,106,148].map(y => `<line x1="20" x2="1100" y1="${y}" y2="${y}" stroke="var(--border)" stroke-dasharray="3 6" vector-effect="non-scaling-stroke"/>`).join("")}<path d="${area}" fill="url(#trend-area)"/><polyline points="${line}" fill="none" stroke="url(#trend-line)" stroke-width="2.5" stroke-linejoin="round" stroke-linecap="round" vector-effect="non-scaling-stroke"/></svg><div class="trend-labels">${labels.map(point => `<span><small>${escape(point.date.slice(5))}</small><strong>${fmtNumber(point.totalTokens)}</strong></span>`).join("")}</div>`;
+  }
+  function periodBars(items) {
+    const max = Math.max(1, ...items.map(item => item.tokens));
+    return `<div class="period-bars" style="grid-template-columns:repeat(${items.length},minmax(42px,1fr))">${items.map(item => `<div class="period-bar" title="${escape(item.key)} · ${fmtNumber(item.tokens)} Token · ${item.runs} Run"><strong>${fmtNumber(item.tokens)}</strong><div><span style="height:${item.tokens ? Math.max(3, item.tokens / max * 100) : 0}%"></span></div><small>${escape(item.key.slice(5))}</small></div>`).join("")}</div>`;
+  }
   function tokenCalendar(trends, months, month, maxTokens) {
     const points = trends.points.filter(point => point.date.startsWith(`${month}-`)); const map = new Map(points.map(point => [point.date, point]));
     const [year, index] = month.split("-").map(Number); const days = new Date(Date.UTC(year, index, 0)).getUTCDate(); const offset = new Date(Date.UTC(year, index - 1, 1)).getUTCDay();

@@ -4,9 +4,84 @@ use std::{
 };
 
 use anyhow::{Context, bail};
-use rusqlite::Connection;
+use rusqlite::{Connection, OpenFlags};
 
 pub const CURRENT_SCHEMA_VERSION: i64 = 7;
+
+pub fn merge_compatible_database(
+    destination: impl AsRef<Path>,
+    source: impl AsRef<Path>,
+) -> anyhow::Result<usize> {
+    let destination = destination.as_ref();
+    let source = source.as_ref();
+    if !source.is_file() || destination == source {
+        return Ok(0);
+    }
+    let source_connection =
+        Connection::open_with_flags(source, OpenFlags::SQLITE_OPEN_READ_ONLY)
+            .with_context(|| format!("failed to inspect legacy database {}", source.display()))?;
+    let source_version: i64 =
+        source_connection.pragma_query_value(None, "user_version", |row| row.get(0))?;
+    if source_version != CURRENT_SCHEMA_VERSION {
+        bail!(
+            "Legacy database {} uses schema version {source_version}; expected {CURRENT_SCHEMA_VERSION}.",
+            source.display()
+        );
+    }
+    drop(source_connection);
+
+    let database = Database::open(destination)?;
+    let mut connection = database.connection()?;
+    let before = database_record_count(&connection)?;
+    connection.execute(
+        "ATTACH DATABASE ?1 AS legacy",
+        [source.to_string_lossy().as_ref()],
+    )?;
+    let result = (|| -> anyhow::Result<()> {
+        let transaction = connection.transaction()?;
+        for table in [
+            "runs",
+            "events",
+            "usage_sessions",
+            "usage_scan_state",
+            "run_tombstones",
+            "settings",
+            "evaluation_datasets",
+            "evaluation_cases",
+            "evaluation_results",
+            "analytics_budgets",
+            "replay_tasks",
+        ] {
+            let exists: bool = transaction.query_row(
+                "SELECT EXISTS(SELECT 1 FROM legacy.sqlite_master WHERE type='table' AND name=?1)",
+                [table],
+                |row| row.get(0),
+            )?;
+            if exists {
+                transaction.execute(
+                    &format!("INSERT OR IGNORE INTO main.{table} SELECT * FROM legacy.{table}"),
+                    [],
+                )?;
+            }
+        }
+        transaction.commit()?;
+        Ok(())
+    })();
+    let _ = connection.execute_batch("DETACH DATABASE legacy");
+    result?;
+    let after = database_record_count(&connection)?;
+    Ok(after.saturating_sub(before))
+}
+
+fn database_record_count(connection: &Connection) -> anyhow::Result<usize> {
+    let mut count = 0_i64;
+    for table in ["runs", "events", "usage_sessions"] {
+        count += connection.query_row(&format!("SELECT count(*) FROM {table}"), [], |row| {
+            row.get::<_, i64>(0)
+        })?;
+    }
+    Ok(count.max(0) as usize)
+}
 
 #[derive(Clone)]
 pub struct Database {
@@ -164,5 +239,41 @@ mod tests {
             .unwrap();
         drop(connection);
         assert!(Database::open(path).is_err());
+    }
+
+    #[test]
+    fn merges_a_compatible_node_database_without_overwriting_desktop_rows() {
+        let directory = tempfile::tempdir().unwrap();
+        let source_path = directory.path().join("node.db");
+        let destination_path = directory.path().join("desktop.db");
+        for (path, id) in [
+            (&source_path, "node-run"),
+            (&destination_path, "desktop-run"),
+        ] {
+            let database = Database::open(path).unwrap();
+            database
+                .connection()
+                .unwrap()
+                .execute(
+                    "INSERT INTO runs (id,name,status,started_at) VALUES (?1,?1,'success','2026-01-01T00:00:00.000Z')",
+                    [id],
+                )
+                .unwrap();
+        }
+        assert_eq!(
+            merge_compatible_database(&destination_path, &source_path).unwrap(),
+            1
+        );
+        let destination = Database::open(&destination_path).unwrap();
+        let count: i64 = destination
+            .connection()
+            .unwrap()
+            .query_row("SELECT count(*) FROM runs", [], |row| row.get(0))
+            .unwrap();
+        assert_eq!(count, 2);
+        assert_eq!(
+            merge_compatible_database(&destination_path, &source_path).unwrap(),
+            0
+        );
     }
 }

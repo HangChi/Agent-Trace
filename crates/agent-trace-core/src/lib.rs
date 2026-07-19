@@ -5,7 +5,7 @@ mod storage;
 mod usage_scanner;
 
 pub use api::{Collector, CollectorOptions};
-pub use database::{CURRENT_SCHEMA_VERSION, Database};
+pub use database::{CURRENT_SCHEMA_VERSION, Database, merge_compatible_database};
 
 use std::{net::SocketAddr, path::PathBuf};
 
