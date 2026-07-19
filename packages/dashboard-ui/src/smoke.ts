@@ -70,6 +70,10 @@ assert.doesNotMatch(theme, /\.at-main\s*\{[^}]*max-width:\s*1800px/s);
 assert.match(theme, /\.at-event-summary\s*\{[^}]*display:\s*grid/s);
 assert.match(theme, /\.at-event-detail\s*\{[^}]*width:\s*100%/s);
 assert.ok(tokenTrace.includes("autoRefresh"), "Token-Trace must honor auto refresh.");
+for (const marker of ["eventVisibilityLabel", "dimensionLabel", "periodLabel", "statusLabel"]) {
+  assert.ok(dashboard.includes(marker), `missing localized enum helper: ${marker}`);
+}
+assert.ok(tokenTrace.includes('text(locale, "Token 用量", "Token usage")'));
 
 for (const marker of [
   "view=overview&period=",

@@ -91,7 +91,7 @@ export function TokenTraceView({ autoRefresh, client, locale, navigate, route }:
     <>
       <div className="at-page-head at-token-head">
         <div>
-          <p className="at-eyebrow">TOKEN TRACE</p>
+          <p className="at-eyebrow">{text(locale, "Token 用量", "Token usage")}</p>
           <h1>{text(locale, "本地 Token 用量", "Local token usage")}</h1>
           <p>{text(locale, "按日、周、月观察客户端与模型的 Token 消耗和估算成本。", "Inspect daily, weekly, and monthly token usage and estimated cost.")}</p>
         </div>
