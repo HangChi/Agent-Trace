@@ -114,4 +114,4 @@ Do not copy only the main database file while the Collector is writing.
 
 Any non-loopback source deployment must add network isolation and access control outside Agent-Trace.
 
-If either mode finds port 4319 occupied by a compatible Agent-Trace Collector, it reuses that Collector. Source mode then starts only its Next.js Dashboard and scanner; desktop mode starts only its embedded UI and does not open another database or native scanner. If the owning Collector exits, restart the remaining application so it can take ownership. An unrelated service is never reused; stop it or select another `AGENT_TRACE_SERVER_PORT` for source mode.
+If either mode finds port 4319 occupied by a compatible Agent-Trace Collector, it reuses that Collector. Source mode then starts only its Next.js Dashboard and scanner; desktop mode starts only its embedded UI and does not open another database or native scanner. If the owning Collector exits, the desktop automatically claims 4319, starts its native scanner, and lets the embedded UI reconnect. An unrelated service is never reused; stop it or select another `AGENT_TRACE_SERVER_PORT` for source mode.

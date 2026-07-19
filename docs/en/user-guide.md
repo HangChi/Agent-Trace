@@ -159,7 +159,7 @@ node packages/cli/dist/index.js usage clients --home <path> --json
 
 Prompt content modes:
 
-- `preview` (default): store a cleaned prompt preview of at most 240 characters; the native desktop scanner uses at most 80 characters from the first valid message as the Run title.
+- `preview` (default): store a cleaned prompt preview of at most 240 characters; Codex prefers its official session title and the native desktop fallback is limited to 40 characters.
 - `metadata`: store timestamps, token counts, tools, and session metadata without prompt text.
 
 For sensitive projects:

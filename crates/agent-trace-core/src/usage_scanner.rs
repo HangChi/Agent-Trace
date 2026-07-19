@@ -25,6 +25,11 @@ fn scan_with_pricing(home: &Path, pricing: PricingCatalog, include_titles: bool)
     let mut rows = Vec::new();
     let mut diagnostics = Vec::new();
     let mut reconciled = Vec::new();
+    let codex_titles = if include_titles {
+        read_codex_session_titles(home)
+    } else {
+        HashMap::new()
+    };
 
     let codex_roots = [
         home.join(".codex/sessions"),
@@ -33,11 +38,19 @@ fn scan_with_pricing(home: &Path, pricing: PricingCatalog, include_titles: bool)
     let codex_files = jsonl_files(&codex_roots);
     if codex_roots.iter().any(|root| root.is_dir()) {
         reconciled.push(json!("codex"));
-        rows.extend(
-            codex_files
-                .iter()
-                .filter_map(|path| scan_codex(path, &pricing, include_titles)),
-        );
+        rows.extend(codex_files.iter().filter_map(|path| {
+            let session_id = path
+                .file_stem()
+                .and_then(|value| value.to_str())
+                .map(normalize_codex_session_id)
+                .unwrap_or_default();
+            scan_codex(
+                path,
+                &pricing,
+                include_titles,
+                codex_titles.get(session_id).map(String::as_str),
+            )
+        }));
         diagnostics.push(json!({
             "client": "codex", "available": true, "source": "native-rust",
             "files": codex_files.len(), "actionHint": null,
@@ -247,13 +260,18 @@ impl Usage {
     }
 }
 
-fn scan_codex(path: &Path, pricing: &PricingCatalog, include_title: bool) -> Option<Value> {
+fn scan_codex(
+    path: &Path,
+    pricing: &PricingCatalog,
+    include_title: bool,
+    explicit_title: Option<&str>,
+) -> Option<Value> {
     let mut latest_usage = Usage::default();
     let mut model = String::new();
     let mut first = None::<String>;
     let mut last = None::<String>;
     let mut messages = 0_i64;
-    let mut title = String::new();
+    let mut title = explicit_title.unwrap_or_default().to_owned();
     for value in json_lines(path) {
         update_timestamps(&value, &mut first, &mut last);
         if model.is_empty() {
@@ -396,11 +414,42 @@ fn compact_conversation_title(value: &str) -> String {
         .trim()
         .to_owned();
     let characters = cleaned.chars().collect::<Vec<_>>();
-    if characters.len() > 80 {
-        format!("{}…", characters[..79].iter().collect::<String>())
+    if characters.len() > 40 {
+        format!("{}…", characters[..39].iter().collect::<String>())
     } else {
         cleaned
     }
+}
+
+fn read_codex_session_titles(home: &Path) -> HashMap<String, String> {
+    let mut titles = HashMap::new();
+    for value in json_lines(&home.join(".codex/session_index.jsonl")) {
+        let Some(id) = value.get("id").and_then(Value::as_str) else {
+            continue;
+        };
+        let Some(title) = value.get("thread_name").and_then(Value::as_str) else {
+            continue;
+        };
+        let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
+        if !title.is_empty() {
+            titles.insert(normalize_codex_session_id(id).to_owned(), title);
+        }
+    }
+    titles
+}
+
+fn normalize_codex_session_id(value: &str) -> &str {
+    if value.starts_with("rollout-") && value.len() >= 36 {
+        let candidate = &value[value.len() - 36..];
+        let bytes = candidate.as_bytes();
+        if bytes.iter().enumerate().all(|(index, byte)| {
+            matches!(index, 8 | 13 | 18 | 23) && *byte == b'-'
+                || !matches!(index, 8 | 13 | 18 | 23) && byte.is_ascii_hexdigit()
+        }) {
+            return candidate;
+        }
+    }
+    value
 }
 
 fn json_lines(path: &Path) -> impl Iterator<Item = Value> {
@@ -517,7 +566,23 @@ mod tests {
         let claude_dir = directory.path().join(".claude/projects/test");
         fs::create_dir_all(&codex_dir).unwrap();
         fs::create_dir_all(&claude_dir).unwrap();
-        let mut codex = File::create(codex_dir.join("codex-session.jsonl")).unwrap();
+        let codex_session_id = "019f0000-0000-7000-8000-000000000001";
+        let mut codex_index =
+            File::create(directory.path().join(".codex/session_index.jsonl")).unwrap();
+        writeln!(
+            codex_index,
+            "{}",
+            json!({
+                "id": codex_session_id,
+                "thread_name": "修复桌面端加载失败",
+                "updated_at": "2026-01-01T00:00:01Z"
+            })
+        )
+        .unwrap();
+        let mut codex = File::create(codex_dir.join(format!(
+            "rollout-2026-01-01T00-00-00-{codex_session_id}.jsonl"
+        )))
+        .unwrap();
         writeln!(
             codex,
             "{}",
@@ -561,7 +626,7 @@ mod tests {
         let result = scan_with_pricing(directory.path(), PricingCatalog::built_in(), true);
         assert_eq!(result["rows"].as_array().unwrap().len(), 2);
         assert_eq!(result["rows"][0]["totalTokens"], 110);
-        assert_eq!(result["rows"][0]["title"], "Fix collector startup");
+        assert_eq!(result["rows"][0]["title"], "修复桌面端加载失败");
         assert_eq!(result["rows"][1]["title"], "Review trace failures");
         assert_close(result["rows"][0]["costUsd"].as_f64(), 0.001_005);
         assert!(!result.to_string().contains("do not store"));

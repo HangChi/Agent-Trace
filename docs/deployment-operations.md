@@ -205,7 +205,7 @@ pnpm desktop:build:win
 
 ### Collector 端口占用
 
-源码模式和桌面模式都会请求已有服务的 `/health`：若返回兼容的 Agent-Trace 标识，则复用该 Collector；若不是，则明确报错。源码模式复用桌面 Collector 时只启动 Next.js Dashboard 和 Scanner；桌面模式复用源码 Collector 时不会再启动第二个原生 Scanner 或打开另一份数据库，而是直接使用现有 Collector。关闭被复用的 Collector 后，需要重启另一端以接管 4319。其他占用应关闭，或在源码模式设置其他 `AGENT_TRACE_SERVER_PORT` 并确保 CLI/Hooks/Web 指向相同地址。
+源码模式和桌面模式都会请求已有服务的 `/health`：若返回兼容的 Agent-Trace 标识，则复用该 Collector；若不是，则明确报错。源码模式复用桌面 Collector 时只启动 Next.js Dashboard 和 Scanner；桌面模式复用源码 Collector 时不会再启动第二个原生 Scanner 或打开另一份数据库，而是直接使用现有 Collector。被复用的 Collector 退出后，桌面端会自动接管 4319、启动原生 Scanner，内嵌页面通过现有重连机制恢复。其他占用应关闭，或在源码模式设置其他 `AGENT_TRACE_SERVER_PORT` 并确保 CLI/Hooks/Web 指向相同地址。
 
 ### Dashboard 端口占用
 

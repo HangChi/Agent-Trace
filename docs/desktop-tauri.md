@@ -29,7 +29,7 @@ Windows 桌面交付已改为 Tauri + 全 Rust 后端。这个重构只替换桌
 - Codex：`~/.codex/sessions` 与 `~/.codex/archived_sessions`。
 - Claude Code：`~/.claude/projects`。
 
-扫描器持久化客户端、会话 ID、模型、provider、Token 分类、API 等价估算成本、消息数和时间；默认 `preview` 模式还会把首条有效用户消息清理并截断为最多 80 个字符，用作可读 Run 标题。设置 `AGENT_TRACE_HISTORY_CONTENT=metadata` 后不保存该标题预览。成本按精确模型名使用随桌面版本固定的价目计算，`AGENT_TRACE_MODEL_PRICES_JSON` 中的精确条目可覆盖内置价格；未知模型不会模糊匹配。每个会话会以稳定 ID 增量物化为一个历史 Run 和摘要 Event，因此全新安装后无需旧数据库也能看到本机记录并生成趋势；已由 Hook/OTLP 跟踪的同一会话会优先保留，不创建重复历史 Run，并会在名称仍是系统生成 ID 时补充可读标题。扫描器不保存完整 Prompt、响应正文或其他任意字段。单文件上限为 16 MiB，单次最多检查 5000 个 JSONL 文件。
+扫描器持久化客户端、会话 ID、模型、provider、Token 分类、API 等价估算成本、消息数和时间；默认 `preview` 模式优先读取 Codex `~/.codex/session_index.jsonl` 中的官方 `thread_name`，缺少显式标题时才把首条有效用户消息清理并截断为最多 40 个字符。设置 `AGENT_TRACE_HISTORY_CONTENT=metadata` 后不读取 Codex 标题索引或生成标题预览。成本按精确模型名使用随桌面版本固定的价目计算，`AGENT_TRACE_MODEL_PRICES_JSON` 中的精确条目可覆盖内置价格；未知模型不会模糊匹配。每个会话会以稳定 ID 增量物化为一个历史 Run 和摘要 Event，因此全新安装后无需旧数据库也能看到本机记录并生成趋势；已由 Hook/OTLP 跟踪的同一会话会优先保留，不创建重复历史 Run，并会在名称仍是系统生成 ID 时补充可读标题。扫描器不保存完整 Prompt、响应正文或其他任意字段。单文件上限为 16 MiB，单次最多检查 5000 个 JSONL 文件。
 
 0.5.0 内置价目精确覆盖 `gpt-5.6-sol`、`gpt-5.5`、`gpt-5`、`codex-auto-review`、`claude-opus-4-8` 与 `deepseek-v4-pro`。其他模型需提供精确配置后才会产生估算成本。
 

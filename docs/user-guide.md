@@ -329,7 +329,7 @@ node packages/cli/dist/index.js usage --once --sync --home C:\Users\alice
 
 ### 历史内容模式
 
-- `preview`：默认模式。Claude、Codex 和 OpenCode 的用户 Prompt 可保存清理后的最多 240 个字符预览，同时保存 Turn Token、工具名和时间；桌面原生扫描器使用最多 80 个字符的首条有效消息作为 Run 标题。
+- `preview`：默认模式。Claude、Codex 和 OpenCode 的用户 Prompt 可保存清理后的最多 240 个字符预览，同时保存 Turn Token、工具名和时间；Codex 优先使用官方会话标题，桌面原生扫描器的本地标题回退最多 40 个字符。
 - `metadata`：不保存 Prompt 文本，只保留时间、Token、工具和会话元数据。
 
 使用纯元数据模式：

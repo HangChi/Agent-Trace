@@ -408,12 +408,13 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
                             <StatusDot status={run.status} />
                             <div className="min-w-0">
                               <Link
-                                className="block break-all text-[15px] font-semibold leading-5 tracking-[-0.012em] text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
+                                className="block truncate text-[15px] font-semibold leading-5 tracking-[-0.012em] text-foreground underline-offset-4 transition-colors hover:text-primary hover:underline"
                                 href={localizedHref(`/runs/${run.id}`, locale)}
+                                title={run.name}
                               >
                                 {run.name}
                               </Link>
-                              <p className="mt-1 break-all text-[12px] font-normal leading-[1.45] tracking-[0.005em] text-muted-foreground">
+                              <p className="mt-1 truncate text-[12px] font-normal leading-[1.45] tracking-[0.005em] text-muted-foreground" title={run.id}>
                                 {run.id}
                               </p>
                               {run.metadata?.project || run.metadata?.tags?.length ? (

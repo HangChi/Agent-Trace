@@ -4,6 +4,7 @@ import { Script } from "node:vm";
 const root = new URL("../ui/", import.meta.url);
 const files = ["core.js", "views-runs.js", "views-admin.js", "app.js"];
 const index = await readFile(new URL("index.html", root), "utf8");
+const styles = await readFile(new URL("styles.css", root), "utf8");
 const tauriSource = await readFile(new URL("../src-tauri/src/lib.rs", root), "utf8");
 
 for (const file of files) {
@@ -22,6 +23,9 @@ for (const forbidden of ["next/", "node_modules", "require(", "localhost:3000"])
 if (/<(script|link)[^>]+(?:src|href)=["']https?:\/\//i.test(index)) throw new Error("External UI asset found");
 if (!tauriSource.includes("default_window_icon()") || !tauriSource.includes(".icon(icon.clone())")) {
   throw new Error("The Windows tray must use the application icon.");
+}
+if (!/\.run-name\s*\{[^}]*overflow:\s*hidden[^}]*white-space:\s*nowrap/s.test(styles)) {
+  throw new Error("Desktop Run titles must remain on one readable line.");
 }
 
 console.log(`Static dashboard contract OK (${files.length} scripts, 7 routes).`);

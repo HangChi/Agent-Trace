@@ -127,7 +127,7 @@ td { padding: 14px 13px; border-top: 1px solid var(--border); vertical-align: to
 tr.clickable { cursor: pointer; }
 tr.clickable:hover td { background: color-mix(in srgb, var(--primary-soft) 55%, var(--surface)); }
 td strong { font-weight: 600; }
-.run-name { display: block; font-size: 14px; line-height: 1.35; font-weight: 650; letter-spacing: -.01em; }
+.run-name { display: block; overflow: hidden; font-size: 14px; line-height: 1.35; font-weight: 650; letter-spacing: -.01em; text-overflow: ellipsis; white-space: nowrap; }
 .run-id { margin-top: 4px; font-size: 11px; line-height: 1.35; }
 .numeric { font-variant-numeric: tabular-nums; }
 .status { display: inline-flex; align-items: center; min-height: 20px; padding: 2px 7px; border: 1px solid transparent; border-radius: 999px; font: 700 9px/1 "IBM Plex Mono", "Cascadia Mono", monospace; letter-spacing: .06em; text-transform: uppercase; background: var(--surface-2); }
