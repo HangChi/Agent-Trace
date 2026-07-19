@@ -8,11 +8,12 @@ Windows 桌面交付已改为 Tauri + 全 Rust 后端。这个重构只替换桌
 
 - `apps/desktop-tauri/src-tauri`：Tauri 生命周期、系统托盘、窗口和 NSIS 配置。
 - `crates/agent-trace-core`：Axum Collector、SQLite 迁移和存储、Hooks/OTLP、分析、维护、评测与 mock-only 回放沙箱。
-- `apps/desktop-tauri/ui`：无构建步骤的完整静态 HTML/CSS/JavaScript Dashboard，通过回环 API 和 SSE 读取数据。包含 Run 高级筛选、批量管理、详情时间线与 Trace 树、对比、Token-Trace、分析预算、评测、mock 回放、维护与隐私设置。
+- `packages/dashboard-ui`：Web 与 Tauri 共用的 React 页面、路由、样式和 Collector 客户端，包含 Run 筛选/排序/批量管理、详情、对比、Token-Trace、分析预算、评测、mock 回放、维护与隐私设置。
+- `apps/desktop-tauri/src`：Vite/Tauri 入口，以 hash 路由挂载共享 Dashboard；生产构建输出到被忽略的 `apps/desktop-tauri/dist` 后再嵌入 WebView2。
 
 桌面包不启动 Node 子进程，不携带 Electron、Next Server、CLI 归档或 `tokscale` sidecar。Windows WebView2 由系统运行时提供；缺失时安装器使用微软 bootstrapper 安装。
 
-静态页面直接作为 Tauri 资源嵌入可执行文件，Node 只可用于执行开发期契约检查和 Tauri CLI；安装后的桌面应用不需要系统安装 Node.js。
+编译后的 SPA 直接作为 Tauri 资源嵌入可执行文件，Node 只用于开发期 Vite 构建、契约检查和 Tauri CLI；安装后的桌面应用不需要系统安装 Node.js。
 
 ## 兼容性
 
@@ -29,7 +30,7 @@ Windows 桌面交付已改为 Tauri + 全 Rust 后端。这个重构只替换桌
 - Codex：`~/.codex/sessions` 与 `~/.codex/archived_sessions`。
 - Claude Code：`~/.claude/projects`。
 
-扫描器持久化客户端、会话 ID、模型、provider、Token 分类、API 等价估算成本、消息数和时间；默认 `preview` 模式优先读取 Codex `~/.codex/session_index.jsonl` 中的官方 `thread_name`，缺少显式标题时才把首条有效用户消息清理并截断为最多 40 个字符。设置 `AGENT_TRACE_HISTORY_CONTENT=metadata` 后不读取 Codex 标题索引或生成标题预览。成本按精确模型名使用随桌面版本固定的价目计算，`AGENT_TRACE_MODEL_PRICES_JSON` 中的精确条目可覆盖内置价格；未知模型不会模糊匹配。每个会话会以稳定 ID 增量物化为一个历史 Run 和摘要 Event，因此全新安装后无需旧数据库也能看到本机记录并生成趋势；已由 Hook/OTLP 跟踪的同一会话会优先保留，不创建重复历史 Run，并会在名称仍是系统生成 ID 时补充可读标题。扫描器不保存完整 Prompt、响应正文或其他任意字段。单文件上限为 16 MiB，单次最多检查 5000 个 JSONL 文件。
+扫描器持久化客户端、会话 ID、模型、provider、Token 分类、API 等价估算成本、消息数和时间。默认 `preview` 模式按以下优先级选择 Codex 会话标题：`.codex-global-state.json`（无效时尝试备份）中的侧栏描述、`session_index.jsonl` 的 `thread_name`、`state_5.sqlite` 中的安全短标题、清理并截断为最多 40 个字符的首条有效用户消息、系统生成 ID。设置 `AGENT_TRACE_HISTORY_CONTENT=metadata` 后不读取标题来源或生成标题预览。成本按精确模型名使用随桌面版本固定的价目计算，`AGENT_TRACE_MODEL_PRICES_JSON` 中的精确条目可覆盖内置价格；未知模型不会模糊匹配。每个会话会以稳定 ID 增量物化为一个历史 Run 和摘要 Event，因此全新安装后无需旧数据库也能看到本机记录并生成趋势；同一会话不会重复创建历史 Run，已有历史扫描名称或系统生成名称会升级为更可读的标题，自定义名称保持不变。扫描器不保存完整 Prompt、响应正文或其他任意字段。JSONL 逐行读取，每个文件最多扫描前 256 MiB，单次最多检查 5000 个文件，因此较长的活跃 Codex 会话不会因超过旧的 16 MiB 门槛而停止更新。
 
 0.5.0 内置价目精确覆盖 `gpt-5.6-sol`、`gpt-5.5`、`gpt-5`、`codex-auto-review`、`claude-opus-4-8` 与 `deepseek-v4-pro`。其他模型需提供精确配置后才会产生估算成本。
 

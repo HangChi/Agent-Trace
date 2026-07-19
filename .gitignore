@@ -8,7 +8,7 @@ dist/
 .turbo/
 .cache/
 .worktrees/
-docs/superpowers/
+superpowers/
 coverage/
 .agents/
 __pycache__/

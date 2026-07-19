@@ -22,7 +22,7 @@ These pages describe the implemented Agent-Trace behavior. Shared Schema, Collec
 - **Run**: one Agent execution or locally reconstructed session.
 - **Event**: one lifecycle, model, tool, retrieval, memory, or error action within a Run.
 - **Collector**: the local service that normalizes and stores data; source mode uses Hono, while the desktop uses Rust/Axum.
-- **Dashboard**: the interface that reads bounded Collector read models; source mode uses Next.js, while the desktop embeds a static WebView UI.
+- **Dashboard**: the shared React interface that reads bounded Collector read models; source mode hosts it in Next.js, while Tauri embeds the Vite build in WebView2.
 - **Usage Snapshot**: session-level token and cost aggregation; source mode uses `tokscale`, while the desktop scans Codex and Claude Code history natively in Rust.
 - **Transcript Event**: prompt/turn metadata or cleaned preview extracted from local history.
 

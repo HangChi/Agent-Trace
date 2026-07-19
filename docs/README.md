@@ -59,7 +59,7 @@
 - **Run**：一次 Agent 执行，对应一条运行记录。
 - **Event**：Run 内的一个生命周期、模型、工具、检索、记忆或错误事件。
 - **Collector**：接收、规范化并持久化数据的本地服务；源码版为 Hono，桌面版为 Rust/Axum。
-- **Dashboard**：读取 Collector 数据的界面；源码版为 Next.js，桌面版为静态 WebView UI。
+- **Dashboard**：读取 Collector 数据的共享 React 界面；源码版由 Next.js 承载，桌面版由 Vite 编译后嵌入 WebView2。
 - **Usage snapshot**：本地会话 Token 与成本快照；源码版由 `tokscale` 生成，桌面版由 Rust 原生扫描器生成。
 - **Transcript event**：从支持的本地历史中提取的 Prompt/Turn 元数据或清理后预览。
 

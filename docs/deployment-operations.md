@@ -5,7 +5,7 @@
 Agent-Trace 当前支持两种本地运行模型：
 
 - 源码模式：CLI 编排 Hono Collector、Next.js Dashboard 和 usage watcher。
-- Windows 桌面模式：Tauri 启动进程内 Rust Collector 和静态 WebView UI，并管理托盘与本地数据。
+- Windows 桌面模式：Tauri 启动进程内 Rust Collector 和由 Vite 编译的共享 React Dashboard，并管理托盘与本地数据。
 
 Collector 没有认证，不提供面向公网的部署配置。
 
@@ -75,7 +75,7 @@ pnpm desktop:build:win
 | 服务 | 默认 | 行为 |
 | --- | --- | --- |
 | Collector | 4319 | 源码和桌面模式都会复用通过 `/health` 验证的现有 Agent-Trace Collector；其他占用会明确报错。 |
-| Dashboard | 3000 | 仅源码 Next.js 模式使用；Tauri 静态 UI 不监听端口。 |
+| Dashboard | 3000 | 仅源码 Next.js 模式使用；Tauri 内嵌 Dashboard 不监听端口。 |
 
 源码 Server 默认监听 `127.0.0.1`。Dashboard 使用 `AGENT_TRACE_API_URL` 指向 Collector。
 
@@ -209,7 +209,7 @@ pnpm desktop:build:win
 
 ### Dashboard 端口占用
 
-只有源码模式的 Next.js Dashboard 使用 `AGENT_TRACE_WEB_PORT`，默认端口为 3000。Tauri 桌面使用内嵌静态 UI，不监听 Dashboard 端口。
+只有源码模式的 Next.js Dashboard 使用 `AGENT_TRACE_WEB_PORT`，默认端口为 3000。Tauri 桌面使用内嵌的共享 React Dashboard，不监听 Dashboard 端口。
 
 ### Scanner 不更新
 

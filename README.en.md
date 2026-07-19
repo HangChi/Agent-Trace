@@ -24,7 +24,7 @@ Agent-Trace collects model calls, tool execution, tokens, API-equivalent cost, l
 - Source-mode `tokscale` scanning for multi-client sessions, tokens, and cost; the desktop uses a native read-only Rust scanner for Codex and Claude Code history.
 - Event filters, timelines, parent-child trace trees, failure inspection, and performance diagnostics.
 - Local governance with Run projects/tags, retention maintenance, tombstone recovery, and configurable pre-storage field redaction.
-- Local Hono/Next.js source mode plus a Windows Tauri desktop with a static UI and an all-Rust Collector; the installed desktop does not ship Node.js or Electron.
+- Local Hono/Next.js source mode and Windows Tauri share one React Dashboard; the desktop uses an all-Rust Collector and ships neither Node.js nor Electron.
 
 ## Requirements
 

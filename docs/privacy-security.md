@@ -15,7 +15,7 @@ Agent-Trace 面向单机开发环境。Collector 默认监听 `127.0.0.1`，Dash
 | TypeScript SDK | 调用方传入的 Run/Event input、成功 output、错误、耗时和 metadata | SDK 不主动脱敏；调用方未传入的内容不会被推断。 |
 | Codex/Claude Hooks | 生命周期、会话/轮次 ID、来源、工作目录、工具/Skill/MCP 名、Shell 命令、状态、耗时、模型、Token、普通工具 payload 字节数 | 原始用户 Prompt、普通工具完整输入/输出、文件内容、最终回答全文、隐藏推理。 |
 | Codex OTel | OTel 记录中的会话、来源、模型、工具、命令、Token 和状态等规范化元数据 | Agent-Trace 配置 Codex `log_user_prompt = false`；普通 payload 只保留受控摘要。 |
-| Usage scan | 客户端、会话 ID、模型、provider、Token 分类、消息数、时间、扫描成本、诊断路径和提示；桌面 `preview` 模式优先保存 Codex 官方 `thread_name`，缺失时保存最多 40 字符的清理后首条用户消息作为 Run 标题 | `tokscale` 源日志全文、完整 Prompt 和响应正文不会直接提交给 Collector；桌面 `metadata` 模式不读取标题索引或保存标题预览。 |
+| Usage scan | 客户端、会话 ID、模型、provider、Token 分类、消息数、时间、扫描成本、诊断路径和提示；桌面 `preview` 模式依次使用 Codex 侧栏描述、`thread_name`、安全的本地状态标题或最多 40 字符的清理后首条用户消息作为 Run 标题 | `tokscale` 源日志全文、完整 Prompt 和响应正文不会直接提交给 Collector；桌面 `metadata` 模式不读取标题来源或保存标题预览。 |
 | Transcript scan（preview） | 清理后的 Prompt 短预览、Prompt/Turn 时间、Token、工具名、会话元数据 | Assistant 正文、工具结果全文、文件内容；Prompt 预览截断为最多 240 个字符。 |
 | Transcript scan（metadata） | Prompt/Turn 时间、Token、工具名和会话元数据 | Prompt 文本。 |
 
@@ -54,7 +54,7 @@ node packages/cli/dist/index.js usage --once --home C:\Users\alice
 - Tauri UI、Rust Collector 和原生 Scanner 编入同一桌面应用，不创建 Node/Next 运行时解压目录。
 - Hook 安装或卸载修改既有配置前会生成 `.agent-trace-backup.<timestamp>`。
 
-SQLite 数据库、WAL/SHM 文件、环境文件、桌面资源和构建产物均由仓库 `.gitignore` 排除。
+SQLite 数据库、WAL/SHM 文件、环境文件、`superpowers` 过程文档和构建产物均由仓库 `.gitignore` 排除；桌面源代码与图标属于版本化项目文件。
 
 ## 外部网络访问
 

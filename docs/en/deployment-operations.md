@@ -3,7 +3,7 @@
 ## Supported models
 
 - Source mode: the CLI starts the Hono Collector, Next.js Dashboard, and optional `tokscale` Usage Scanner.
-- Windows desktop mode: Tauri runs an in-process Rust/Axum Collector, an embedded static WebView UI, and a native read-only scanner for Codex and Claude Code history.
+- Windows desktop mode: Tauri runs an in-process Rust/Axum Collector, the same React Dashboard as the Web app compiled by Vite, and a native read-only scanner for Codex and Claude Code history.
 
 The Collector has no authentication. Agent-Trace does not provide a public-network deployment profile.
 
@@ -40,7 +40,7 @@ Closing the main window hides it to the tray. The tray menu can reopen the windo
 | Service | Default | Behavior |
 | --- | --- | --- |
 | Collector | 4319 | Source and desktop modes reuse an existing service when `/health` identifies a compatible Agent-Trace Collector and report unrelated owners clearly. |
-| Dashboard | 3000 | Used only by the source-mode Next.js Dashboard. The Tauri static UI does not listen on a Dashboard port. |
+| Dashboard | 3000 | Used only by the source-mode Next.js Dashboard. The embedded Tauri Dashboard does not listen on a port. |
 
 ## Data locations
 
@@ -102,7 +102,7 @@ Do not copy only the main database file while the Collector is writing.
 - `POST /maintenance/prune`: delete history before a cutoff, optionally restricted by status.
 - `POST /maintenance/compact`: checkpoint WAL and vacuum SQLite during a quiet local period.
 - `pnpm --filter @agent-trace/server benchmark:capacity`: enforce the 100,000 Run / 1,000,000 Event budgets.
-- `pnpm desktop:check:rust`: check the static UI, run Rust tests, and run workspace Clippy.
+- `pnpm desktop:check:rust`: check the shared UI/Tauri contract, run Rust tests, and run workspace Clippy.
 - `desktop-release-validation.yml`: build the current Tauri NSIS package and verify that exactly one installer is produced.
 
 ## Operational checks

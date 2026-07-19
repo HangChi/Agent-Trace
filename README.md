@@ -24,7 +24,7 @@ Agent-Trace 把模型调用、工具执行、Token、成本、耗时、错误和
 - 本地 Usage Scanner：源码模式通过 `tokscale` 汇总多客户端会话；桌面模式由 Rust 原生只读扫描 Codex/Claude JSONL。
 - Trace 分析：事件筛选、时间线、父子调用树、失败检查、重试/慢步骤/Token 热点诊断。
 - 本地治理：Run 项目与标签、维护中心、保留期清理、墓碑恢复和可配置写入前字段脱敏。
-- 本地交付：源码模式保留 Hono/Next.js；Windows 桌面包使用 Tauri、静态 UI 和全 Rust Collector，不携带 Node/Electron。
+- 本地交付：源码模式保留 Hono/Next.js；Web 与 Windows Tauri 共用 React Dashboard，桌面包使用全 Rust Collector，不携带 Node/Electron。
 
 ## 运行要求
 
@@ -106,9 +106,10 @@ node packages/cli/dist/index.js usage clients --home <path>
 | 路径 | 职责 |
 | --- | --- |
 | `apps/server` | Hono Collector、SQLite、集成入口与读模型 |
-| `apps/web` | Next.js Dashboard |
-| `apps/desktop-tauri` | Tauri 桌面壳、静态 UI 与 Windows NSIS 打包 |
+| `apps/web` | 使用共享 React Dashboard 的 Next.js 入口 |
+| `apps/desktop-tauri` | 使用共享 React Dashboard 的 Tauri/Vite 桌面入口与 Windows NSIS 打包 |
 | `crates/agent-trace-core` | Rust Collector、SQLite、Hooks/OTLP、分析、回放与原生 Usage Scanner |
+| `packages/dashboard-ui` | Web 与 Tauri 共用的页面、路由、样式和 Collector 客户端 |
 | `packages/schema` | Zod 契约与共享 TypeScript 类型 |
 | `packages/sdk-js` | JavaScript/TypeScript Tracing SDK |
 | `packages/sdk-python` | Python Tracing SDK 与框架适配 |

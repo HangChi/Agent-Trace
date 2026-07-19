@@ -1,7 +1,7 @@
 use std::{
     collections::HashMap,
     fs::{self, File},
-    io::{BufRead, BufReader},
+    io::{BufRead, BufReader, Read},
     path::{Path, PathBuf},
 };
 
@@ -10,7 +10,7 @@ use serde::Deserialize;
 use serde_json::{Value, json};
 
 const MAX_FILES: usize = 5_000;
-const MAX_FILE_BYTES: u64 = 16 * 1024 * 1024;
+const MAX_SCAN_BYTES_PER_FILE: u64 = 256 * 1024 * 1024;
 
 pub(crate) fn scan(home: &Path) -> Value {
     let include_titles = match std::env::var("AGENT_TRACE_HISTORY_CONTENT") {
@@ -26,7 +26,7 @@ fn scan_with_pricing(home: &Path, pricing: PricingCatalog, include_titles: bool)
     let mut diagnostics = Vec::new();
     let mut reconciled = Vec::new();
     let codex_titles = if include_titles {
-        read_codex_session_titles(home)
+        read_codex_titles(home)
     } else {
         HashMap::new()
     };
@@ -220,10 +220,9 @@ fn jsonl_files(roots: &[PathBuf]) -> Vec<PathBuf> {
             continue;
         };
         if metadata.is_file() {
-            if metadata.len() <= MAX_FILE_BYTES
-                && path
-                    .extension()
-                    .is_some_and(|extension| extension == "jsonl")
+            if path
+                .extension()
+                .is_some_and(|extension| extension == "jsonl")
             {
                 result.push(path);
             }
@@ -280,7 +279,7 @@ fn scan_codex(
         let mut candidates = Vec::new();
         find_named_objects(&value, "total_token_usage", &mut candidates);
         for candidate in candidates {
-            let usage = usage_from_object(candidate);
+            let usage = usage_from_object(candidate, true);
             if usage.total() >= latest_usage.total() {
                 latest_usage = usage;
             }
@@ -337,7 +336,7 @@ fn scan_claude(path: &Path, pricing: &PricingCatalog, include_title: bool) -> Op
                 model = find_string(message, &["model"]).unwrap_or_default();
             }
             if let Some(item) = message.get("usage").and_then(Value::as_object) {
-                usage.add(&usage_from_object(item));
+                usage.add(&usage_from_object(item, false));
                 messages += 1;
             }
         }
@@ -406,7 +405,8 @@ fn claude_user_prompt(message: &Value) -> Option<String> {
 }
 
 fn compact_conversation_title(value: &str) -> String {
-    let cleaned = value
+    let without_attachments = strip_image_tags(value);
+    let cleaned = without_attachments
         .split_whitespace()
         .collect::<Vec<_>>()
         .join(" ")
@@ -421,21 +421,113 @@ fn compact_conversation_title(value: &str) -> String {
     }
 }
 
-fn read_codex_session_titles(home: &Path) -> HashMap<String, String> {
+fn read_codex_titles(home: &Path) -> HashMap<String, String> {
+    let codex_home = home.join(".codex");
+    let primary = codex_home.join(".codex-global-state.json");
+    let backup = codex_home.join(".codex-global-state.json.bak");
+    let mut titles = read_sidebar_descriptions(&primary)
+        .or_else(|| read_sidebar_descriptions(&backup))
+        .unwrap_or_default();
+    for (id, title) in read_codex_session_titles(&codex_home.join("session_index.jsonl")) {
+        titles.entry(id).or_insert(title);
+    }
+    for path in [
+        codex_home.join("state_5.sqlite"),
+        codex_home.join("sqlite/state_5.sqlite"),
+    ] {
+        for (id, title) in read_state_titles(&path) {
+            titles.entry(id).or_insert(title);
+        }
+    }
+    titles
+}
+
+fn read_sidebar_descriptions(path: &Path) -> Option<HashMap<String, String>> {
+    let bytes = fs::read(path).ok()?;
+    let value = serde_json::from_slice::<Value>(&bytes).ok()?;
+    let descriptions = value
+        .pointer("/electron-persisted-atom-state/thread-descriptions-v1")
+        .and_then(Value::as_object);
     let mut titles = HashMap::new();
-    for value in json_lines(&home.join(".codex/session_index.jsonl")) {
+    if let Some(descriptions) = descriptions {
+        for (id, value) in descriptions {
+            if let Some(title) = value
+                .as_str()
+                .and_then(|title| valid_codex_title(id, title, 80))
+            {
+                titles.insert(normalize_codex_session_id(id).to_owned(), title);
+            }
+        }
+    }
+    Some(titles)
+}
+
+fn read_codex_session_titles(path: &Path) -> HashMap<String, String> {
+    let mut titles = HashMap::new();
+    for value in json_lines(path) {
         let Some(id) = value.get("id").and_then(Value::as_str) else {
             continue;
         };
         let Some(title) = value.get("thread_name").and_then(Value::as_str) else {
             continue;
         };
-        let title = title.split_whitespace().collect::<Vec<_>>().join(" ");
-        if !title.is_empty() {
+        if let Some(title) = valid_codex_title(id, title, 80) {
             titles.insert(normalize_codex_session_id(id).to_owned(), title);
         }
     }
     titles
+}
+
+fn read_state_titles(path: &Path) -> HashMap<String, String> {
+    let flags =
+        rusqlite::OpenFlags::SQLITE_OPEN_READ_ONLY | rusqlite::OpenFlags::SQLITE_OPEN_NO_MUTEX;
+    let Ok(connection) = rusqlite::Connection::open_with_flags(path, flags) else {
+        return HashMap::new();
+    };
+    let Ok(mut statement) = connection.prepare("SELECT id,title FROM threads") else {
+        return HashMap::new();
+    };
+    let Ok(rows) = statement.query_map([], |row| {
+        Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))
+    }) else {
+        return HashMap::new();
+    };
+    rows.filter_map(Result::ok)
+        .filter_map(|(id, title)| {
+            valid_codex_title(&id, &title, 80)
+                .map(|title| (normalize_codex_session_id(&id).to_owned(), title))
+        })
+        .collect()
+}
+
+fn valid_codex_title(id: &str, value: &str, max_chars: usize) -> Option<String> {
+    let title = strip_image_tags(value)
+        .split_whitespace()
+        .collect::<Vec<_>>()
+        .join(" ");
+    let normalized_id = normalize_codex_session_id(id);
+    let generated = title.eq_ignore_ascii_case(normalized_id)
+        || title.eq_ignore_ascii_case(&format!("codex:{normalized_id}"));
+    (!title.is_empty() && title.chars().count() <= max_chars && !generated).then_some(title)
+}
+
+fn strip_image_tags(value: &str) -> String {
+    let mut remaining = value;
+    let mut cleaned = String::with_capacity(value.len());
+    loop {
+        let lowercase = remaining.to_ascii_lowercase();
+        let Some(start) = lowercase.find("<image") else {
+            cleaned.push_str(remaining);
+            break;
+        };
+        cleaned.push_str(&remaining[..start]);
+        let after = &remaining[start..];
+        let Some(end) = after.find('>') else {
+            break;
+        };
+        remaining = &after[end + 1..];
+    }
+    cleaned
 }
 
 fn normalize_codex_session_id(value: &str) -> &str {
@@ -452,32 +544,40 @@ fn normalize_codex_session_id(value: &str) -> &str {
     value
 }
 
-fn json_lines(path: &Path) -> impl Iterator<Item = Value> {
-    File::open(path)
-        .ok()
-        .map(|file| {
+fn json_lines(path: &Path) -> Box<dyn Iterator<Item = Value>> {
+    match File::open(path) {
+        Ok(file) => Box::new(
             BufReader::new(file)
+                .take(MAX_SCAN_BYTES_PER_FILE)
                 .lines()
                 .map_while(Result::ok)
-                .filter_map(|line| serde_json::from_str(&line).ok())
-                .collect::<Vec<_>>()
-        })
-        .unwrap_or_default()
-        .into_iter()
+                .filter_map(|line| serde_json::from_str(&line).ok()),
+        ),
+        Err(_) => Box::new(std::iter::empty()),
+    }
 }
 
-fn usage_from_object(object: &serde_json::Map<String, Value>) -> Usage {
+fn usage_from_object(
+    object: &serde_json::Map<String, Value>,
+    input_includes_cache_read: bool,
+) -> Usage {
+    let input = integer(object, &["input_tokens", "inputTokens"]);
+    let cache_read = integer(
+        object,
+        &[
+            "cached_input_tokens",
+            "cache_read_input_tokens",
+            "cacheReadInputTokens",
+        ],
+    );
     Usage {
-        input: integer(object, &["input_tokens", "inputTokens"]),
+        input: if input_includes_cache_read {
+            input.saturating_sub(cache_read)
+        } else {
+            input
+        },
         output: integer(object, &["output_tokens", "outputTokens"]),
-        cache_read: integer(
-            object,
-            &[
-                "cached_input_tokens",
-                "cache_read_input_tokens",
-                "cacheReadInputTokens",
-            ],
-        ),
+        cache_read,
         cache_write: integer(
             object,
             &["cache_creation_input_tokens", "cacheWriteInputTokens"],
@@ -560,6 +660,86 @@ mod tests {
     use super::*;
 
     #[test]
+    fn prefers_codex_sidebar_descriptions_with_safe_fallbacks() {
+        let directory = tempfile::tempdir().unwrap();
+        let codex_home = directory.path().join(".codex");
+        fs::create_dir_all(&codex_home).unwrap();
+        let sidebar_id = "019f0000-0000-7000-8000-000000000011";
+        let backup_id = "019f0000-0000-7000-8000-000000000012";
+        let index_id = "019f0000-0000-7000-8000-000000000013";
+        let sqlite_id = "019f0000-0000-7000-8000-000000000014";
+        fs::write(
+            codex_home.join(".codex-global-state.json"),
+            serde_json::to_vec(&json!({
+                "electron-persisted-atom-state": {
+                    "thread-descriptions-v1": {
+                        sidebar_id: "Clean retired desktop and push"
+                    }
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let mut index = File::create(codex_home.join("session_index.jsonl")).unwrap();
+        writeln!(
+            index,
+            "{}",
+            json!({ "id": sidebar_id, "thread_name": "Lower priority index title" })
+        )
+        .unwrap();
+        writeln!(
+            index,
+            "{}",
+            json!({ "id": index_id, "thread_name": "Session index fallback" })
+        )
+        .unwrap();
+        let connection = rusqlite::Connection::open(codex_home.join("state_5.sqlite")).unwrap();
+        connection
+            .execute_batch("CREATE TABLE threads (id TEXT PRIMARY KEY, title TEXT NOT NULL);")
+            .unwrap();
+        connection
+            .execute(
+                "INSERT INTO threads (id,title) VALUES (?1,?2)",
+                rusqlite::params![sqlite_id, "SQLite short title"],
+            )
+            .unwrap();
+        drop(connection);
+
+        let titles = read_codex_titles(directory.path());
+        assert_eq!(
+            titles.get(sidebar_id).map(String::as_str),
+            Some("Clean retired desktop and push")
+        );
+        assert_eq!(
+            titles.get(index_id).map(String::as_str),
+            Some("Session index fallback")
+        );
+        assert_eq!(
+            titles.get(sqlite_id).map(String::as_str),
+            Some("SQLite short title")
+        );
+
+        fs::write(codex_home.join(".codex-global-state.json"), b"{broken").unwrap();
+        fs::write(
+            codex_home.join(".codex-global-state.json.bak"),
+            serde_json::to_vec(&json!({
+                "electron-persisted-atom-state": {
+                    "thread-descriptions-v1": {
+                        backup_id: "Backup sidebar title"
+                    }
+                }
+            }))
+            .unwrap(),
+        )
+        .unwrap();
+        let backup_titles = read_codex_titles(directory.path());
+        assert_eq!(
+            backup_titles.get(backup_id).map(String::as_str),
+            Some("Backup sidebar title")
+        );
+    }
+
+    #[test]
     fn scans_codex_and_claude_with_bounded_titles_but_without_arbitrary_content() {
         let directory = tempfile::tempdir().unwrap();
         let codex_dir = directory.path().join(".codex/sessions");
@@ -625,10 +805,12 @@ mod tests {
         .unwrap();
         let result = scan_with_pricing(directory.path(), PricingCatalog::built_in(), true);
         assert_eq!(result["rows"].as_array().unwrap().len(), 2);
-        assert_eq!(result["rows"][0]["totalTokens"], 110);
+        assert_eq!(result["rows"][0]["inputTokens"], 70);
+        assert_eq!(result["rows"][0]["cacheReadTokens"], 10);
+        assert_eq!(result["rows"][0]["totalTokens"], 100);
         assert_eq!(result["rows"][0]["title"], "修复桌面端加载失败");
         assert_eq!(result["rows"][1]["title"], "Review trace failures");
-        assert_close(result["rows"][0]["costUsd"].as_f64(), 0.001_005);
+        assert_close(result["rows"][0]["costUsd"].as_f64(), 0.000_955);
         assert!(!result.to_string().contains("do not store"));
 
         let metadata = scan_with_pricing(directory.path(), PricingCatalog::built_in(), false);
@@ -639,6 +821,19 @@ mod tests {
                 .iter()
                 .all(|row| row.get("title").is_none())
         );
+    }
+
+    #[test]
+    fn discovers_active_codex_sessions_larger_than_the_old_sixteen_mib_limit() {
+        let directory = tempfile::tempdir().unwrap();
+        let sessions = directory.path().join(".codex/sessions");
+        fs::create_dir_all(&sessions).unwrap();
+        let path =
+            sessions.join("rollout-2026-01-01T00-00-00-019f0000-0000-7000-8000-000000000002.jsonl");
+        let file = File::create(&path).unwrap();
+        file.set_len(16 * 1024 * 1024 + 1).unwrap();
+
+        assert_eq!(jsonl_files(&[sessions]), vec![path]);
     }
 
     #[test]

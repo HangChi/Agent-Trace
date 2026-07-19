@@ -1026,6 +1026,25 @@ impl Storage {
         let sort = match query.sort.as_deref() {
             Some("name") => "name",
             Some("status") => "status",
+            Some("tokens") => {
+                "coalesce(
+                    cast(json_extract(metadata_json, '$.summary.tokenUsage.total') AS integer),
+                    (SELECT sum(cast(json_extract(e.metadata_json, '$.tokenUsage.total') AS integer))
+                     FROM events e WHERE e.run_id = runs.id),
+                    0
+                )"
+            }
+            Some("cost") => {
+                "coalesce(
+                    cast(json_extract(metadata_json, '$.summary.costUsd') AS real),
+                    (SELECT sum(cast(json_extract(e.metadata_json, '$.costUsd') AS real))
+                     FROM events e WHERE e.run_id = runs.id),
+                    0
+                )"
+            }
+            Some("duration") => {
+                "max(0, (julianday(coalesce(ended_at, CURRENT_TIMESTAMP)) - julianday(started_at)) * 86400000)"
+            }
             _ => "started_at",
         };
         let limit_index = values.len() + 1;
@@ -2921,7 +2940,10 @@ fn update_generated_run_name(
     transaction.execute(
         "UPDATE runs SET name=?1
          WHERE json_extract(metadata_json, '$.sessionId')=?2
-           AND name IN (?3, ?4, ?5, ?6)",
+           AND (
+             coalesce(json_extract(metadata_json, '$.historyScan'), 0)=1
+             OR name IN (?3, ?4, ?5, ?6)
+           )",
         params![
             title,
             session_id,
@@ -3084,6 +3106,125 @@ mod tests {
             !serde_json::to_string(run)
                 .unwrap()
                 .contains("must not be stored")
+        );
+    }
+
+    #[test]
+    fn native_usage_snapshot_upgrades_only_generated_names() {
+        let (_directory, storage) = storage();
+        let create = |id: &str, name: &str, history_scan: bool| CreateRun {
+            id: id.to_owned(),
+            name: name.to_owned(),
+            status: "success".to_owned(),
+            started_at: Some("2026-01-01T00:00:00.000Z".to_owned()),
+            ended_at: Some("2026-01-01T00:01:00.000Z".to_owned()),
+            input: None,
+            output: None,
+            error: None,
+            metadata: Some(json!({
+                "agent": "codex", "sessionId": "session-upgrade", "historyScan": history_scan
+            })),
+        };
+        storage
+            .create_run(create("generated", "codex:session-upgrade", false))
+            .unwrap();
+        storage
+            .create_run(create("history", "Old fallback title", true))
+            .unwrap();
+        storage
+            .create_run(create("custom", "Keep my custom name", false))
+            .unwrap();
+        storage
+            .replace_usage_snapshot(&json!({
+                "scannedAt": "2026-01-02T00:00:00.000Z",
+                "reconciledClients": ["codex"], "diagnostics": [],
+                "rows": [{
+                    "client": "codex", "sessionId": "session-upgrade", "model": "gpt-5",
+                    "provider": "openai", "inputTokens": 1, "outputTokens": 1,
+                    "cacheReadTokens": 0, "cacheWriteTokens": 0, "reasoningTokens": 0,
+                    "totalTokens": 2, "costUsd": 0.0, "messageCount": 1,
+                    "title": "Sidebar title",
+                    "startedAt": "2026-01-01T00:00:00.000Z",
+                    "lastUsedAt": "2026-01-01T00:01:00.000Z"
+                }]
+            }))
+            .unwrap();
+        assert_eq!(
+            storage.get_run("generated").unwrap().unwrap().name,
+            "Sidebar title"
+        );
+        assert_eq!(
+            storage.get_run("history").unwrap().unwrap().name,
+            "Sidebar title"
+        );
+        assert_eq!(
+            storage.get_run("custom").unwrap().unwrap().name,
+            "Keep my custom name"
+        );
+    }
+
+    #[test]
+    fn run_list_sorts_by_dashboard_metrics() {
+        let (_directory, storage) = storage();
+        storage
+            .replace_usage_snapshot(&json!({
+                "scannedAt": "2026-01-02T00:00:00.000Z",
+                "reconciledClients": ["codex"], "diagnostics": [],
+                "rows": [
+                    {
+                        "client": "codex", "sessionId": "short-costly", "model": "gpt-5",
+                        "provider": "openai", "inputTokens": 90, "outputTokens": 10,
+                        "totalTokens": 100, "costUsd": 7.0, "messageCount": 2,
+                        "title": "Short costly run",
+                        "startedAt": "2026-01-01T00:00:00.000Z",
+                        "lastUsedAt": "2026-01-01T00:01:00.000Z"
+                    },
+                    {
+                        "client": "codex", "sessionId": "long-token-heavy", "model": "gpt-5",
+                        "provider": "openai", "inputTokens": 480, "outputTokens": 20,
+                        "totalTokens": 500, "costUsd": 1.0, "messageCount": 4,
+                        "title": "Long token-heavy run",
+                        "startedAt": "2026-01-02T00:00:00.000Z",
+                        "lastUsedAt": "2026-01-02T00:05:00.000Z"
+                    },
+                    {
+                        "client": "codex", "sessionId": "mid-cost", "model": "gpt-5",
+                        "provider": "openai", "inputTokens": 15, "outputTokens": 5,
+                        "totalTokens": 20, "costUsd": 3.0, "messageCount": 1,
+                        "title": "Mid cost run",
+                        "startedAt": "2026-01-03T00:00:00.000Z",
+                        "lastUsedAt": "2026-01-03T00:03:00.000Z"
+                    }
+                ]
+            }))
+            .unwrap();
+
+        let list_names = |sort: &str| {
+            storage
+                .list_runs(RunListQuery {
+                    include_untracked: true,
+                    sort: Some(sort.to_owned()),
+                    order: Some("desc".to_owned()),
+                    ..Default::default()
+                })
+                .unwrap()
+                .runs
+                .into_iter()
+                .map(|run| run.name)
+                .collect::<Vec<_>>()
+        };
+
+        assert_eq!(
+            list_names("tokens"),
+            vec!["Long token-heavy run", "Short costly run", "Mid cost run"]
+        );
+        assert_eq!(
+            list_names("cost"),
+            vec!["Short costly run", "Mid cost run", "Long token-heavy run"]
+        );
+        assert_eq!(
+            list_names("duration"),
+            vec!["Long token-heavy run", "Mid cost run", "Short costly run"]
         );
     }
 }

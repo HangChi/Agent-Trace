@@ -4,7 +4,10 @@
   "version": "0.5.0",
   "identifier": "dev.agent-trace.desktop",
   "build": {
-    "frontendDist": "../ui"
+    "beforeDevCommand": "pnpm dev:ui",
+    "beforeBuildCommand": "pnpm build:ui",
+    "devUrl": "http://127.0.0.1:1420",
+    "frontendDist": "../dist"
   },
   "app": {
     "windows": [

@@ -40,7 +40,7 @@ flowchart LR
 | `apps/server` | HTTP 接入、规范化、SQLite 迁移/存储、分页读模型和诊断。 | Hono、Drizzle、better-sqlite3 |
 | `apps/web` | 运行列表、详情、筛选、树形追踪、成本和 Scanner 状态界面。 | Next.js、React、共享 Schema |
 | `crates/agent-trace-core` | 桌面专用 Collector、SQLite、Hooks/OTLP、读模型、回放和原生 Usage Scanner。 | Rust、Axum、rusqlite |
-| `apps/desktop-tauri` | 进程内启动 Rust Collector、托盘、静态 UI 和 Windows 打包。 | Tauri、WebView2、NSIS |
+| `apps/desktop-tauri` | 进程内启动 Rust Collector、托盘、共享 Dashboard 和 Windows 打包。 | Tauri、Vite、WebView2、NSIS |
 
 ## 核心数据模型
 
