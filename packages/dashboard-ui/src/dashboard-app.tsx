@@ -422,10 +422,10 @@ export function RunDetailView(context: PageContext & { id: string }) {
     <div className="at-grid-2"><section className="at-card"><div className="at-card-head"><h2>{tr(locale, "自动诊断", "Automatic diagnostics")}</h2></div>{insights.insights.length ? <div className="at-list">{insights.insights.map(item => <div className="at-list-item" key={`${item.kind}-${item.eventIds.join()}`}><strong>{item.title}</strong><p>{item.kind} · {item.severity} · {item.eventIds.length} events</p><div className="at-actions">{item.eventIds.slice(0, 4).map(eventId => <a className="at-badge" href={`#event-${eventId}`} key={eventId}>{eventId.slice(0, 12)}</a>)}</div></div>)}</div> : <StatePanel title={tr(locale, "未发现明显异常", "No notable issues")} body={tr(locale, "当前规则没有识别到可定位的问题。", "No deterministic issue was detected.")} />}</section>
     <section className="at-card"><div className="at-card-head"><h2>{tr(locale, "来源与组织", "Source and organization")}</h2></div><form className="at-card-body at-form" onSubmit={event => void saveOrganization(event)}><div className="at-grid-2"><Field label={tr(locale, "项目", "Project")}><input className="at-control" name="project" defaultValue={run.metadata?.project || ""} /></Field><Field label={tr(locale, "环境", "Environment")}><input className="at-control" name="environment" defaultValue={run.metadata?.environment || ""} /></Field><Field label={tr(locale, "版本", "Version")}><input className="at-control" name="version" defaultValue={run.metadata?.version || ""} /></Field><Field label={tr(locale, "标签（逗号分隔）", "Tags (comma-separated)")}><input className="at-control" name="tags" defaultValue={(run.metadata?.tags || []).join(", ")} /></Field></div><Field label={tr(locale, "备注", "Note")}><textarea className="at-control" name="note" defaultValue={run.metadata?.note || ""} /></Field><label className="at-checkbox"><input type="checkbox" name="favorite" defaultChecked={Boolean(run.metadata?.favorite)} /> {tr(locale, "收藏", "Favorite")}</label><button className="at-button primary">{tr(locale, "保存组织信息", "Save organization")}</button></form></section></div>
     <section className="at-card"><div className="at-card-head"><div><h2>{tr(locale, "事件时间线", "Event timeline")} <Badge>{events.counts.matching}</Badge></h2><p>{tr(locale, `显示 ${visibility} 事件`, `Showing ${visibility} events`)}</p></div><div className="at-actions">{(["display", "hidden", "all"] as const).map(mode => <button key={mode} className={`at-button ${mode === visibility ? "primary" : ""}`} onClick={() => { const next = new URLSearchParams(route.query); mode === "display" ? next.delete("visibility") : next.set("visibility", mode); navigate(withQuery(route.path, next)); }}>{mode}</button>)}</div></div>
-      {events.events.length ? <div>{events.events.map(event => <details className="at-event" id={`event-${event.id}`} key={event.id}><summary><span className="at-subtle at-mono">{formatDate(event.timestamp, locale)}</span><Badge>{event.type}</Badge><strong>{event.name}</strong><StatusBadge status={event.status} locale={locale} /><span className="at-mono">{fmt(event.metadata?.tokenUsage?.total || 0)}</span></summary><div className="at-event-detail"><pre className="at-json">{JSON.stringify(event, null, 2)}</pre></div></details>)}</div> : <StatePanel title={tr(locale, "没有匹配事件", "No matching events")} body={tr(locale, "切换可见性或筛选条件。", "Change visibility or filters.")} />}
+      {events.events.length ? <div>{events.events.map(event => <details className="at-event" id={`event-${event.id}`} key={event.id}><summary className="at-event-summary"><ChevronRight className="at-event-chevron" size={15} /><span className="at-event-time at-subtle at-mono">{formatDate(event.timestamp, locale)}</span><span className="at-event-kind"><Badge>{eventTypeLabel(locale, event.type)}</Badge></span><strong className="at-event-name">{eventNameLabel(locale, event.name)}</strong><span className="at-event-status"><StatusBadge status={event.status} locale={locale} /></span><span className="at-event-token at-mono">{fmt(event.metadata?.tokenUsage?.total || 0)}</span></summary><EventDetail event={event} locale={locale} /></details>)}</div> : <StatePanel title={tr(locale, "没有匹配事件", "No matching events")} body={tr(locale, "切换可见性或筛选条件。", "Change visibility or filters.")} />}
       <Pagination locale={locale} page={events.pagination.page} totalPages={events.pagination.totalPages} total={events.pagination.total} navigate={page => { const next = new URLSearchParams(route.query); next.set("page", String(page)); navigate(withQuery(route.path, next)); }} />
     </section>
-    <div className="at-grid-2"><section className="at-card"><div className="at-card-head"><h2>Input</h2></div><div className="at-card-body"><pre className="at-json">{JSON.stringify(run.input ?? null, null, 2)}</pre></div></section><section className="at-card"><div className="at-card-head"><h2>Output</h2></div><div className="at-card-body"><pre className="at-json">{JSON.stringify(run.output ?? run.error ?? null, null, 2)}</pre></div></section></div>
+    <div className="at-grid-2"><section className="at-card"><div className="at-card-head"><div><h2>{tr(locale, "运行输入", "Run input")}</h2><p>{tr(locale, "整个 Run 的输入数据", "Input data for the entire run")}</p></div></div><div className="at-card-body"><JsonPayload emptyLabel={tr(locale, "无输入", "No input")} label={tr(locale, "输入数据", "Input data")} value={run.input} /></div></section><section className="at-card"><div className="at-card-head"><div><h2>{tr(locale, "运行输出", "Run output")}</h2><p>{tr(locale, "整个 Run 的输出或错误", "Output or error for the entire run")}</p></div></div><div className="at-card-body"><JsonPayload emptyLabel={tr(locale, "无输出", "No output")} label={tr(locale, "输出数据", "Output data")} value={run.output ?? run.error} /></div></section></div>
   </>;
 }
 
@@ -502,6 +502,52 @@ export function MaintenanceView(context: PageContext) {
   const pruneRuns = async (event: FormEvent<HTMLFormElement>) => { event.preventDefault(); if (!window.confirm(tr(context.locale, "确定执行清理？", "Run retention cleanup?"))) return; const form = new FormData(event.currentTarget); const statuses = [form.get("success") === "on" ? "success" : "", form.get("error") === "on" ? "error" : ""].filter(Boolean); await context.client.send("/maintenance/prune", "POST", { before: new Date(`${String(form.get("before"))}T00:00:00.000Z`).toISOString(), statuses, keepTombstones: form.get("keepTombstones") === "on" }); resource.reload(); };
   const defaultBefore = new Date(Date.now() - 90 * 86_400_000).toISOString().slice(0, 10);
   return <><PageHead locale={context.locale} eyebrow="MAINTENANCE" title={tr(context.locale, "维护与隐私", "Maintenance and privacy")} body={tr(context.locale, "管理本地存储、隐私脱敏、保留策略和删除墓碑。", "Manage local storage, privacy redaction, retention, and tombstones.")} /><TelemetryStrip items={Object.entries(stats).slice(0, 4).map(([key, value]) => [key, typeof value === "number" ? fmt(value) : String(value ?? "-"), ""])} /><div className="at-grid-2"><section className="at-card"><div className="at-card-head"><h2>{tr(context.locale, "隐私规则", "Privacy rules")}</h2></div><form className="at-card-body at-form" onSubmit={event => void savePrivacy(event)}><Field label={tr(context.locale, "敏感字段", "Sensitive keys")}><textarea className="at-control" name="sensitiveKeys" defaultValue={privacy.sensitiveKeys.join("\n")} /></Field><Field label={tr(context.locale, "替换文本", "Replacement")}><input className="at-control" name="replacement" defaultValue={privacy.replacement} /></Field><button className="at-button primary">{tr(context.locale, "保存", "Save")}</button></form></section><section className="at-card"><div className="at-card-head"><h2>{tr(context.locale, "按日期清理", "Prune by date")}</h2></div><form className="at-card-body at-form" onSubmit={event => void pruneRuns(event)}><Field label={tr(context.locale, "删除此日期之前", "Delete before")}><input className="at-control" type="date" name="before" defaultValue={defaultBefore} required /></Field><div className="at-actions"><label className="at-checkbox"><input type="checkbox" name="success" defaultChecked /> success</label><label className="at-checkbox"><input type="checkbox" name="error" defaultChecked /> error</label><label className="at-checkbox"><input type="checkbox" name="keepTombstones" defaultChecked /> {tr(context.locale, "保留墓碑", "Keep tombstones")}</label></div><button className="at-button danger">{tr(context.locale, "执行清理", "Prune runs")}</button></form></section></div><section className="at-card"><div className="at-card-head"><h2>{tr(context.locale, "数据库操作", "Database operations")}</h2></div><div className="at-card-body at-actions"><button className="at-button" onClick={() => void context.client.send("/maintenance/compact", "POST", {}).then(resource.reload)}><Database size={14} />{tr(context.locale, "压缩数据库", "Compact database")}</button><button className="at-button" onClick={resource.reload}><RefreshCw size={14} />{tr(context.locale, "刷新统计", "Refresh stats")}</button></div></section><section className="at-card"><div className="at-card-head"><h2>{tr(context.locale, "删除墓碑", "Deletion tombstones")} <Badge>{tombstones.tombstones.length}</Badge></h2></div><div className="at-list">{tombstones.tombstones.map(item => <div className="at-list-item at-list-row" key={item.runId}><div><strong>{item.runId}</strong><p>{formatDate(item.deletedAt, context.locale)}</p></div><button className="at-button" onClick={() => void context.client.send(`/runs/${encodeURIComponent(item.runId)}/tombstone`, "DELETE").then(resource.reload)}><RotateCcw size={14} />{tr(context.locale, "恢复 ID", "Restore ID")}</button></div>)}</div></section></>;
+}
+
+function eventTypeLabel(locale: DashboardLocale, type: string) {
+  const labels: Record<string, [string, string]> = {
+    run_started: ["运行开始", "Run started"],
+    run_ended: ["运行结束", "Run ended"],
+    step_started: ["步骤开始", "Step started"],
+    step_ended: ["步骤结束", "Step ended"],
+    llm_call: ["模型调用", "Model call"],
+    tool_call: ["工具调用", "Tool call"],
+    retrieval: ["检索", "Retrieval"],
+    memory_update: ["记忆更新", "Memory update"],
+    error: ["错误", "Error"]
+  };
+  return tr(locale, ...(labels[type] || [type, type]));
+}
+
+function eventNameLabel(locale: DashboardLocale, name: string) {
+  const labels: Record<string, [string, string]> = {
+    token_usage: ["Token 用量", "Token usage"],
+    exec_command: ["执行命令", "Execute command"]
+  };
+  return tr(locale, ...(labels[name] || [name, name]));
+}
+
+function JsonPayload({ emptyLabel, label, value }: { emptyLabel: string; label: string; value: unknown }) {
+  const empty = value === null || value === undefined;
+  return <section className="at-event-payload"><h4>{label}</h4>{empty ? <p className="at-empty-value">{emptyLabel}</p> : <pre className="at-json">{JSON.stringify(value, null, 2)}</pre>}</section>;
+}
+
+function EventDetail({ event, locale }: { event: DashboardEventPage["events"][number]; locale: DashboardLocale }) {
+  return <div className="at-event-detail">
+    <dl className="at-event-meta">
+      <div><dt>{tr(locale, "事件 ID", "Event ID")}</dt><dd className="at-mono">{event.id}</dd></div>
+      <div><dt>{tr(locale, "原始类型", "Raw type")}</dt><dd className="at-mono">{event.type}</dd></div>
+      <div><dt>{tr(locale, "原始名称", "Raw name")}</dt><dd className="at-mono">{event.name}</dd></div>
+      <div><dt>{tr(locale, "耗时", "Duration")}</dt><dd>{formatDuration(event.durationMs || 0)}</dd></div>
+      <div><dt>{tr(locale, "状态", "Status")}</dt><dd><StatusBadge status={event.status} locale={locale} /></dd></div>
+      <div><dt>{tr(locale, "时间", "Time")}</dt><dd className="at-mono">{formatDate(event.timestamp, locale)}</dd></div>
+    </dl>
+    <div className="at-event-payloads">
+      <JsonPayload emptyLabel={tr(locale, "无输入", "No input")} label={tr(locale, "事件输入", "Event input")} value={event.input} />
+      <JsonPayload emptyLabel={tr(locale, "无输出", "No output")} label={tr(locale, "事件输出", "Event output")} value={event.output ?? event.error} />
+    </div>
+    <details className="at-event-raw"><summary><ChevronRight size={14} />{tr(locale, "原始数据", "Raw data")}</summary><pre className="at-json">{JSON.stringify(event, null, 2)}</pre></details>
+  </div>;
 }
 
 function PageHead({ eyebrow, title, body }: { locale: DashboardLocale; eyebrow: string; title: string; body: string }) { return <div className="at-page-head"><p className="at-eyebrow">{eyebrow}</p><h1>{title}</h1><p>{body}</p></div>; }
