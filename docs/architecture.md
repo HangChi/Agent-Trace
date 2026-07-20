@@ -12,10 +12,10 @@ flowchart LR
     Codex["Codex"] --> Hooks["全局 Hooks"]
     Claude["Claude Code"] --> Hooks
     Codex --> OTel["OTel JSON 日志"]
-    Histories["本地客户端历史"] --> Scanner["源码: CLI + tokscale<br/>桌面: Rust 原生扫描"]
+    Histories["本地客户端历史"] --> Scanner["CLI + tokscale"]
     Scanner --> Transcript["Transcript Collector"]
 
-    SDK -->|"/runs /events"| Collector["源码: Hono Collector<br/>桌面: Rust/Axum Collector"]
+    SDK -->|"/runs /events"| Collector["Hono Collector"]
     Hooks -->|"/integrations/*/hook"| Normalizer["Hook Normalizer"]
     OTel -->|"/integrations/codex/otel/v1/logs"| Normalizer
     Scanner -->|"/integrations/usage-scan"| Collector
@@ -25,7 +25,7 @@ flowchart LR
     Collector --> DB[("SQLite")]
     DB --> ReadModel["Dashboard Read Model"]
     ReadModel --> Web["Next.js Dashboard"]
-    Desktop["Tauri Desktop"] --> Collector
+    Desktop["Electron Desktop"] --> Collector
     Desktop --> Scanner
     Desktop --> Web
 ```
@@ -39,8 +39,7 @@ flowchart LR
 | `packages/cli` | 编排开发服务，安装 Hooks，运行 `tokscale`，协调历史和 transcript。 | tokscale、Node.js |
 | `apps/server` | HTTP 接入、规范化、SQLite 迁移/存储、分页读模型和诊断。 | Hono、Drizzle、better-sqlite3 |
 | `apps/web` | 运行列表、详情、筛选、树形追踪、成本和 Scanner 状态界面。 | Next.js、React、共享 Schema |
-| `crates/agent-trace-core` | 桌面专用 Collector、SQLite、Hooks/OTLP、读模型、回放和原生 Usage Scanner。 | Rust、Axum、rusqlite |
-| `apps/desktop-tauri` | 进程内启动 Rust Collector、托盘、共享 Dashboard 和 Windows 打包。 | Tauri、Vite、WebView2、NSIS |
+| `apps/desktop` | 启动/停止本地服务、托盘与关闭偏好、资源解包和 Windows 打包。 | Electron、electron-builder |
 
 ## 核心数据模型
 
@@ -124,8 +123,8 @@ Dashboard 不直接访问 SQLite，而是调用 Collector：
 
 - Collector 启动时运行数据库迁移并立即协调 stale Run。
 - 后续每 60 秒协调一次；默认 stale 阈值为 30 分钟，可由环境变量调整。
-- 桌面端在进程内启动 Collector，随后异步运行 Scanner；静态 Dashboard 已作为 Tauri 资源嵌入 WebView，不需要单独启动服务。
-- 当前实现没有单实例锁；应避免同时启动多个桌面实例，因为它们会竞争固定的 Collector 端口。
+- 桌面端先启动/复用 Collector，再非阻塞启动 Scanner，最后启动 Dashboard。
+- Desktop 只允许一个实例；第二个实例会唤起已有窗口。
 - Scanner 启动或周期失败只记录错误，不关闭 Collector 或 Dashboard。
 
 ## 边界与约束

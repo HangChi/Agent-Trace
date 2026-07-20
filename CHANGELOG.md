@@ -10,7 +10,7 @@
 - Codex 与 Claude Code 全局 Hooks，以及 Codex OTel JSON 日志接入。
 - `tokscale` 本地 Usage Scanner、客户端诊断、同步和 Transcript 采集。
 - Run 分页、事件筛选、时间线、父子调用树、失败检查和确定性 Trace Insight。
-- Windows Tauri 桌面端、Web/Tauri 共用 React Dashboard、全 Rust Collector、原生 Usage Scanner、托盘交互和 NSIS 打包。
+- Windows Electron 桌面编排、托盘关闭偏好和 NSIS 打包。
 - 文档一致性检查、OpenAPI、英文使用/接口/部署/安全文档与 CI。
 - SDK 通用 Step、异步自动父子链路和 Run 级组织 metadata。
 - Run 项目/环境/版本/标签/备注/收藏编辑与筛选。
@@ -23,20 +23,11 @@
 - Run/Event 查询默认返回有界分页 Read Model；旧客户端可使用 `legacy=1|true`。
 - 成本统一解释为 API 等价估算，模型价格只做精确匹配。
 - Node.js 基线明确为 `>=22.12.0`，pnpm 支持 `>=11.0.7 <12` 并在 CI 固定为 11.0.7。
-- Web 与 Tauri 现在使用同一套页面、20 条分页、筛选/排序、详情、Token-Trace 和管理功能；桌面端默认隐藏无追踪内容的空记录，并可显式显示全部。
 
 ### Fixed
 
-- Tauri 原生 Usage Scanner 按 Codex 官方字段语义将 `cached_input_tokens` 视为 `input_tokens` 的子集，避免客户端汇总重复累计缓存 Token，并避免缓存输入同时按全价与缓存价重复计费。
-- 桌面端复用源码 Collector 后会持续监测其状态；源码进程退出时，桌面端自动接管 4319 并启动原生 Scanner，页面无需重启即可恢复。
-- Codex 会话优先显示 `.codex-global-state.json` 中与 Codex 侧栏一致的描述，其次使用 `session_index.jsonl`、安全的本地状态标题或最多 40 字符的清理后首条用户消息；Web 与桌面列表均保持单行省略展示。
-- 桌面端现在会安全复用已运行的源码 Collector，不再因 Web 端占用 4319 而闪退；非 Agent-Trace 端口占用仍会明确失败。
-- Codex 与 Claude Code 历史会话现在使用清理后的首条用户消息作为可读 Run 标题，并只替换系统生成的 ID 名称；Web 与 Tauri 桌面列表的字体和数据排版保持一致。
-- Tauri 原生 Usage Scanner 现在按精确模型价格计算 API 等价成本，并让 Run 读模型保留扫描成本；Windows 托盘始终使用可辨识的应用图标，退出时也不会被 SSE 长连接阻塞。
-- 源码模式现在会验证并复用已运行的 Agent-Trace Collector，避免桌面端仍在托盘时因 4319 端口冲突导致 Web 开发进程崩溃；非兼容占用会返回明确错误。
 - Claude Code Hooks 现在显式选择平台 Shell，采集服务不可用时在 PowerShell、Git Bash 和 POSIX Bash 中均不会阻断 Agent；重新安装会迁移旧的 CMD 风格托管条目。
 - Codex 活跃/归档历史协调、Token 重复计算和 Scanner 启动可靠性。
-- 超过 16 MiB 的活跃 Codex JSONL 现在会逐行扫描并继续更新侧栏标题、Token 与成本，不再保留过期的 ID 名称。
 - 异常父子关系下的 Trace Tree 保留、诊断定位和跨分页导航。
 - 过期 smoke 断言与分页响应契约不一致的问题。
 

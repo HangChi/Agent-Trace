@@ -1,7 +1,36 @@
-import { DashboardApp } from "@agent-trace/dashboard-ui";
+import type { EvaluationDatasetReport, EvaluationDatasetSummary } from "@agent-trace/schema";
+import { FlaskConical, Plus } from "lucide-react";
+import Link from "next/link";
 
-const collectorUrl = process.env.AGENT_TRACE_API_URL ?? process.env.TOOLTRACE_API_URL ?? "http://localhost:4319";
+import { ConsoleHeader } from "~/components";
+import { Button } from "~/components/ui/button";
+import { Card, CardContent } from "~/components/ui/card";
+import { localizedHref, parseLocale } from "~/lib/i18n";
+import { createCaseAction, createDatasetAction, recordResultAction } from "./actions";
 
-export default function EvaluationsPage() {
-  return <DashboardApp apiBase={collectorUrl} initialPath="/evaluations" />;
+export const dynamic = "force-dynamic";
+
+const collectorUrl =
+  process.env.AGENT_TRACE_API_URL ?? process.env.TOOLTRACE_API_URL ?? "http://localhost:4319";
+
+export default async function EvaluationsPage({ searchParams }: { searchParams: Promise<{ lang?: string | string[]; dataset?: string | string[] }> }) {
+  const params = await searchParams;
+  const locale = parseLocale(params.lang);
+  const selectedId = Array.isArray(params.dataset) ? params.dataset[0] : params.dataset;
+  const datasetBody = await getJson<{ datasets: EvaluationDatasetSummary[] }>("/evaluations/datasets");
+  const selected = selectedId ? await getJson<EvaluationDatasetReport>(`/evaluations/datasets/${encodeURIComponent(selectedId)}`) : undefined;
+
+  return <main id="main-content" className="min-h-dvh bg-background text-foreground"><ConsoleHeader locale={locale} path="/evaluations" /><section className="mx-auto w-full max-w-[1400px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8"><div className="flex items-start gap-3"><span className="flex size-10 items-center justify-center rounded-xl border border-primary/25 bg-primary/10 text-primary"><FlaskConical className="size-5" /></span><div><h1 className="text-2xl font-semibold tracking-[-0.04em]">{locale === "zh" ? "Agent 评测集" : "Agent evaluations"}</h1><p className="mt-1 text-sm text-muted-foreground">{locale === "zh" ? "管理回归用例，将 Run 评分为可比较的质量指标。" : "Manage regression cases and score Runs with comparable quality metrics."}</p></div></div>
+
+    <div className="mt-5 grid gap-5 lg:grid-cols-[0.85fr_1.5fr]">
+      <div className="space-y-5"><Card className="py-0"><CardContent className="p-5"><h2 className="text-sm font-semibold">{locale === "zh" ? "新建评测集" : "New dataset"}</h2><form action={createDatasetAction} className="mt-4 space-y-3"><Field name="name" label={locale === "zh" ? "名称" : "Name"} required /><Field name="description" label={locale === "zh" ? "说明" : "Description"} /><Field name="scoreWeights" label={locale === "zh" ? "评分权重" : "Score weights"} placeholder={locale === "zh" ? "正确性:0.7,效率:0.3" : "correctness:0.7,efficiency:0.3"} required /><Button type="submit" size="sm"><Plus className="size-4" />{locale === "zh" ? "创建" : "Create"}</Button></form></CardContent></Card><Card className="overflow-hidden py-0"><div className="divide-y divide-border">{datasetBody.datasets.map((dataset) => <Link key={dataset.id} href={localizedHref(`/evaluations?dataset=${encodeURIComponent(dataset.id)}`, locale)} className="block px-5 py-4 hover:bg-accent"><div className="flex items-center justify-between gap-3"><p className="text-sm font-medium">{dataset.name}</p><span className="font-mono text-sm font-semibold text-primary">{(dataset.averageQualityScore * 100).toFixed(1)}</span></div><p className="mt-1 text-xs text-muted-foreground">{formatCount(locale, dataset.caseCount, "用例", "case")} · {formatCount(locale, dataset.resultCount, "结果", "result")}</p></Link>)}{datasetBody.datasets.length === 0 ? <p className="p-5 text-sm text-muted-foreground">{locale === "zh" ? "尚无评测集。" : "No datasets yet."}</p> : null}</div></Card></div>
+
+      <Card className="py-0"><CardContent className="p-5">{selected ? <><div className="flex items-start justify-between gap-4"><div><h2 className="text-lg font-semibold">{selected.dataset.name}</h2><p className="mt-1 text-sm text-muted-foreground">{selected.dataset.description}</p></div><div className="text-right"><p className="font-mono text-2xl font-semibold text-primary">{(selected.dataset.averageQualityScore * 100).toFixed(1)}</p><p className="text-[10px] uppercase tracking-wider text-muted-foreground">{locale === "zh" ? "质量分" : "Quality"}</p></div></div><div className="mt-5 grid gap-5 xl:grid-cols-2"><form action={createCaseAction.bind(null, selected.dataset.id)} className="space-y-3 rounded-lg border border-border p-4"><h3 className="text-sm font-semibold">{locale === "zh" ? "添加用例" : "Add case"}</h3><Field name="name" label={locale === "zh" ? "用例名称" : "Case name"} required /><TextArea name="input" label={locale === "zh" ? "输入 JSON" : "Input JSON"} defaultValue="{}" required /><TextArea name="expectedOutput" label={locale === "zh" ? "期望输出 JSON" : "Expected output JSON"} /><Button type="submit" size="sm">{locale === "zh" ? "添加用例" : "Add case"}</Button></form><form action={recordResultAction} className="space-y-3 rounded-lg border border-border p-4"><h3 className="text-sm font-semibold">{locale === "zh" ? "记录评分" : "Record score"}</h3><label className="text-xs font-medium text-muted-foreground">{locale === "zh" ? "用例" : "Case"}<select name="caseId" required className={controlClass}>{selected.cases.map((item) => <option key={item.id} value={item.id}>{item.name}</option>)}</select></label><Field name="runId" label="Run ID" required /><Field name="scores" label={locale === "zh" ? "评分" : "Scores"} placeholder={locale === "zh" ? "正确性:0.8,效率:0.6" : "correctness:0.8,efficiency:0.6"} required /><Field name="notes" label={locale === "zh" ? "备注" : "Notes"} /><Button type="submit" size="sm">{locale === "zh" ? "保存评分" : "Save score"}</Button></form></div><div className="mt-5 divide-y divide-border rounded-lg border border-border">{selected.cases.map((item) => <div key={item.id} className="px-4 py-3"><div className="flex justify-between gap-3"><p className="text-sm font-medium">{item.name}</p><span className="text-xs text-muted-foreground">{formatCount(locale, item.results.length, "结果", "result")}</span></div>{item.results.map((result) => <div key={result.id} className="mt-2 flex items-center justify-between rounded-md bg-surface-muted px-3 py-2 text-xs"><span className="font-mono">{result.runId}</span><span className="font-semibold text-primary">{(result.qualityScore * 100).toFixed(1)}</span></div>)}</div>)}</div></> : <div className="flex min-h-64 items-center justify-center text-sm text-muted-foreground">{locale === "zh" ? "选择一个评测集查看用例和评分。" : "Select a dataset to view cases and scores."}</div>}</CardContent></Card>
+    </div></section></main>;
 }
+
+const controlClass = "mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm text-foreground";
+function Field({ name, label, placeholder, required }: { name: string; label: string; placeholder?: string; required?: boolean }) { return <label className="block text-xs font-medium text-muted-foreground">{label}<input name={name} placeholder={placeholder} required={required} className={controlClass} /></label>; }
+function TextArea({ name, label, defaultValue, required }: { name: string; label: string; defaultValue?: string; required?: boolean }) { return <label className="block text-xs font-medium text-muted-foreground">{label}<textarea name={name} defaultValue={defaultValue} required={required} rows={3} className="mt-1 w-full rounded-md border border-input bg-background px-3 py-2 font-mono text-xs" /></label>; }
+function formatCount(locale: "zh" | "en", count: number, chineseUnit: string, englishUnit: string) { return locale === "zh" ? `${count} 个${chineseUnit}` : `${count} ${englishUnit}${count === 1 ? "" : "s"}`; }
+async function getJson<T>(path: string): Promise<T> { const response = await fetch(`${collectorUrl}${path}`, { cache: "no-store" }); if (!response.ok) throw new Error(`Collector returned ${response.status} for ${path}.`); return response.json() as Promise<T>; }

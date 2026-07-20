@@ -4,9 +4,9 @@
 
 仓库要求：
 
-- Node.js `>=22.12.0`；`.nvmrc` 选择 Node.js 22。
+- Node.js `>=22.12.0`。该基线来自当前 Electron 依赖的最高最低要求；`.nvmrc` 选择 Node.js 22。
 - pnpm `>=11.0.7 <12`；`packageManager` 和 CI 固定使用 11.0.7。
-- 完整验证和 Windows 桌面开发需要 Rust stable；Windows 打包还需要 MSVC C++ Build Tools 与 Windows SDK。
+- Windows 桌面打包需要 Windows 环境及 electron-builder 所需工具。
 
 安装依赖：
 
@@ -29,12 +29,9 @@ pnpm test
 ```text
 apps/
   server/       Collector、SQLite、集成与读模型
-  web/          共享 React Dashboard 的 Next.js 入口
-  desktop-tauri/ 共享 React Dashboard 的 Tauri/Vite 入口、图标和 Windows 打包
-crates/
-  agent-trace-core/ Rust Collector、SQLite、分析与原生 Usage Scanner
+  web/          Next.js Dashboard
+  desktop/      Electron 主进程、资源准备和 Windows 打包
 packages/
-  dashboard-ui/ Web 与 Tauri 共用的页面、路由和样式
   schema/       共享 Zod Schema 与 TypeScript 类型
   sdk-js/       Agent Tracing SDK
   cli/          dev、usage、Hooks 管理
@@ -52,9 +49,7 @@ docs/           产品、用户、架构、开发和运维文档
 schema -> sdk-js -> simple-agent
 schema -> server
 schema -> web
-schema -> dashboard-ui -> web
-dashboard-ui -> desktop-tauri
-agent-trace-core -> desktop-tauri
+cli/server/web -> desktop packaging
 ```
 
 ## 本地开发
@@ -97,27 +92,27 @@ pnpm --filter simple-agent dev
 ### 桌面端开发
 
 ```bash
+pnpm build
 pnpm desktop:dev
 ```
 
-Tauri 进程通常会启动进程内 Rust Collector、由 Vite 编译的共享 React Dashboard 和原生 Usage Scanner；如果 `4319` 上已有通过 `/health` 验证的 Agent-Trace Collector，则桌面端会复用它并只启动内嵌 Dashboard。
+桌面主进程会自行启动开发态 Server、Web 和 usage watcher，不要同时占用相同 Collector 端口。
 
 ## 根脚本
 
 | 命令 | 行为 |
 | --- | --- |
-| `pnpm build` | 递归构建源码模式工作区包；桌面包使用独立命令。 |
-| `pnpm dev` | 并行执行源码模式各包 `dev`；通常优先使用 CLI 一体化启动。 |
+| `pnpm build` | 递归构建全部工作区包。 |
+| `pnpm dev` | 递归并行执行各包 `dev`；通常优先使用 CLI 一体化启动。 |
 | `pnpm test` | 构建 Schema，审计工作区脚本，运行根 Node 测试和各包测试。 |
 | `pnpm typecheck` | 递归执行各包类型检查。 |
 | `pnpm docs:check` | 校验 Markdown 链接、Collector/API/OpenAPI、环境变量和 CLI 文档一致性。 |
 | `pnpm lint` | 审计脚本、文档一致性、递归 Lint，并执行 `git diff --check`。 |
 | `pnpm verify` | 依次运行 build、test、typecheck 和 lint。 |
 | `pnpm format` | 递归调用各包 `format`；当前工作区包没有声明该脚本，不作为常规验证入口。 |
-| `pnpm desktop:dev` | 启动 Tauri 开发应用。 |
-| `pnpm desktop:pack:win` | 生成不带安装器的 release 可执行文件。 |
+| `pnpm desktop:dev` | 启动 Electron 开发应用。 |
+| `pnpm desktop:pack:win` | 生成未安装的 Windows 目录包。 |
 | `pnpm desktop:build:win` | 生成 Windows NSIS 安装包。 |
-| `pnpm desktop:check:rust` | 检查共享 UI/Tauri 契约，并运行 Rust 测试和 Clippy。 |
 
 ## 按包命令
 
@@ -128,7 +123,7 @@ pnpm --filter @agent-trace/cli build
 pnpm --filter @agent-trace/server db:init
 pnpm --filter @agent-trace/server dev
 pnpm --filter @agent-trace/web dev
-pnpm --filter @agent-trace/desktop-tauri test
+pnpm --filter @agent-trace/desktop build
 ```
 
 各包的 `lint` 当前主要委托给类型检查或桌面静态检查。完整验证应从根目录运行，避免遗漏根脚本审计和 `git diff --check`。
@@ -137,7 +132,6 @@ pnpm --filter @agent-trace/desktop-tauri test
 
 - 修改跨包数据契约时，先更新 `packages/schema`，再同步 Server、SDK 与 Web 消费者。
 - 新增 HTTP 路由时，同时更新 `apps/server/src/app.ts` 的验证、对应 smoke 测试和 [API 参考](api-reference.md)。
-- 桌面 Collector 路由还必须同步 `crates/agent-trace-core/src/api.rs`；`pnpm docs:check` 会校验两套 Collector 与 API/OpenAPI 的路由集合。
 - 修改 CLI 参数时，同时更新 `printHelp`/子命令帮助和[用户手册](user-guide.md)。
 - 修改数据库结构时只通过版本化 migration 前进，不手工假设现有数据库为空。
 - 修改 Hooks 时保持幂等管理标记、配置备份和非阻塞退出语义。

@@ -1,4 +1,4 @@
-name: Tauri desktop release validation
+name: Desktop release validation
 
 on:
   workflow_dispatch:
@@ -7,7 +7,7 @@ permissions:
   contents: read
 
 jobs:
-  build-installer:
+  install-upgrade:
     runs-on: windows-latest
     timeout-minutes: 45
     steps:
@@ -22,10 +22,9 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm desktop:build:win
-      - name: Verify NSIS installer
+      - name: Install previous version, upgrade, launch, exit, and uninstall
         shell: powershell
-        run: |
-          $installers = @(Get-ChildItem target/release/bundle/nsis -Filter *.exe)
-          if ($installers.Count -ne 1) {
-            throw "Expected one NSIS installer, found $($installers.Count)."
-          }
+        run: >-
+          ./apps/desktop/scripts/installer-upgrade.e2e.ps1
+          -PreviousInstaller ./apps/desktop/release/Agent-Trace-Setup-0.2.0.exe
+          -CurrentInstaller ./apps/desktop/release/Agent-Trace-Setup-0.2.1.exe

@@ -3,7 +3,6 @@ import { basename, join } from "node:path";
 
 import { readOpenCodeSession } from "./opencode-session.js";
 import {
-  cleanPromptPreview,
   parseClaudeTranscript,
   parseCodexTranscript,
   parseWorkBuddyTitle,
@@ -46,7 +45,6 @@ export async function collectTranscriptDetails(
     join(home, ".codex", "sessions"),
     join(home, ".codex", "archived_sessions")
   ]);
-  const codexTitles = contentMode === "preview" ? readCodexSessionTitles(home) : new Map<string, string>();
   const claudeFiles = indexJsonlFiles([join(home, ".claude", "projects")]);
   const workBuddyFiles = indexJsonlFiles([join(home, ".workbuddy", "projects")]);
   const openCodeDatabases = discoverOpenCodeDatabases(home);
@@ -85,8 +83,7 @@ export async function collectTranscriptDetails(
         : resolveWorkBuddyFile(workBuddyFiles, sessionId);
     if (!file) continue;
 
-    const explicitTitle = client === "codex" ? codexTitles.get(sessionId) : undefined;
-    const fingerprint = `${fileFingerprint(file, contentMode)}\0${explicitTitle ?? ""}`;
+    const fingerprint = fileFingerprint(file, contentMode);
     const text = readFileSync(file, "utf8");
     const parsed = client === "codex"
       ? parseCodexTranscript(text, contentMode)
@@ -104,7 +101,7 @@ export async function collectTranscriptDetails(
       sessionId,
       title: client === "workbuddy"
         ? parseWorkBuddyTitle(text) || `workbuddy:${sessionId}`
-        : explicitTitle || transcriptTitle(client, sessionId, events),
+        : `${client === "claude" ? "claude-code" : client}:${sessionId}`,
       model: first.model,
       provider: first.provider,
       contentMode,
@@ -115,38 +112,6 @@ export async function collectTranscriptDetails(
   }
 
   return { clients: transcriptClients, sessionKeys, transcripts };
-}
-
-function transcriptTitle(client: string, sessionId: string, events: TranscriptEvent[]) {
-  const prompt = events.find((event) => event.kind === "prompt" && event.text)?.text;
-  const title = cleanPromptPreview(prompt)
-    .replace(/^\[(?:image|\d+ images)\]\s*/i, "")
-    .trim();
-  if (title) {
-    const characters = Array.from(title);
-    return characters.length > 40
-      ? `${characters.slice(0, 39).join("")}…`
-      : title;
-  }
-  return `${client === "claude" ? "claude-code" : client}:${sessionId}`;
-}
-
-function readCodexSessionTitles(home: string) {
-  const titles = new Map<string, string>();
-  const path = join(home, ".codex", "session_index.jsonl");
-  if (!existsSync(path)) return titles;
-  for (const line of readFileSync(path, "utf8").split(/\r?\n/)) {
-    if (!line.trim()) continue;
-    try {
-      const record = JSON.parse(line) as { id?: unknown; thread_name?: unknown };
-      if (typeof record.id !== "string" || typeof record.thread_name !== "string") continue;
-      const title = record.thread_name.replace(/\s+/g, " ").trim();
-      if (title) titles.set(normalizeSessionId("codex", record.id), title);
-    } catch {
-      // Ignore a partially-written index line and keep the remaining session titles.
-    }
-  }
-  return titles;
 }
 
 function groupRows(rows: UsageRowLike[]) {

@@ -1,0 +1,77 @@
+{
+  "name": "@agent-trace/desktop",
+  "version": "0.3.0",
+  "description": "Local-first AI agent debugging dashboard.",
+  "author": "Agent-Trace",
+  "private": true,
+  "main": "main.cjs",
+  "scripts": {
+    "build": "node scripts/check.mjs",
+    "dev": "electron .",
+    "dist:win": "node scripts/package-win.mjs nsis",
+    "lint": "node scripts/check.mjs",
+    "pack:win": "node scripts/package-win.mjs dir",
+    "prepare:icon": "node scripts/generate-icon.mjs",
+    "prepare:resources": "node scripts/prepare-dist.mjs",
+    "test": "node scripts/check.mjs",
+    "test:e2e": "node scripts/lifecycle.e2e.mjs",
+    "test:upgrade": "powershell -ExecutionPolicy Bypass -File scripts/installer-upgrade.e2e.ps1 -PreviousInstaller release/Agent-Trace-Setup-0.2.1.exe -CurrentInstaller release/Agent-Trace-Setup-0.3.0.exe"
+  },
+  "devDependencies": {
+    "@agent-trace/cli": "workspace:*",
+    "@agent-trace/server": "workspace:*",
+    "@agent-trace/web": "workspace:*",
+    "electron": "^41.9.0",
+    "electron-builder": "^26.15.3",
+    "sharp": "^0.35.2"
+  },
+  "build": {
+    "appId": "dev.agent-trace.desktop",
+    "productName": "Agent-Trace",
+    "compression": "maximum",
+    "afterPack": "scripts/after-pack.cjs",
+    "electronLanguages": [
+      "en-US",
+      "zh-CN"
+    ],
+    "directories": {
+      "output": "release"
+    },
+    "files": [
+      "assets/icon.ico",
+      "main.cjs",
+      "package.json"
+    ],
+    "extraResources": [
+      {
+        "from": "resources/archives",
+        "to": "archives"
+      }
+    ],
+    "npmRebuild": false,
+    "asarUnpack": [
+      "node_modules/**/*.node"
+    ],
+    "win": {
+      "icon": "assets/icon.ico",
+      "target": [
+        {
+          "target": "nsis",
+          "arch": [
+            "x64"
+          ]
+        }
+      ],
+      "artifactName": "${productName}-Setup-${version}.${ext}"
+    },
+    "nsis": {
+      "oneClick": false,
+      "perMachine": false,
+      "allowToChangeInstallationDirectory": true,
+      "deleteAppDataOnUninstall": true
+    }
+  },
+  "dependencies": {
+    "tar": "^7.5.16"
+  }
+}

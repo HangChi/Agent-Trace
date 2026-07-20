@@ -15,7 +15,7 @@ Agent-Trace 面向单机开发环境。Collector 默认监听 `127.0.0.1`，Dash
 | TypeScript SDK | 调用方传入的 Run/Event input、成功 output、错误、耗时和 metadata | SDK 不主动脱敏；调用方未传入的内容不会被推断。 |
 | Codex/Claude Hooks | 生命周期、会话/轮次 ID、来源、工作目录、工具/Skill/MCP 名、Shell 命令、状态、耗时、模型、Token、普通工具 payload 字节数 | 原始用户 Prompt、普通工具完整输入/输出、文件内容、最终回答全文、隐藏推理。 |
 | Codex OTel | OTel 记录中的会话、来源、模型、工具、命令、Token 和状态等规范化元数据 | Agent-Trace 配置 Codex `log_user_prompt = false`；普通 payload 只保留受控摘要。 |
-| Usage scan | 客户端、会话 ID、模型、provider、Token 分类、消息数、时间、扫描成本、诊断路径和提示；桌面 `preview` 模式依次使用 Codex 侧栏描述、`thread_name`、安全的本地状态标题或最多 40 字符的清理后首条用户消息作为 Run 标题 | `tokscale` 源日志全文、完整 Prompt 和响应正文不会直接提交给 Collector；桌面 `metadata` 模式不读取标题来源或保存标题预览。 |
+| Usage scan | 客户端、会话 ID、模型、provider、Token 分类、消息数、时间、扫描成本、诊断路径和提示 | `tokscale` 源日志全文不会直接提交给 Collector。 |
 | Transcript scan（preview） | 清理后的 Prompt 短预览、Prompt/Turn 时间、Token、工具名、会话元数据 | Assistant 正文、工具结果全文、文件内容；Prompt 预览截断为最多 240 个字符。 |
 | Transcript scan（metadata） | Prompt/Turn 时间、Token、工具名和会话元数据 | Prompt 文本。 |
 
@@ -50,17 +50,18 @@ node packages/cli/dist/index.js usage --once --home C:\Users\alice
 ## 本地文件
 
 - 源码运行时数据库默认是仓库当前目录下的 `agent-trace.db`，可由 `AGENT_TRACE_DB_PATH` 覆盖。
-- 桌面端数据库默认位于 Tauri `app_data_dir`，文件名为 `agent-trace.db`；可用 `AGENT_TRACE_DB_PATH` 覆盖。
-- Tauri UI、Rust Collector 和原生 Scanner 编入同一桌面应用，不创建 Node/Next 运行时解压目录。
+- 桌面端数据库默认位于 Electron 的 `userData` 目录，文件名为 `agent-trace.db`。
+- 桌面偏好保存在同一 `userData` 目录的 `preferences.json`。
+- 桌面打包运行时解压到 `userData/runtime`。
 - Hook 安装或卸载修改既有配置前会生成 `.agent-trace-backup.<timestamp>`。
 
-SQLite 数据库、WAL/SHM 文件、环境文件、`superpowers` 过程文档和构建产物均由仓库 `.gitignore` 排除；桌面源代码与图标属于版本化项目文件。
+SQLite 数据库、WAL/SHM 文件、环境文件、桌面资源和构建产物均由仓库 `.gitignore` 排除。
 
 ## 外部网络访问
 
 核心 tracing 与本地展示不要求 Agent-Trace 云服务。以下行为可能访问本机之外：
 
-- 安装依赖、下载 Rust crates 或构建 Tauri 包时访问包管理器/构建资源；缺少 WebView2 时，NSIS 安装器会下载微软 bootstrapper。
+- 安装依赖或构建 Electron 包时访问包管理器/构建资源。
 - 用户显式执行受支持客户端的 `tokscale sync` 时，由 `tokscale` 访问对应服务。
 - Dashboard 为显示人民币换算，默认尝试从 `https://open.er-api.com/v6/latest/USD` 获取 USD/CNY 汇率，每小时重新验证；失败时只省略 CNY 值。
 
@@ -79,7 +80,7 @@ $env:AGENT_TRACE_USD_CNY_RATE = "7.20"
 - `estimate` 表示缺少官方数据时的本地估算。
 - Reasoning Token 作为 output 的明细展示，不会在派生总量时重复相加。
 - Scanner 提供的正数 `costUsd` 优先。
-- 缺少扫描成本时，桌面原生扫描器使用版本固定的内置精确价格；`AGENT_TRACE_MODEL_PRICES_JSON` 可按精确模型名覆盖或补充，系统不做模糊匹配。
+- 缺少扫描成本时，只对 `AGENT_TRACE_MODEL_PRICES_JSON` 中精确匹配的模型计算成本。
 
 所有成本均为 API 等价估算，不表示订阅产品实际产生了额外扣费。
 

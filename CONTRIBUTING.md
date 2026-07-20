@@ -6,7 +6,7 @@
 
 - Node.js `>=22.12.0`（推荐使用 `.nvmrc` 中的 Node.js 22）。
 - pnpm `>=11.0.7 <12`；可复现安装和 CI 固定使用 11.0.7。
-- 完整验证和 Tauri 桌面开发需要 Rust stable；Windows 桌面安装包还需要 Windows x64、MSVC C++ Build Tools 与 Windows SDK。
+- Windows 桌面安装包需要 Windows x64；其他包可在 Node.js 支持的平台开发。
 
 ```bash
 pnpm install --frozen-lockfile

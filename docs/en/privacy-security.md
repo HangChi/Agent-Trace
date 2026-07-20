@@ -15,7 +15,7 @@ CORS only controls browser access. It does not protect non-browser clients and m
 | TypeScript SDK | Caller-provided input/output, errors, latency, metadata | No automatic redaction; omitted data is not inferred |
 | Codex/Claude Hooks | Lifecycle/session IDs, source, working directory, tool/skill/MCP names, shell commands, status, latency, model, controlled payload sizes | Raw user prompts, normal tool payloads/results, files, full final answer, hidden reasoning |
 | Codex OTel | Normalized session, model, tool, command, token, and status metadata | User prompt logging is configured off |
-| Usage Scanner | Client/session/model/provider, tokens, messages, time, cost, diagnostics; desktop preview mode tries the Codex sidebar description, `thread_name`, a safe local-state title, then at most 40 cleaned characters from the first user message | Full source logs, complete prompts, and assistant responses are not submitted directly; desktop metadata mode does not read title sources or store a title preview |
+| Usage Scanner | Client/session/model/provider, tokens, messages, time, cost, diagnostics | Full source logs are not submitted directly |
 | Transcript preview | Cleaned prompt preview, time, tokens, tools, session metadata | Assistant prose, full tool results, file contents |
 | Transcript metadata | Time, tokens, tools, session metadata | Prompt text |
 
@@ -31,7 +31,7 @@ The SDK serializes values supplied by the caller. Remove credentials, personal d
 
 ## Prompt preview mode
 
-- `preview` (default): source transcript events store a cleaned preview up to 240 characters; the native desktop scanner prefers Codex's official title and limits its local fallback to 40 characters.
+- `preview` (default): stores a cleaned preview up to 240 characters.
 - `metadata`: stores no prompt text.
 
 ```powershell
@@ -45,8 +45,7 @@ Changing modes does not remove previews already stored in SQLite.
 
 Core tracing and local display do not require an Agent-Trace cloud service. External access may occur when:
 
-- installing dependencies, downloading Rust crates, or building Tauri packages;
-- installing the Windows desktop when WebView2 is missing, because the NSIS bootstrapper downloads it from Microsoft;
+- installing dependencies or building Electron packages;
 - explicitly running a supported `tokscale sync`;
 - fetching the default USD/CNY exchange rate.
 
@@ -54,7 +53,7 @@ Set a positive `AGENT_TRACE_USD_CNY_RATE` to disable exchange-rate requests.
 
 ## Cost interpretation
 
-`official`, `scan`, and `estimate` identify the usage source. The native desktop scanner uses a version-pinned exact model catalog; `AGENT_TRACE_MODEL_PRICES_JSON` can override or add exact model names without fuzzy matching. Displayed cost is an API-equivalent estimate and is not a subscription invoice or proof of billing.
+`official`, `scan`, and `estimate` identify the usage source. Displayed cost is an API-equivalent estimate and is not a subscription invoice or proof of billing.
 
 ## Deletion and retention
 

@@ -329,7 +329,7 @@ node packages/cli/dist/index.js usage --once --sync --home C:\Users\alice
 
 ### 历史内容模式
 
-- `preview`：默认模式。Claude、Codex 和 OpenCode 的用户 Prompt 可保存清理后的最多 240 个字符预览，同时保存 Turn Token、工具名和时间；Codex 优先使用官方会话标题，桌面原生扫描器的本地标题回退最多 40 个字符。
+- `preview`：默认模式。Claude、Codex 和 OpenCode 的用户 Prompt 可保存清理后的最多 240 个字符预览，同时保存 Turn Token、工具名和时间。
 - `metadata`：不保存 Prompt 文本，只保留时间、Token、工具和会话元数据。
 
 使用纯元数据模式：
@@ -344,11 +344,11 @@ node packages/cli/dist/index.js usage --once \
 
 | 现象 | 检查与处理 |
 | --- | --- |
-| Dashboard 无法打开 | 源码模式确认 CLI 仍在运行并检查 3000 端口；Tauri 桌面 UI 不使用 Dashboard 端口，需检查应用窗口与 WebView2。 |
-| Collector 启动失败 | 检查 4319 端口。源码和桌面模式都会复用通过 `/health` 验证的现有 Agent-Trace Collector；其他程序占用时可关闭它，源码模式也可设置 `AGENT_TRACE_SERVER_PORT`。 |
+| Dashboard 无法打开 | 确认 CLI 仍在运行，检查 3000 端口；桌面端会在 3000 至 3099 中选择可用端口。 |
+| Collector 启动失败 | 检查 4319 端口；源码模式可设置 `AGENT_TRACE_SERVER_PORT`。 |
 | 看不到本地历史 | 运行 `usage clients --home <真实用户目录>`，根据 `actionHint` 登录或同步。 |
 | 只看到近期 Hook 事件 | 确认 usage watcher 未被 `AGENT_TRACE_USAGE_SCAN=0` 禁用，并检查 Scanner 状态。 |
-| 某模型显示未定价 | 桌面内置价目、扫描结果与 `AGENT_TRACE_MODEL_PRICES_JSON` 均没有该模型的精确条目。 |
+| 某模型显示未定价 | 扫描结果没有成本，且 `AGENT_TRACE_MODEL_PRICES_JSON` 没有该模型的精确条目。 |
 | Codex Token 不完整 | 重新执行 `install codex`，重启 Codex，并确认 OTel endpoint 指向当前 Collector。 |
 | Run 长期处于 running | Collector 每分钟检查一次；默认将超过 30 分钟且缺少活动的运行标记为 `error`。 |
 | 干净工作区测试找不到 SDK | 先运行 `pnpm build`，再运行 `pnpm test`。 |

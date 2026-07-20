@@ -29,17 +29,14 @@ if (
   throw new Error("Expected scanner diagnostics to be normalized and sorted by status.");
 }
 
-const runsPageSource = readFileSync(
-  new URL("../../../../../packages/dashboard-ui/src/dashboard-app.tsx", import.meta.url),
-  "utf8",
-);
+const runsPageSource = readFileSync(new URL("./page.tsx", import.meta.url), "utf8");
 
 if (
-  !runsPageSource.includes('if (all) query.set("includeUntracked", "true")') ||
-  !runsPageSource.includes('tr(locale, "显示全部记录", "Show all")') ||
-  !runsPageSource.includes('tr(locale, "隐藏空记录", "Hide empty")') ||
-  !runsPageSource.includes("<RunTable") ||
-  !runsPageSource.includes("<Pagination")
+  !runsPageSource.includes('query.set("includeUntracked", "1")') ||
+  !runsPageSource.includes("text.runs.showAllRuns") ||
+  !runsPageSource.includes("text.runs.hideEmptyRuns") ||
+  !runsPageSource.includes("<TableHeader sticky={false}>") ||
+  !runsPageSource.includes("text.runs.paginationSummary")
 ) {
   throw new Error("Expected the run list to expose visibility and unobscured pagination controls.");
 }

@@ -5,7 +5,7 @@
 Agent-Trace 仍处于内部迭代阶段，仓库没有 Git Tag 或正式稳定发行线。
 
 - 根 `package.json` 的 `0.0.0` 表示私有工作区，不是用户发行版本。
-- `apps/desktop-tauri/package.json`、`apps/desktop-tauri/src-tauri/Cargo.toml` 与 `tauri.conf.json` 的版本应保持一致，用于 Windows 桌面安装包文件名与升级识别。
+- `apps/desktop/package.json` 的版本用于 Windows 桌面安装包文件名与升级识别。
 - 在建立正式发布流程前，不承诺语义化版本兼容或长期支持周期。
 
 ## 版本来源

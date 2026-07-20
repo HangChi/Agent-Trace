@@ -216,7 +216,6 @@ try {
     "12",
     `rollout-2026-07-12T12-00-00-${codexId}.jsonl`
   );
-  const codexIndexFile = join(transcriptHome, ".codex", "session_index.jsonl");
   const claudeId = "claude-session";
   const claudeFile = join(transcriptHome, ".claude", "projects", "project", `${claudeId}.jsonl`);
   const workBuddyId = "workbuddy-session";
@@ -225,11 +224,6 @@ try {
   mkdirSync(join(claudeFile, ".."), { recursive: true });
   mkdirSync(join(workBuddyFile, ".."), { recursive: true });
   writeFileSync(codexFile, codexTranscript);
-  writeFileSync(codexIndexFile, JSON.stringify({
-    id: codexId,
-    thread_name: "修复桌面端加载失败",
-    updated_at: "2026-07-12T12:00:04.000Z"
-  }));
   writeFileSync(claudeFile, claudeTranscript);
   writeFileSync(workBuddyFile, workBuddyTranscript);
   const rows = [
@@ -245,26 +239,10 @@ try {
     first.transcripts.length !== 3 ||
     first.sessionKeys.join(",") !== `codex:${codexId},claude:${claudeId},workbuddy:${workBuddyId}` ||
     first.clients.join(",") !== "codex,claude,opencode,workbuddy" ||
-    first.transcripts.find((detail) => detail.client === "codex")?.title !== "修复桌面端加载失败" ||
-    first.transcripts.find((detail) => detail.client === "claude")?.title !== "real prompt" ||
     second.transcripts.length !== 0 ||
     second.sessionKeys.length !== 3
   ) {
     throw new Error("Expected transcript collection to send changed details and a complete session index.");
-  }
-
-  appendFileSync(codexIndexFile, `\n${JSON.stringify({
-    id: codexId,
-    thread_name: "优化桌面端标题展示",
-    updated_at: "2026-07-12T12:01:00.000Z"
-  })}`);
-  const titleChange = await collectTranscriptDetails(transcriptHome, rows, "preview", cache);
-  if (
-    titleChange.transcripts.length !== 1 ||
-    titleChange.transcripts[0]?.client !== "codex" ||
-    titleChange.transcripts[0]?.title !== "优化桌面端标题展示"
-  ) {
-    throw new Error("Expected a Codex session-index title change to refresh that transcript.");
   }
 
   appendFileSync(codexFile, "\n");
@@ -279,8 +257,7 @@ try {
   const metadata = await collectTranscriptDetails(transcriptHome, rows, "metadata", cache);
   if (
     metadata.transcripts.length !== 3 ||
-    metadata.transcripts.some((detail) => detail.events.some((event) => event.text !== undefined)) ||
-    metadata.transcripts.some((detail) => ["fix it", "real prompt"].includes(detail.title))
+    metadata.transcripts.some((detail) => detail.events.some((event) => event.text !== undefined))
   ) {
     throw new Error("Expected changing to metadata mode to rewrite every transcript without prompt text.");
   }

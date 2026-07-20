@@ -18,8 +18,8 @@
 | FR-12 | 诊断 | 系统识别重复动作、重试循环、慢步骤、Token 热点和失败级联，提供失败检查结果，并可从诊断定位到任一关联事件。 |
 | FR-13 | 用量与成本 | Dashboard 汇总客户端和模型 Token；优先显示扫描成本，否则使用精确配置价格。 |
 | FR-14 | 数据删除 | 用户可删除一个或多个 Run；删除 Run 时级联删除其 Event。 |
-| FR-15 | 桌面端编排 | Windows Tauri 桌面端在进程内启动 Rust Collector、原生 Scanner 和静态 Dashboard，并管理数据库与固定回环端口。 |
-| FR-16 | 桌面关闭行为 | 关闭主窗口时应用隐藏到托盘；用户可从托盘重新打开窗口或显式退出。 |
+| FR-15 | 桌面端编排 | Windows 桌面端启动 Collector、Scanner 和 Dashboard，管理运行时文件、端口和子进程。 |
+| FR-16 | 桌面关闭行为 | 用户可选择退出或最小化到托盘，并可保存该偏好。 |
 | FR-17 | 双语与主题 | Dashboard 支持中文/英文界面和明暗主题。 |
 | FR-18 | Scanner 状态 | Dashboard 可显示最近扫描时间、客户端诊断、警告和操作提示。 |
 | FR-19 | 通用 SDK Step | SDK 可记录任意共享 Event 类型；嵌套步骤自动继承父 Event，显式 `parentId` 可覆盖。 |
@@ -81,6 +81,6 @@
 | FR-23 | Server evaluation 存储、API 与 Web 评测页 | `evaluations.smoke.ts` |
 | FR-25 | `packages/sdk-python`、OTLP Trace normalizer | Python unittest、`otlp-traces.smoke.ts` |
 | FR-26 | `apps/server/src/replay-sandbox.ts`、`apps/web/src/app/sandbox` | `replay-sandbox.smoke.ts`、`sandbox-page.smoke.ts` |
-| FR-15、FR-16 | `apps/desktop-tauri/src-tauri/src/lib.rs` | `apps/desktop-tauri/scripts/check-ui.mjs`、`cargo test -p agent-trace-desktop` |
+| FR-15、FR-16 | `apps/desktop/main.cjs` | `apps/desktop/scripts/check.mjs` |
 | NFR-04、NFR-05、NFR-08 | migrations、分页读模型、兼容环境变量 | migrations、read-model、startup smoke |
 | NFR-10、NFR-11 | 根脚本、文档检查和 CI | `workspace-scripts.*`、`docs-check.mjs`、`.github/workflows/ci.yml` |

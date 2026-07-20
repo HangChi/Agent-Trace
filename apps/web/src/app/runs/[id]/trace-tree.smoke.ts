@@ -106,14 +106,8 @@ for (const { insight, en, zh } of localizedInsights) {
   expectValue(formatTraceInsightEvidence(insight, "zh"), zh[1], `${insight.kind} Chinese evidence`);
 }
 
-const detailPageSource = readFileSync(
-  new URL("../../../../../../packages/dashboard-ui/src/dashboard-app.tsx", import.meta.url),
-  "utf8",
-);
-if (
-  !detailPageSource.includes('client.get<{ insights: DashboardTraceInsight[] }>(`/runs/${encodeURIComponent(id)}/insights`)') ||
-  !detailPageSource.includes(".catch(() => ({ insights: [] }))")
-) {
+const detailPageSource = readFileSync(new URL("./page.tsx", import.meta.url), "utf8");
+if (!detailPageSource.includes("const traceInsights = insightRequest.insights ?? summary.insights ?? [];")) {
   throw new Error("Expected the dedicated insight read model to fall back safely.");
 }
 
