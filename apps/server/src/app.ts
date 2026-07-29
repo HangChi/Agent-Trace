@@ -56,7 +56,7 @@ import {
   updateRun,
   updateRunOrganization
 } from "./storage.js";
-import { getScannerStatus, getUsageSummary } from "./usage-storage.js";
+import { getDailyUsage, getMonthlyUsageSummary, getScannerStatus, getUsageSummary } from "./usage-storage.js";
 import { getCurrentRevision, subscribeToChanges } from "./change-feed.js";
 import { ingestOtlpTraces } from "./otlp-traces.js";
 import {
@@ -172,6 +172,17 @@ export function createApp(options: { now?: () => Date } = {}) {
   });
 
   app.get("/usage/summary", async (c) => c.json(await getUsageSummary()));
+  app.get("/usage/monthly", async (c) => {
+    const month = c.req.query("month");
+    if (!month || !isUtcMonth(month)) return c.json({ error: "invalid_month" }, 400);
+
+    return c.json(await getMonthlyUsageSummary(month));
+  });
+  app.get("/usage/daily", async (c) => {
+    const year = c.req.query("year") ?? String(new Date().getUTCFullYear());
+    if (!/^\d{4}$/.test(year)) return c.json({ error: "invalid_year" }, 400);
+    return c.json(await getDailyUsage(year));
+  });
 
   app.get("/usage/scanner", async (c) => c.json(await getScannerStatus()));
 
@@ -206,7 +217,7 @@ export function createApp(options: { now?: () => Date } = {}) {
 
   app.get("/analytics/runs/trends", async (c) => {
     return c.json(await getRunTrends(
-      parseAnalyticsDays(c.req.query("days")),
+      parseAnalyticsDays(c.req.query("days"), 365),
       undefined,
       options.now?.()
     ));
@@ -499,10 +510,17 @@ function parseComparisonIds(value: string | undefined) {
   return ids.length >= 2 && ids.length <= 5 ? ids : undefined;
 }
 
-function parseAnalyticsDays(value: string | undefined) {
+function parseAnalyticsDays(value: string | undefined, maxDays = 90) {
   const parsed = Number(value);
 
-  return Number.isFinite(parsed) && parsed > 0 ? Math.min(90, Math.floor(parsed)) : 14;
+  return Number.isFinite(parsed) && parsed > 0 ? Math.min(maxDays, Math.floor(parsed)) : 14;
+}
+
+function isUtcMonth(value: string) {
+  if (!/^\d{4}-(0[1-9]|1[0-2])$/.test(value)) return false;
+
+  const date = new Date(`${value}-01T00:00:00Z`);
+  return date.toISOString().startsWith(`${value}-`);
 }
 
 function parseVisibility(value: string | undefined) {

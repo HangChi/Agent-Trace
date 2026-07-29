@@ -146,6 +146,9 @@ export async function collectUsageOnce(options: UsageScanOptions = {}) {
   const shouldRunPrimaryScan = configuredClients !== undefined ||
     (diagnosticsHaveClientList && clients !== undefined);
   const raw = shouldRunPrimaryScan ? await runTokscale(clients, commandTimeoutMs, home) : { entries: [] };
+  const graph = shouldRunPrimaryScan
+    ? await runTokscaleGraphJson(commandTimeoutMs, home, options.tokscaleCommand).catch(() => undefined)
+    : undefined;
   const primaryRows = normalizeTokscaleUsage(raw);
   const reconciliation = shouldRunPrimaryScan && shouldReconcileCodex(clients) && home
     ? await findUncoveredCodexHistories(
@@ -189,6 +192,7 @@ export async function collectUsageOnce(options: UsageScanOptions = {}) {
     transcripts: transcriptSnapshot.transcripts,
     scannedAt: new Date().toISOString(),
     rows,
+    graph,
     diagnostics: diagnostics.length > 0 ? mergeDiagnostics(diagnostics) : undefined
   });
 
@@ -497,6 +501,23 @@ function runTokscaleJson(
       throw new Error(`tokscale exited with code ${result.code}: ${(result.stderr || result.stdout || "").trim()}`);
     }
 
+    return parseJsonOutput(result.stdout ?? "");
+  });
+}
+
+function runTokscaleGraphJson(
+  commandTimeoutMs: number,
+  home: string | undefined,
+  command?: string
+) {
+  const args = ["--json"];
+  if (home) args.push("--home", home);
+  args.push("graph");
+
+  return runTokscaleCommand(args, commandTimeoutMs, command).then((result) => {
+    if (result.code !== 0) {
+      throw new Error(`tokscale graph exited with code ${result.code}: ${(result.stderr || result.stdout || "").trim()}`);
+    }
     return parseJsonOutput(result.stdout ?? "");
   });
 }

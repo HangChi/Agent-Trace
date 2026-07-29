@@ -81,7 +81,7 @@ export function DailyTokenChart({
           <div className="mt-1 flex items-baseline justify-between gap-3">
             <span className="text-[10px] text-muted-foreground">{tooltipLabel}</span>
             <span className="text-sm font-semibold text-foreground tabular-nums">
-              {formatInteger(activePoint.totalTokens, locale)}
+              {formatMillions(activePoint.totalTokens, locale)}M
             </span>
           </div>
         </div>
@@ -223,7 +223,7 @@ export function DailyTokenChart({
 
       <span className="sr-only" aria-live="polite">
         {activePoint
-          ? `${formatTooltipDate(activePoint.date, locale)}，${tooltipLabel} ${formatInteger(activePoint.totalTokens, locale)}`
+          ? `${formatTooltipDate(activePoint.date, locale)}，${tooltipLabel} ${formatMillions(activePoint.totalTokens, locale)}M`
           : ""}
       </span>
     </div>
@@ -239,10 +239,12 @@ function formatTooltipDate(value: string, locale: Locale) {
   }).format(new Date(`${value}T00:00:00Z`));
 }
 
-function formatInteger(value: number, locale: Locale) {
+function formatMillions(value: number, locale: Locale) {
+  const millions = value / 1_000_000;
+
   return new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US", {
-    maximumFractionDigits: 0
-  }).format(value);
+    maximumFractionDigits: millions < 10 && millions > 0 ? 1 : 0
+  }).format(millions);
 }
 
 function buildSmoothLinePath(points: Array<{ x: number; y: number }>) {

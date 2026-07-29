@@ -58,6 +58,20 @@ export const usageScanState = sqliteTable("usage_scan_state", {
   error: text("error")
 });
 
+export const usageDaily = sqliteTable(
+  "usage_daily",
+  {
+    date: text("date").notNull(),
+    client: text("client").notNull(),
+    model: text("model").notNull(),
+    provider: text("provider").notNull(),
+    totalTokens: integer("total_tokens").notNull(),
+    costUsd: real("cost_usd"),
+    messageCount: integer("message_count").notNull()
+  },
+  (table) => [primaryKey({ columns: [table.date, table.client, table.model, table.provider] })]
+);
+
 export const runTombstones = sqliteTable("run_tombstones", {
   runId: text("run_id").primaryKey(),
   deletedAt: text("deleted_at").notNull(),

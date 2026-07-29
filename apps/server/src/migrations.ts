@@ -176,6 +176,22 @@ const migrations: Migration[] = [
       CREATE INDEX IF NOT EXISTS replay_tasks_status_created_at_idx
         ON replay_tasks(status, created_at DESC);
     `);
+  },
+  (sqlite) => {
+    sqlite.exec(`
+      CREATE TABLE IF NOT EXISTS usage_daily (
+        date TEXT NOT NULL,
+        client TEXT NOT NULL,
+        model TEXT NOT NULL,
+        provider TEXT NOT NULL,
+        total_tokens INTEGER NOT NULL,
+        cost_usd REAL,
+        message_count INTEGER NOT NULL,
+        PRIMARY KEY (date, client, model, provider)
+      );
+
+      CREATE INDEX IF NOT EXISTS usage_daily_date_idx ON usage_daily(date);
+    `);
   }
 ];
 

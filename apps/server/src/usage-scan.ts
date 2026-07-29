@@ -1,4 +1,9 @@
-import type { ScannerDiagnostic, UsageSnapshot, UsageSnapshotRow } from "./usage-storage.js";
+import type {
+  ScannerDiagnostic,
+  UsageDailyRow,
+  UsageSnapshot,
+  UsageSnapshotRow
+} from "./usage-storage.js";
 
 export function normalizeUsageScan(payload: unknown): UsageSnapshot {
   const body = asRecord(payload);
@@ -31,9 +36,39 @@ export function normalizeUsageScan(payload: unknown): UsageSnapshot {
     scannedAt,
     reconciledClients,
     rows,
+    dailyRows: normalizeDailyRows(body.graph),
     diagnostics,
     error: getString(body, "error")
   };
+}
+
+function normalizeDailyRows(value: unknown): UsageDailyRow[] | undefined {
+  const contributions = asArray(asRecord(value).contributions);
+  if (!contributions) return undefined;
+
+  return contributions.flatMap((entry) => {
+    const contribution = asRecord(entry);
+    const date = getString(contribution, "date");
+    if (!date || !/^\d{4}-\d{2}-\d{2}$/.test(date)) return [];
+
+    return (asArray(contribution.clients) ?? []).flatMap((clientValue) => {
+      const client = asRecord(clientValue);
+      const clientName = normalizeClient(getString(client, "client"));
+      const tokens = asRecord(client.tokens);
+      if (!clientName) return [];
+
+      return [{
+        date,
+        client: clientName,
+        model: getString(client, "modelId") ?? "unknown",
+        provider: normalizeProvider(getString(client, "providerId")) ?? "",
+        totalTokens: ["input", "output", "cacheRead", "cacheWrite", "reasoning"]
+          .reduce((total, key) => total + (getInteger(tokens, key) ?? 0), 0),
+        costUsd: getNumber(client, "cost"),
+        messageCount: getInteger(client, "messages") ?? 0
+      }];
+    });
+  });
 }
 
 function normalizeUsageRow(row: Record<string, unknown>): UsageSnapshotRow | undefined {

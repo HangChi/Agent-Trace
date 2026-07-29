@@ -1,5 +1,5 @@
 import type { BetterSQLite3Database } from "drizzle-orm/better-sqlite3";
-import { eq } from "drizzle-orm";
+import { and, eq, gte, lt } from "drizzle-orm";
 import type {
   DashboardScannerStatus,
   DashboardUsageSummary,
@@ -8,10 +8,16 @@ import type {
 } from "@agent-trace/schema";
 
 import { db as defaultDb } from "./db.js";
-import { usageScanState, usageSessions } from "./schema.js";
+import { runs, usageDaily, usageScanState, usageSessions } from "./schema.js";
 import { publishChange } from "./change-feed.js";
 
 type Database = BetterSQLite3Database;
+type DashboardMonthlyUsageSummary = DashboardUsageSummary & {
+  month: string;
+  activeDays: number;
+  sessionCount: number;
+  callCount: number;
+};
 
 export type { ScannerDiagnostic, UsageSnapshotRow } from "@agent-trace/schema";
 
@@ -20,7 +26,18 @@ export type UsageSnapshot = {
   reconciledClients: string[];
   rows: UsageSnapshotRow[];
   diagnostics?: ScannerDiagnostic[];
+  dailyRows?: UsageDailyRow[];
   error?: string;
+};
+
+export type UsageDailyRow = {
+  date: string;
+  client: string;
+  model: string;
+  provider: string;
+  totalTokens: number;
+  costUsd?: number;
+  messageCount: number;
 };
 
 export async function replaceUsageSnapshot(
@@ -87,6 +104,13 @@ export async function replaceUsageSnapshot(
         .run();
     }
 
+    if (snapshot.dailyRows) {
+      transaction.delete(usageDaily).run();
+      for (const row of snapshot.dailyRows) {
+        transaction.insert(usageDaily).values(row).run();
+      }
+    }
+
     transaction
       .insert(usageScanState)
       .values({
@@ -112,6 +136,122 @@ export async function replaceUsageSnapshot(
 
 export async function getUsageSummary(database: Database = defaultDb): Promise<DashboardUsageSummary> {
   const rows = await database.select().from(usageSessions);
+  return summarizeUsageRows(rows);
+}
+
+export async function getMonthlyUsageSummary(
+  month: string,
+  database: Database = defaultDb
+): Promise<DashboardMonthlyUsageSummary> {
+  const { start, end } = getMonthBounds(month);
+  const runRows = await database
+    .select({ startedAt: runs.startedAt, metadataJson: runs.metadataJson })
+    .from(runs)
+    .where(and(gte(runs.startedAt, start), lt(runs.startedAt, end)));
+  const dailyRows = await database
+    .select()
+    .from(usageDaily)
+    .where(and(gte(usageDaily.date, month), lt(usageDaily.date, end.slice(0, 7))));
+  if (dailyRows.length > 0) {
+    const models = new Map<string, { provider?: string; totalTokens: number; costUsd: number }>();
+    for (const row of dailyRows) {
+      const current = models.get(row.model) ?? {
+        provider: row.provider || undefined,
+        totalTokens: 0,
+        costUsd: 0
+      };
+      current.totalTokens += row.totalTokens;
+      current.costUsd += row.costUsd ?? 0;
+      models.set(row.model, current);
+    }
+    return {
+      month,
+      totalTokens: dailyRows.reduce((total, row) => total + row.totalTokens, 0),
+      costUsd: dailyRows.reduce((total, row) => total + (row.costUsd ?? 0), 0),
+      activeDays: new Set(dailyRows.map((row) => row.date)).size,
+      sessionCount: runRows.length,
+      callCount: dailyRows.reduce((total, row) => total + row.messageCount, 0),
+      clients: [],
+      models: [...models.entries()].map(([model, value]) => ({ model, ...value }))
+    };
+  }
+  const sessionKeys = new Set(
+    runRows
+      .map((run) => getUsageSessionKey(run.metadataJson))
+      .filter((key): key is string => Boolean(key))
+  );
+  const rows = (await database.select().from(usageSessions)).filter((row) => {
+    const usageDate = row.lastUsedAt ?? row.startedAt;
+    return usageDate?.startsWith(`${month}-`)
+      || sessionKeys.has(`${row.client}\0${row.sessionId}`);
+  });
+  const summary = summarizeUsageRows(rows);
+  const activeDates = new Set(
+    [
+      ...runRows.map((run) => run.startedAt.slice(0, 10)),
+      ...rows.map((row) => (row.lastUsedAt ?? row.startedAt)?.slice(0, 10))
+    ]
+      .filter((date): date is string => Boolean(date))
+  );
+  const sessions = new Set(rows.map((row) => `${row.client}\0${row.sessionId}`));
+
+  return {
+    ...summary,
+    month,
+    activeDays: activeDates.size,
+    sessionCount: runRows.length || sessions.size,
+    callCount: rows.reduce((total, row) => total + (row.messageCount ?? 0), 0)
+  };
+}
+
+export async function getDailyUsage(year: string, database: Database = defaultDb) {
+  const rows = await database
+    .select()
+    .from(usageDaily)
+    .where(and(gte(usageDaily.date, `${year}-01-01`), lt(usageDaily.date, `${Number(year) + 1}-01-01`)));
+  const totals = new Map<string, { totalTokens: number; messageCount: number }>();
+  for (const row of rows) {
+    const current = totals.get(row.date) ?? { totalTokens: 0, messageCount: 0 };
+    current.totalTokens += row.totalTokens;
+    current.messageCount += row.messageCount;
+    totals.set(row.date, current);
+  }
+  return [...totals.entries()].map(([date, value]) => ({ date, ...value }));
+}
+
+function getMonthBounds(month: string) {
+  const year = Number(month.slice(0, 4));
+  const monthIndex = Number(month.slice(5, 7)) - 1;
+
+  return {
+    start: new Date(Date.UTC(year, monthIndex, 1)).toISOString(),
+    end: new Date(Date.UTC(year, monthIndex + 1, 1)).toISOString()
+  };
+}
+
+function getUsageSessionKey(metadataJson: string | null) {
+  if (!metadataJson) return undefined;
+
+  try {
+    const metadata = JSON.parse(metadataJson) as Record<string, unknown>;
+    const sessionId = typeof metadata.sessionId === "string" ? metadata.sessionId : undefined;
+    const agent = typeof metadata.agent === "string" ? metadata.agent : undefined;
+    if (!sessionId || !agent) return undefined;
+
+    const client = agent === "claude-code"
+      ? "claude"
+      : agent === "github-copilot"
+        ? "copilot"
+        : agent;
+    return `${client}\0${sessionId}`;
+  } catch {
+    return undefined;
+  }
+}
+
+function summarizeUsageRows(
+  rows: Array<typeof usageSessions.$inferSelect>
+): DashboardUsageSummary {
   const clients = new Map<string, { totalTokens: number; costUsd: number }>();
   const models = new Map<string, { provider?: string; totalTokens: number; costUsd: number }>();
   let totalTokens = 0;

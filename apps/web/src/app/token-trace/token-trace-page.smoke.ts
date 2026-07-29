@@ -8,9 +8,10 @@ const header = readFileSync(new URL("../../components/console-header.tsx", impor
 
 for (const marker of [
   "Token-Trace",
-  "/analytics/runs/trends?days=90",
+  "/analytics/runs/trends?days=${days}",
   "/usage/summary",
   "TokenTraceOverview",
+  "TokenActivityBoard",
   "TokenUsageStatistics",
   "weeklyStatistics",
   "monthlyStatistics",
@@ -22,7 +23,7 @@ for (const marker of [
   }
 }
 
-for (const marker of ["/analytics/runs/trends?days=90", "/usage/summary", "TokenTraceOverview", "TokenTraceCalendar", "UsageLedger"]) {
+for (const marker of ["/analytics/runs/trends?days=${days}", "/usage/summary", "TokenTraceOverview", "TokenTraceCalendar", "UsageLedger"]) {
   if (runsPage.includes(marker)) {
     throw new Error(`Runs page still owns Token-Trace content: ${marker}`);
   }

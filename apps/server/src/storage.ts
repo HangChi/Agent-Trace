@@ -843,7 +843,7 @@ export async function getRunTrends(
   database: Database = defaultDb,
   now = new Date()
 ): Promise<DashboardRunTrends> {
-  const normalizedDays = Math.min(90, Math.max(1, Math.floor(days)));
+  const normalizedDays = Math.min(365, Math.max(1, Math.floor(days)));
   const endDate = startOfUtcDay(now);
   const startDate = new Date(endDate);
   startDate.setUTCDate(startDate.getUTCDate() - normalizedDays + 1);
