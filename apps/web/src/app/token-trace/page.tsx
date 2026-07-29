@@ -347,12 +347,22 @@ function PeriodBarChart({
         >
           {points.map((point) => (
             <li key={point.key} className="flex h-full min-w-0 flex-col justify-end">
-              <div className="mb-2 truncate text-center text-[10px] font-semibold text-foreground tabular-nums">
+              <div className="mb-2.5 truncate text-center text-[10px] font-semibold text-foreground tabular-nums">
                 {formatCompactNumber(point.totalTokens, locale)}
               </div>
-              <div className="flex h-36 items-end overflow-hidden rounded-md bg-chart-3/[0.055]">
+              <div className="relative flex h-36 items-end justify-center border-b border-border/90">
+                <div className="pointer-events-none absolute inset-0 grid grid-rows-4" aria-hidden>
+                  {[0, 1, 2, 3].map((line) => (
+                    <span key={line} className="border-t border-dashed border-border/50" />
+                  ))}
+                </div>
                 <div
-                  className="w-full rounded-t-[3px] bg-chart-3/70 transition-colors hover:bg-chart-3/85"
+                  className={cn(
+                    "relative z-[1] w-[62%] max-w-[92px] rounded-t-md",
+                    "bg-gradient-to-t from-primary/95 to-primary/62",
+                    "shadow-[0_8px_18px_color-mix(in_srgb,var(--primary)_10%,transparent)]",
+                    "transition-[filter,opacity] duration-200 hover:brightness-110"
+                  )}
                   style={{ height: `${point.totalTokens > 0 ? Math.max(3, point.totalTokens / maxTokens * 100) : 0}%` }}
                   title={`${formatAggregateLabel(point.key, period, locale)} · ${formatInteger(point.totalTokens, locale)} ${text.tokens} · ${point.runCount} Run · ${formatUsd(point.costUsd)}`}
                 />

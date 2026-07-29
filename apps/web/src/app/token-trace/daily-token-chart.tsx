@@ -34,9 +34,14 @@ export function DailyTokenChart({
     return { ...point, x, y };
   });
   const activePoint = activeIndex === null ? undefined : chartPoints[activeIndex];
-  const linePoints = chartPoints.map((point) => `${point.x},${point.y}`).join(" ");
-  const areaPath = chartPoints.length > 0
-    ? `M ${chartPoints[0]?.x} ${chartBottom} ${chartPoints.map((point) => `L ${point.x} ${point.y}`).join(" ")} L ${chartPoints.at(-1)?.x} ${chartBottom} Z`
+  const peakPoint = chartPoints.reduce<(typeof chartPoints)[number] | undefined>(
+    (peak, point) => !peak || point.totalTokens > peak.totalTokens ? point : peak,
+    undefined
+  );
+  const latestPoint = chartPoints.at(-1);
+  const linePath = buildSmoothLinePath(chartPoints);
+  const areaPath = linePath && latestPoint
+    ? `${linePath} L ${latestPoint.x} ${chartBottom} L ${chartPoints[0]?.x} ${chartBottom} Z`
     : "";
 
   function updateFromPointer(event: PointerEvent<SVGSVGElement>) {
@@ -97,14 +102,28 @@ export function DailyTokenChart({
       >
         <defs>
           <linearGradient id="token-trace-area" x1="0" y1="0" x2="0" y2="1">
-            <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.24" />
-            <stop offset="100%" stopColor="var(--primary)" stopOpacity="0.015" />
+            <stop offset="0%" stopColor="var(--primary)" stopOpacity="0.18" />
+            <stop offset="58%" stopColor="var(--primary)" stopOpacity="0.055" />
+            <stop offset="100%" stopColor="var(--primary)" stopOpacity="0" />
           </linearGradient>
           <linearGradient id="token-trace-line" x1="0" y1="0" x2="1" y2="0">
             <stop offset="0%" stopColor="var(--primary)" />
-            <stop offset="100%" stopColor="var(--trace)" />
+            <stop offset="72%" stopColor="var(--primary)" />
+            <stop
+              offset="100%"
+              stopColor="color-mix(in srgb, var(--primary) 68%, var(--trace))"
+            />
           </linearGradient>
         </defs>
+        <rect
+          x={chartLeft}
+          y={chartTop}
+          width={chartRight - chartLeft}
+          height={chartBottom - chartTop}
+          rx="8"
+          fill="var(--surface-muted)"
+          opacity="0.18"
+        />
         {[22, 64, 106, chartBottom].map((y) => (
           <line
             key={y}
@@ -113,20 +132,70 @@ export function DailyTokenChart({
             y1={y}
             y2={y}
             stroke="var(--border)"
-            strokeDasharray="3 6"
+            strokeDasharray={y === chartBottom ? undefined : "2 7"}
+            strokeOpacity={y === chartBottom ? 0.9 : 0.62}
             vectorEffect="non-scaling-stroke"
           />
         ))}
         <path d={areaPath} fill="url(#token-trace-area)" />
-        <polyline
-          points={linePoints}
+        <path
+          d={linePath}
           fill="none"
-          stroke="url(#token-trace-line)"
-          strokeWidth="2.5"
+          stroke="var(--primary)"
+          strokeWidth="7"
+          strokeOpacity="0.08"
           strokeLinejoin="round"
           strokeLinecap="round"
           vectorEffect="non-scaling-stroke"
         />
+        <path
+          d={linePath}
+          fill="none"
+          stroke="url(#token-trace-line)"
+          strokeWidth="2.75"
+          strokeLinejoin="round"
+          strokeLinecap="round"
+          vectorEffect="non-scaling-stroke"
+        />
+        {peakPoint && peakPoint !== latestPoint ? (
+          <g aria-hidden>
+            <circle
+              cx={peakPoint.x}
+              cy={peakPoint.y}
+              r="7"
+              fill="var(--primary)"
+              fillOpacity="0.1"
+            />
+            <circle
+              cx={peakPoint.x}
+              cy={peakPoint.y}
+              r="3"
+              fill="var(--surface-raised)"
+              stroke="var(--primary)"
+              strokeWidth="2"
+              vectorEffect="non-scaling-stroke"
+            />
+          </g>
+        ) : null}
+        {latestPoint ? (
+          <g aria-hidden>
+            <circle
+              cx={latestPoint.x}
+              cy={latestPoint.y}
+              r="5"
+              fill="var(--surface-raised)"
+              stroke="color-mix(in srgb, var(--primary) 68%, var(--trace))"
+              strokeWidth="2.5"
+              vectorEffect="non-scaling-stroke"
+            />
+            <circle
+              cx={latestPoint.x}
+              cy={latestPoint.y}
+              r="1.5"
+              fill="color-mix(in srgb, var(--primary) 68%, var(--trace))"
+            />
+          </g>
+        ) : null}
         {activePoint ? (
           <g aria-hidden>
             <line
@@ -174,4 +243,15 @@ function formatInteger(value: number, locale: Locale) {
   return new Intl.NumberFormat(locale === "zh" ? "zh-CN" : "en-US", {
     maximumFractionDigits: 0
   }).format(value);
+}
+
+function buildSmoothLinePath(points: Array<{ x: number; y: number }>) {
+  if (points.length === 0) return "";
+
+  return points.slice(1).reduce((path, point, index) => {
+    const previous = points[index];
+    const controlX = ((previous?.x ?? point.x) + point.x) / 2;
+
+    return `${path} C ${controlX} ${previous?.y ?? point.y}, ${controlX} ${point.y}, ${point.x} ${point.y}`;
+  }, `M ${points[0]?.x} ${points[0]?.y}`);
 }
