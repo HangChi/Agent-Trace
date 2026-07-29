@@ -124,37 +124,39 @@ export function ConsoleHeader({
                   aria-hidden
                 />
               </summary>
-              <div className="absolute left-0 top-[calc(100%+0.5rem)] z-50 w-44 rounded-xl border border-border bg-popover p-1.5 shadow-[var(--shadow-panel)]">
-                <Link
-                  href={localizedHref("/token-trace", locale)}
-                  onClick={closeTokenMenu}
-                  className={cn(
-                    "flex h-9 items-center gap-2 rounded-lg px-2.5 text-xs font-medium transition-colors hover:bg-accent hover:text-foreground",
-                    isTokenOverview
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground"
-                  )}
-                  aria-current={isTokenOverview ? "page" : undefined}
-                  aria-label={tokenText.overview}
-                >
-                  <TrendingUp className="size-3.5" aria-hidden />
-                  <span>{tokenText.overview}</span>
-                </Link>
-                <Link
-                  href={localizedHref("/token-trace?view=calendar", locale)}
-                  onClick={closeTokenMenu}
-                  className={cn(
-                    "flex h-9 items-center gap-2 rounded-lg px-2.5 text-xs font-medium transition-colors hover:bg-accent hover:text-foreground",
-                    isTokenCalendar
-                      ? "bg-primary/10 text-primary"
-                      : "text-muted-foreground"
-                  )}
-                  aria-current={isTokenCalendar ? "page" : undefined}
-                  aria-label={tokenText.calendar}
-                >
-                  <CalendarDays className="size-3.5" aria-hidden />
-                  <span>{tokenText.calendar}</span>
-                </Link>
+              <div className="absolute left-0 top-full z-50 w-44 pt-2">
+                <div className="rounded-xl border border-border bg-popover p-1.5 shadow-[var(--shadow-panel)]">
+                  <Link
+                    href={localizedHref("/token-trace", locale)}
+                    onClick={closeTokenMenu}
+                    className={cn(
+                      "flex h-9 items-center gap-2 rounded-lg px-2.5 text-xs font-medium transition-colors hover:bg-accent hover:text-foreground",
+                      isTokenOverview
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground"
+                    )}
+                    aria-current={isTokenOverview ? "page" : undefined}
+                    aria-label={tokenText.overview}
+                  >
+                    <TrendingUp className="size-3.5" aria-hidden />
+                    <span>{tokenText.overview}</span>
+                  </Link>
+                  <Link
+                    href={localizedHref("/token-trace?view=calendar", locale)}
+                    onClick={closeTokenMenu}
+                    className={cn(
+                      "flex h-9 items-center gap-2 rounded-lg px-2.5 text-xs font-medium transition-colors hover:bg-accent hover:text-foreground",
+                      isTokenCalendar
+                        ? "bg-primary/10 text-primary"
+                        : "text-muted-foreground"
+                    )}
+                    aria-current={isTokenCalendar ? "page" : undefined}
+                    aria-label={tokenText.calendar}
+                  >
+                    <CalendarDays className="size-3.5" aria-hidden />
+                    <span>{tokenText.calendar}</span>
+                  </Link>
+                </div>
               </div>
             </details>
           </nav>
