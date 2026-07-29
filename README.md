@@ -2,7 +2,7 @@
   <img src="apps/desktop/assets/icon.svg" width="88" height="88" alt="Agent-Trace 图标" />
 </p>
 
-# Agent-Trace
+<h1 align="center">Agent-Trace</h1>
 
 <p align="center">本地优先的 AI Agent 运行观测、用量分析与故障诊断工具。</p>
 
@@ -13,7 +13,7 @@
   <a href="CONTRIBUTING.md">参与贡献</a>
 </p>
 
-Agent-Trace 把模型调用、工具执行、Token、成本、耗时、错误和本地会话历史汇总到本机 SQLite，并通过 Web 或 Windows 桌面界面展示 Run 列表、时间线、调用树与确定性诊断。核心采集和展示不依赖托管后端。
+Agent-Trace 把模型调用、工具执行、Token、成本、耗时、错误和本地会话历史汇总到本机 SQLite，并通过 Web 或 Windows 桌面界面呈现可搜索、可比较、可诊断的运行轨迹。核心采集、存储和展示不依赖托管后端。
 
 ## 核心能力
 
@@ -22,14 +22,30 @@ Agent-Trace 把模型调用、工具执行、Token、成本、耗时、错误和
 - Codex/Claude Code Hooks：无需修改 Agent 源码即可采集生命周期与工具元数据。
 - Codex OTel：接收 OTLP/HTTP JSON 日志中的模型与官方 Token 用量。
 - 本地 Usage Scanner：通过 `tokscale` 汇总多客户端会话、Token 与 API 等价成本。
-- Trace 分析：事件筛选、时间线、父子调用树、失败检查、重试/慢步骤/Token 热点诊断。
+- Run 分析：事件筛选、时间线、父子调用树、失败检查，以及重试、慢步骤和 Token 热点诊断。
+- Token Trace：按日、周、月查看 Token 活跃度、趋势、模型与客户端分布。
+- 质量与成本治理：Run 对比、项目分析、预算告警、评测集和多维评分。
+- 安全回放：使用内置 Mock Worker 覆盖输入、模拟输出、错误、延迟与超时，不执行用户代码或真实工具。
 - 本地治理：Run 项目与标签、维护中心、保留期清理、墓碑恢复和可配置写入前字段脱敏。
 - 本地交付：Hono Collector、双语 Next.js Dashboard 和 Windows Electron 桌面包。
+
+## 数据流
+
+```mermaid
+flowchart LR
+  SDK["TypeScript / Python SDK"] --> Collector["Hono Collector<br/>127.0.0.1:4319"]
+  Hooks["Codex / Claude Code Hooks<br/>Codex OTel"] --> Collector
+  Scanner["tokscale<br/>本地会话历史"] --> Collector
+  Collector --> SQLite[("本机 SQLite")]
+  SQLite --> Dashboard["Next.js Dashboard<br/>localhost:3000"]
+  Dashboard --> UI["Web / Windows 桌面界面"]
+```
 
 ## 运行要求
 
 - Node.js `>=22.12.0`；仓库的 `.nvmrc` 使用 Node.js 22。
 - pnpm `>=11.0.7 <12`；`packageManager` 和 CI 固定使用 11.0.7。
+- Python `>=3.10`，仅使用 Python SDK 时需要。
 - Windows 桌面安装包只能在 Windows x64 环境构建。
 
 ## 快速开始
@@ -40,10 +56,18 @@ pnpm build
 node packages/cli/dist/index.js dev
 ```
 
-启动后访问：
+启动后可直接进入以下页面：
 
-- Dashboard：<http://localhost:3000/runs>
-- Collector：<http://127.0.0.1:4319>
+| 入口 | 地址 | 用途 |
+| --- | --- | --- |
+| Runs | <http://localhost:3000/runs> | 搜索、筛选、比较和诊断 Agent 运行 |
+| Token Trace | <http://localhost:3000/token-trace> | 查看 Token 趋势、活跃日历与模型分布 |
+| 分析 | <http://localhost:3000/analytics> | 按项目、环境、模型或来源分析质量与成本 |
+| 评测 | <http://localhost:3000/evaluations> | 管理评测集、用例和多维评分 |
+| 安全回放 | <http://localhost:3000/sandbox> | 在固定 Mock Worker 中回放 Run |
+| 维护 | <http://localhost:3000/maintenance> | 清理、恢复、压缩和配置字段脱敏 |
+
+Collector 默认监听 <http://127.0.0.1:4319>。
 
 另开终端生成一条示例 Run：
 
@@ -55,7 +79,7 @@ pnpm --filter simple-agent dev
 > 不希望首次启动扫描本地会话时，可运行
 > `node packages/cli/dist/index.js dev --usage-scan=false`。
 
-## 三种接入方式
+## 四种数据接入方式
 
 ### TypeScript SDK
 
@@ -81,6 +105,27 @@ try {
 ```
 
 SDK 默认向 `http://localhost:4319` 投递，单次投递超时 1000 ms；Tracing 失败不会改变被观测函数的返回值或异常语义。
+
+### Python SDK
+
+从源码工作区安装：
+
+```bash
+pip install -e packages/sdk-python
+```
+
+```python
+from agent_trace import AgentTraceClient
+from agent_trace.integrations.openai import instrument_openai
+
+client = AgentTraceClient()
+with client.start_run("research-agent", metadata={"project": "demo"}) as run:
+    with run.trace_step("retrieval", "load-documents"):
+        documents = load_documents()
+    openai_client = instrument_openai(openai_client, run)
+```
+
+Python SDK 支持嵌套 Step、同步/异步装饰器、OpenAI 包装器和 LangChain Callback，同样采用有界超时与 fail-open 投递。
 
 ### Codex / Claude Code Hooks
 

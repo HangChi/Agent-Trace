@@ -2,7 +2,7 @@
   <img src="apps/desktop/assets/icon.svg" width="88" height="88" alt="Agent-Trace icon" />
 </p>
 
-# Agent-Trace
+<h1 align="center">Agent-Trace</h1>
 
 <p align="center">Local-first runtime observability, usage analysis, and diagnostics for AI agents.</p>
 
@@ -13,7 +13,7 @@
   <a href="CONTRIBUTING.md">Contributing</a>
 </p>
 
-Agent-Trace collects model calls, tool execution, tokens, API-equivalent cost, latency, errors, and local session history into SQLite. A web or Windows desktop dashboard presents runs, timelines, trace trees, and deterministic diagnostics. Core collection and display do not require a hosted backend.
+Agent-Trace collects model calls, tool execution, tokens, API-equivalent cost, latency, errors, and local session history into SQLite. Its web and Windows desktop interfaces turn that data into searchable, comparable, and diagnosable run traces. Core collection, storage, and visualization do not require a hosted backend.
 
 ## Highlights
 
@@ -22,14 +22,30 @@ Agent-Trace collects model calls, tool execution, tokens, API-equivalent cost, l
 - Global Codex and Claude Code Hooks for lifecycle and tool metadata.
 - Codex OTLP/HTTP JSON ingestion for model and official token telemetry.
 - Local `tokscale` scanning for multi-client sessions, tokens, and cost.
-- Event filters, timelines, parent-child trace trees, failure inspection, and performance diagnostics.
+- Run analysis with event filters, timelines, parent-child trace trees, failure inspection, retries, slow steps, and token hotspots.
+- Token Trace views for daily, weekly, and monthly activity, trends, model usage, and client distribution.
+- Quality and cost governance through Run comparison, project analytics, budgets, evaluation datasets, and weighted scores.
+- Safe replay with a built-in mock worker for input overrides, simulated output, errors, latency, and timeouts—without executing user code or real tools.
 - Local governance with Run projects/tags, retention maintenance, tombstone recovery, and configurable pre-storage field redaction.
 - Local Hono collector, bilingual Next.js dashboard, and Windows Electron packaging.
+
+## Data flow
+
+```mermaid
+flowchart LR
+  SDK["TypeScript / Python SDK"] --> Collector["Hono Collector<br/>127.0.0.1:4319"]
+  Hooks["Codex / Claude Code Hooks<br/>Codex OTel"] --> Collector
+  Scanner["tokscale<br/>Local session history"] --> Collector
+  Collector --> SQLite[("Local SQLite")]
+  SQLite --> Dashboard["Next.js Dashboard<br/>localhost:3000"]
+  Dashboard --> UI["Web / Windows desktop UI"]
+```
 
 ## Requirements
 
 - Node.js `>=22.12.0`; `.nvmrc` selects Node.js 22.
 - pnpm `>=11.0.7 <12`; `packageManager` and CI pin 11.0.7.
+- Python `>=3.10` when using the Python SDK.
 - Windows x64 is required to build the desktop installer.
 
 ## Quick start
@@ -40,7 +56,18 @@ pnpm build
 node packages/cli/dist/index.js dev
 ```
 
-Open <http://localhost:3000/runs>. The collector listens on <http://127.0.0.1:4319>.
+After startup, open the interface that matches your task:
+
+| Area | URL | Purpose |
+| --- | --- | --- |
+| Runs | <http://localhost:3000/runs> | Search, filter, compare, and diagnose agent runs |
+| Token Trace | <http://localhost:3000/token-trace> | Explore token trends, activity calendars, and model usage |
+| Analytics | <http://localhost:3000/analytics> | Analyze quality and cost by project, environment, model, or source |
+| Evaluations | <http://localhost:3000/evaluations> | Manage evaluation datasets, cases, and weighted scores |
+| Safe replay | <http://localhost:3000/sandbox> | Replay a Run with the fixed mock worker |
+| Maintenance | <http://localhost:3000/maintenance> | Clean, restore, compact, and configure field redaction |
+
+The collector listens on <http://127.0.0.1:4319> by default.
 
 Generate a sample Run in another terminal:
 
@@ -52,7 +79,7 @@ pnpm --filter simple-agent dev
 > To avoid scanning local history on first start, use
 > `node packages/cli/dist/index.js dev --usage-scan=false`.
 
-## Instrumentation options
+## Four data sources
 
 ### TypeScript SDK
 
@@ -78,6 +105,27 @@ try {
 ```
 
 Delivery defaults to `http://localhost:4319` with a 1000 ms timeout. Tracing failures do not change the wrapped function's result or exception semantics.
+
+### Python SDK
+
+Install it from the source workspace:
+
+```bash
+pip install -e packages/sdk-python
+```
+
+```python
+from agent_trace import AgentTraceClient
+from agent_trace.integrations.openai import instrument_openai
+
+client = AgentTraceClient()
+with client.start_run("research-agent", metadata={"project": "demo"}) as run:
+    with run.trace_step("retrieval", "load-documents"):
+        documents = load_documents()
+    openai_client = instrument_openai(openai_client, run)
+```
+
+The Python SDK supports nested steps, sync/async decorators, an OpenAI wrapper, and a LangChain callback. It uses the same bounded, fail-open delivery behavior.
 
 ### Codex / Claude Code Hooks
 
