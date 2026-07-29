@@ -193,22 +193,7 @@ export default async function RunsPage({ searchParams }: { searchParams: RunsSea
       />
 
       <section className="mx-auto w-full max-w-[1800px] px-4 py-6 sm:px-6 lg:px-8 lg:py-8 2xl:px-10">
-        <div className="flex flex-col gap-4 lg:flex-row lg:items-end lg:justify-between">
-          <div className="min-w-0">
-            <p className="font-mono text-[11px] font-semibold uppercase tracking-[0.16em] text-primary">
-              {text.runs.consoleLabel}
-            </p>
-            <h1 className="mt-2 text-3xl font-semibold tracking-[-0.045em] text-foreground">
-              {text.runs.title}
-            </h1>
-            <p className="mt-2 max-w-3xl text-sm leading-6 text-muted-foreground sm:text-[15px]">
-              {text.runs.subtitle}
-            </p>
-          </div>
-        </div>
-
         <TelemetryStrip
-          className="mt-6"
           items={[
             { label: text.runs.allRuns, value: totalRuns, icon: Activity },
             {

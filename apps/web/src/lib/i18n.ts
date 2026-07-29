@@ -96,10 +96,6 @@ export const copy = {
       weekdays: ["周一", "周二", "周三", "周四", "周五", "周六", "周日"]
     },
     runs: {
-      consoleLabel: "\u672c\u5730 Agent \u53ef\u89c2\u6d4b\u6027",
-      title: "Agent \u8ffd\u8e2a\u53f0",
-      subtitle:
-        "\u96c6\u4e2d\u67e5\u770b Agent \u7684\u547d\u4ee4\u3001\u5de5\u5177\u8c03\u7528\u3001Skills\u3001MCP \u4e0e Token \u6d88\u8017\uff0c\u5feb\u901f\u8fd8\u539f\u6267\u884c\u8def\u5f84\uff0c\u5b9a\u4f4d\u5f02\u5e38\u4e0e\u91cd\u590d\u64cd\u4f5c\u3002",
       allRuns: "\u5168\u90e8\u8fd0\u884c",
       agentSource: "Agent \u6765\u6e90",
       running: "\u8fdb\u884c\u4e2d",
@@ -299,10 +295,6 @@ export const copy = {
       weekdays: ["Mon", "Tue", "Wed", "Thu", "Fri", "Sat", "Sun"]
     },
     runs: {
-      consoleLabel: "Local agent observability",
-      title: "Agent Trace Console",
-      subtitle:
-        "Inspect agent commands, tool calls, skills, MCP activity, and token usage in one place, then retrace execution paths and find failures faster.",
       allRuns: "All runs",
       agentSource: "Agent source",
       running: "Running",

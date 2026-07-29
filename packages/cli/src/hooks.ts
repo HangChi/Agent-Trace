@@ -1,6 +1,6 @@
 import { copyFileSync, existsSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
 import { homedir } from "node:os";
-import { dirname, join } from "node:path";
+import { dirname, join, resolve } from "node:path";
 
 export type HookTarget = "codex" | "claude-code";
 
@@ -90,7 +90,20 @@ interface HookEvent {
 // Lifecycle, prompt, tool, skill, MCP, and token-bearing events that map onto
 // the collector's normalizer. Tool matchers also catch MCP tool names such as
 // mcp__github__search.
-const HOOK_EVENTS: HookEvent[] = [
+const CODEX_HOOK_EVENTS: HookEvent[] = [
+  { event: "SessionStart" },
+  { event: "UserPromptSubmit" },
+  { event: "PreToolUse", matcher: "*" },
+  { event: "PermissionRequest", matcher: "*" },
+  { event: "PostToolUse", matcher: "*" },
+  { event: "SubagentStart" },
+  { event: "SubagentStop" },
+  { event: "Stop" },
+  { event: "PreCompact" },
+  { event: "PostCompact" }
+];
+
+const CLAUDE_CODE_HOOK_EVENTS: HookEvent[] = [
   { event: "SessionStart" },
   { event: "Setup" },
   { event: "InstructionsLoaded" },
@@ -128,15 +141,11 @@ const INTEGRATION_PATHS: Record<HookTarget, string> = {
 
 export function resolveSettingsPath(target: HookTarget): string {
   if (target === "codex") {
-    const home = process.env.CODEX_HOME ?? join(homedir(), ".codex");
-
-    return join(home, "hooks.json");
+    return join(resolveConfigDirectory("CODEX_HOME", ".codex"), "hooks.json");
   }
 
   if (target === "claude-code") {
-    const dir = process.env.CLAUDE_CONFIG_DIR ?? join(homedir(), ".claude");
-
-    return join(dir, "settings.json");
+    return join(resolveConfigDirectory("CLAUDE_CONFIG_DIR", ".claude"), "settings.json");
   }
 
   throw new Error(`Unsupported hook target: ${target}`);
@@ -154,6 +163,7 @@ export function installHooks(target: HookTarget, options: InstallOptions = {}): 
   const path = resolveSettingsPath(target);
   const config = readJsonObject(path);
   const hooks = asObject(config.hooks) ?? {};
+  const hookEvents = target === "codex" ? CODEX_HOOK_EVENTS : CLAUDE_CODE_HOOK_EVENTS;
 
   // Drop any previously managed entries so re-running install is idempotent and
   // picks up changed collector URLs or redaction levels.
@@ -162,7 +172,7 @@ export function installHooks(target: HookTarget, options: InstallOptions = {}): 
 
   const handler = buildHandler(target, collectorUrl, INTEGRATION_PATHS[target], redaction, surface);
 
-  for (const { event, matcher } of HOOK_EVENTS) {
+  for (const { event, matcher } of hookEvents) {
     const group = asArray(hooks[event]) ?? [];
     group.push(buildManagedGroup(matcher, handler));
     hooks[event] = group;
@@ -181,7 +191,7 @@ export function installHooks(target: HookTarget, options: InstallOptions = {}): 
     collectorUrl,
     redaction,
     surface,
-    events: HOOK_EVENTS.map((entry) => entry.event),
+    events: hookEvents.map((entry) => entry.event),
     codexOtel
   };
 }
@@ -216,9 +226,7 @@ function installCodexOtelConfig(collectorUrl: string, surface: CodexSurface) {
 }
 
 function resolveCodexConfigPath() {
-  const home = process.env.CODEX_HOME ?? join(homedir(), ".codex");
-
-  return join(home, "config.toml");
+  return join(resolveConfigDirectory("CODEX_HOME", ".codex"), "config.toml");
 }
 
 function upsertCodexOtelBlock(content: string, endpoint: string) {
@@ -320,23 +328,47 @@ function buildHandler(
   const windowsCommand = `curl.exe -s -m 5 -o NUL -X POST "${url}" -H "Content-Type: application/json" --data-binary "@-" >NUL 2>NUL || exit /b 0`;
 
   if (target === "claude-code") {
+    // Claude Code uses Git Bash on Windows when available and PowerShell
+    // otherwise. This command succeeds in both, including when older clients
+    // ignore the explicit shell field.
+    const windowsPortableCommand = `curl.exe -s -m 5 -o NUL -X POST "${url}" -H "Content-Type: application/json" --data-binary "@-"; exit 0`;
+
     return {
       type: "command",
-      command:
-        process.platform === "win32"
-          ? `curl.exe -s -m 5 -o NUL -X POST "${url}" -H "Content-Type: application/json" --data-binary "@-"; exit 0`
-          : posixCommand,
-      shell: process.platform === "win32" ? "powershell" : "bash",
+      command: process.platform === "win32" ? windowsPortableCommand : posixCommand,
+      ...(process.platform === "win32" ? { shell: "powershell" } : {}),
       timeout: 5
     };
   }
 
   return {
     type: "command",
-    command: process.platform === "win32" ? windowsCommand : posixCommand,
+    command: posixCommand,
     commandWindows: windowsCommand,
     timeout: 5
   };
+}
+
+function resolveConfigDirectory(environmentVariable: string, defaultDirectory: string) {
+  const override = process.env[environmentVariable];
+  const configured =
+    override === undefined || override.trim() === ""
+      ? join(homedir(), defaultDirectory)
+      : expandHomeDirectory(override);
+
+  return resolve(configured);
+}
+
+function expandHomeDirectory(path: string) {
+  if (path === "~") {
+    return homedir();
+  }
+
+  if (path.startsWith("~/") || path.startsWith("~\\")) {
+    return join(homedir(), path.slice(2));
+  }
+
+  return path;
 }
 
 function appendQuery(url: string, params: Record<string, string>) {

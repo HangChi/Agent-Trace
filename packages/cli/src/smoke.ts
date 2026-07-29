@@ -77,8 +77,8 @@ try {
     throw new Error("Expected default Codex hook command to include CLI surface hints.");
   }
 
-  if (process.platform === "win32" && (!command.includes("curl.exe") || !command.includes("-o NUL"))) {
-    throw new Error("Expected primary Codex hook command to be Windows-safe on Windows.");
+  if (command.includes("curl.exe") || command.includes("exit /b")) {
+    throw new Error("Expected primary Codex hook command to remain portable across operating systems.");
   }
 
   if (!config.includes("surface=cli") || !config.includes("surface_source=agent-trace-cli")) {
@@ -149,7 +149,7 @@ try {
     throw new Error("Expected reinstall to replace the legacy CMD-style Claude Code hook.");
   }
 
-  const expectedClaudeShell = process.platform === "win32" ? "powershell" : "bash";
+  const expectedClaudeShell = process.platform === "win32" ? "powershell" : undefined;
 
   if (claudeHandler.shell !== expectedClaudeShell) {
     throw new Error(`Expected Claude Code hook to select ${expectedClaudeShell} explicitly.`);
