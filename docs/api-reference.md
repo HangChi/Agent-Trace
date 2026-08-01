@@ -32,6 +32,8 @@ Collector 只为来源为 `localhost` 或 `127.0.0.1` 的 HTTP/HTTPS 页面返�
 | POST | `/integrations/otlp/v1/traces` | 通用 OTLP Trace 显式接入路径 |
 | POST | `/integrations/usage-scan` | 接收 usage 与 transcript snapshot |
 | GET | `/usage/summary` | 查询本地用量汇总 |
+| GET | `/usage/monthly` | 查询指定 UTC 月份的用量汇总 |
+| GET | `/usage/daily` | 查询指定 UTC 年份的每日用量 |
 | GET | `/usage/scanner` | 查询 Scanner 状态 |
 | GET | `/runs` | 查询 Run 列表或分页读模型 |
 | DELETE | `/runs` | 批量删除 Run |
@@ -346,6 +348,35 @@ CLI 提交的主体：
     { "model": "gpt-5", "provider": "openai", "totalTokens": 160, "costUsd": 0.01 }
   ]
 }
+```
+
+### `GET /usage/monthly`
+
+查询参数 `month` 必须使用 `YYYY-MM` 格式。响应 `200` 包含该 UTC 月份的 Token、成本、活跃天数、会话数、调用数以及模型汇总；使用会话快照回退统计时也会提供客户端汇总，否则 `clients` 可能为空。无效月份返回 `400 { "error": "invalid_month" }`。
+
+```json
+{
+  "month": "2026-07",
+  "totalTokens": 160,
+  "costUsd": 0.01,
+  "activeDays": 2,
+  "sessionCount": 3,
+  "callCount": 8,
+  "clients": [],
+  "models": [
+    { "model": "gpt-5", "provider": "openai", "totalTokens": 160, "costUsd": 0.01 }
+  ]
+}
+```
+
+### `GET /usage/daily`
+
+可选查询参数 `year` 使用四位 UTC 年份，默认当前 UTC 年。响应 `200` 为每日用量数组；无效年份返回 `400 { "error": "invalid_year" }`。
+
+```json
+[
+  { "date": "2026-07-14", "totalTokens": 160, "messageCount": 8 }
+]
 ```
 
 ### `GET /usage/scanner`

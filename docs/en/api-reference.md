@@ -30,6 +30,8 @@ The Collector must not be exposed directly to an untrusted network. CORS restric
 | POST | `/integrations/otlp/v1/traces` | Explicit generic OTLP trace path |
 | POST | `/integrations/usage-scan` | Ingest Usage and Transcript snapshots |
 | GET | `/usage/summary` | Aggregate local usage |
+| GET | `/usage/monthly` | Aggregate usage for one UTC month |
+| GET | `/usage/daily` | Daily usage for one UTC year |
 | GET | `/usage/scanner` | Scanner status |
 | GET | `/runs` | Paginated Run read model |
 | DELETE | `/runs` | Delete multiple Runs |

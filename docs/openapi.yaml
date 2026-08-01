@@ -493,6 +493,56 @@ paths:
                 type: object
                 required: [totalTokens, clients, models]
                 additionalProperties: true
+  /usage/monthly:
+    get:
+      tags: [Usage]
+      summary: Get aggregate usage for a UTC month
+      operationId: getMonthlyUsageSummary
+      parameters:
+        - name: month
+          in: query
+          required: true
+          schema:
+            type: string
+            pattern: '^\d{4}-(0[1-9]|1[0-2])$'
+      responses:
+        "200":
+          description: Monthly totals with model groups and optional client groups
+          content:
+            application/json:
+              schema:
+                type: object
+                required: [month, totalTokens, costUsd, activeDays, sessionCount, callCount, clients, models]
+                additionalProperties: true
+        "400":
+          $ref: "#/components/responses/ValidationError"
+  /usage/daily:
+    get:
+      tags: [Usage]
+      summary: Get daily usage for a UTC year
+      operationId: getDailyUsage
+      parameters:
+        - name: year
+          in: query
+          schema:
+            type: string
+            pattern: '^\d{4}$'
+      responses:
+        "200":
+          description: Daily token and message totals
+          content:
+            application/json:
+              schema:
+                type: array
+                items:
+                  type: object
+                  required: [date, totalTokens, messageCount]
+                  properties:
+                    date: { type: string, format: date }
+                    totalTokens: { type: integer, minimum: 0 }
+                    messageCount: { type: integer, minimum: 0 }
+        "400":
+          $ref: "#/components/responses/ValidationError"
   /usage/scanner:
     get:
       tags: [Usage]

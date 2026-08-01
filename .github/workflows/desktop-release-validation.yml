@@ -22,9 +22,16 @@ jobs:
           cache: pnpm
       - run: pnpm install --frozen-lockfile
       - run: pnpm desktop:build:win
+      - name: Download previous installer
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: >-
+          gh release download V0.3.0
+          --pattern Agent-Trace-Setup-0.3.0.exe
+          --dir apps/desktop/release
       - name: Install previous version, upgrade, launch, exit, and uninstall
         shell: powershell
         run: >-
           ./apps/desktop/scripts/installer-upgrade.e2e.ps1
-          -PreviousInstaller ./apps/desktop/release/Agent-Trace-Setup-0.2.0.exe
-          -CurrentInstaller ./apps/desktop/release/Agent-Trace-Setup-0.2.1.exe
+          -PreviousInstaller ./apps/desktop/release/Agent-Trace-Setup-0.3.0.exe
+          -CurrentInstaller ./apps/desktop/release/Agent-Trace-Setup-0.5.0.exe

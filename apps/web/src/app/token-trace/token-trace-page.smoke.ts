@@ -7,7 +7,6 @@ const runsPage = readFileSync(new URL("../runs/page.tsx", import.meta.url), "utf
 const header = readFileSync(new URL("../../components/console-header.tsx", import.meta.url), "utf8");
 
 for (const marker of [
-  "Token-Trace",
   "/analytics/runs/trends?days=${days}",
   "/usage/summary",
   "TokenTraceOverview",
@@ -75,7 +74,7 @@ const homeEntry = header.indexOf('localizedHref("/runs", locale)');
 const tokenTraceEntry = header.indexOf('localizedHref("/token-trace", locale)');
 const analyticsEntry = header.indexOf('localizedHref("/analytics", locale)');
 
-if (homeEntry === -1 || tokenTraceEntry <= homeEntry || analyticsEntry <= tokenTraceEntry) {
+if (!header.includes("Token-Trace") || homeEntry === -1 || tokenTraceEntry <= homeEntry || analyticsEntry <= tokenTraceEntry) {
   throw new Error("Console header must place Home and Token-Trace together on the left.");
 }
 
