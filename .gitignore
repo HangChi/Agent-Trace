@@ -10,6 +10,7 @@ __pycache__/
 *.py[cod]
 apps/desktop/resources/
 apps/desktop/release/
+apps/desktop/release-fixed/
 *.tsbuildinfo
 *.db
 *.db-shm
