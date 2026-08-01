@@ -43,6 +43,7 @@ import {
   CompareRunsButton,
   DeleteRunButton,
   RefreshButton,
+  RunsPageLink,
   SelectAllRunsCheckbox
 } from "./run-controls";
 import { calculateRunCost, getUsdCnyRate, type RunCost } from "~/lib/cost";
@@ -936,10 +937,10 @@ function RunsPaginationControls({
       >
         {pagination.page > 1 ? (
           <Button variant="outline" size="sm" asChild>
-            <Link href={runsHref(locale, previousPage, scannerMode, runMode, filters)}>
+            <RunsPageLink href={runsHref(locale, previousPage, scannerMode, runMode, filters)}>
               <ChevronLeft className="h-4 w-4" aria-hidden />
               {text.detail.previousPage}
-            </Link>
+            </RunsPageLink>
           </Button>
         ) : (
           <Button variant="outline" size="sm" disabled>
@@ -964,23 +965,23 @@ function RunsPaginationControls({
                 size="icon-sm"
                 asChild
               >
-                <Link
+                <RunsPageLink
                   href={runsHref(locale, item, scannerMode, runMode, filters)}
                   aria-current={item === pagination.page ? "page" : undefined}
                   aria-label={locale === "zh" ? `第 ${item} 页` : `Page ${item}`}
                 >
                   {item}
-                </Link>
+                </RunsPageLink>
               </Button>
             )
           )}
         </div>
         {pagination.page < pagination.totalPages ? (
           <Button variant="outline" size="sm" asChild>
-            <Link href={runsHref(locale, nextPage, scannerMode, runMode, filters)}>
+            <RunsPageLink href={runsHref(locale, nextPage, scannerMode, runMode, filters)}>
               {text.detail.nextPage}
               <ChevronRight className="h-4 w-4" aria-hidden />
-            </Link>
+            </RunsPageLink>
           </Button>
         ) : (
           <Button variant="outline" size="sm" disabled>

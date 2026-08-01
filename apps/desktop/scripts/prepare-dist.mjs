@@ -1,5 +1,15 @@
 import { spawn } from "node:child_process";
-import { existsSync, readdirSync, realpathSync, rmSync, cpSync, mkdirSync } from "node:fs";
+import {
+  cpSync,
+  existsSync,
+  lstatSync,
+  mkdirSync,
+  readlinkSync,
+  readdirSync,
+  realpathSync,
+  rmSync,
+  symlinkSync
+} from "node:fs";
 import { createRequire } from "node:module";
 import { dirname, isAbsolute, relative, resolve } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -42,6 +52,8 @@ if (!existsSync(standaloneDir)) {
 if (!existsSync(staticDir)) {
   throw new Error("Next static output was not found. Run pnpm --filter @agent-trace/web build first.");
 }
+
+normalizeWindowsDirectoryLinks(standaloneDir);
 
 rmSync(resourcesArchivesDir, { recursive: true, force: true });
 rmSync(resourcesServerRootDir, { recursive: true, force: true });
@@ -111,6 +123,36 @@ function copyPnpmHoistedDependencies(nodeModulesDir, options = {}) {
       dereference: true,
       force: true
     });
+  }
+}
+
+function normalizeWindowsDirectoryLinks(rootDir) {
+  if (process.platform !== "win32") {
+    return;
+  }
+
+  const resolvedRoot = realpathSync(rootDir);
+
+  for (const entry of readdirSync(resolvedRoot, { withFileTypes: true, recursive: true })) {
+    if (!entry.isSymbolicLink()) {
+      continue;
+    }
+
+    const linkPath = resolve(entry.parentPath, entry.name);
+    const targetPath = resolve(dirname(linkPath), readlinkSync(linkPath));
+    const relativeTarget = relative(resolvedRoot, targetPath);
+
+    if (relativeTarget.startsWith("..") || isAbsolute(relativeTarget)) {
+      throw new Error(`Refusing to normalize a Next.js link outside standalone output: ${linkPath}`);
+    }
+
+    if (!lstatSync(targetPath).isDirectory()) {
+      continue;
+    }
+
+    // Node cannot follow pnpm's relative directory symlinks on some Windows hosts.
+    rmSync(linkPath, { force: true });
+    symlinkSync(targetPath, linkPath, "junction");
   }
 }
 

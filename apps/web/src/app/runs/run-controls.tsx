@@ -1,6 +1,7 @@
 "use client";
 
 import { useRouter } from "next/navigation";
+import type { ComponentProps } from "react";
 import { useEffect, useRef, useState, useTransition } from "react";
 import { GitCompareArrows, RefreshCw, Trash2 } from "lucide-react";
 
@@ -19,6 +20,36 @@ import {
   readAutoRefreshPreference
 } from "~/lib/browser-preferences";
 import { deleteRunAction, deleteRunsAction } from "./actions";
+import { navigateRunsPage, refreshRunsPage } from "./run-navigation";
+
+export function RunsPageLink({
+  href,
+  onClick,
+  ...props
+}: ComponentProps<"a"> & { href: string }) {
+  return (
+    <a
+      {...props}
+      href={href}
+      onClick={(event) => {
+        onClick?.(event);
+        if (
+          event.defaultPrevented ||
+          event.button !== 0 ||
+          event.metaKey ||
+          event.ctrlKey ||
+          event.shiftKey ||
+          event.altKey
+        ) {
+          return;
+        }
+
+        event.preventDefault();
+        navigateRunsPage(window.location, href);
+      }}
+    />
+  );
+}
 
 export function RefreshButton({
   label,
@@ -27,7 +58,6 @@ export function RefreshButton({
   label: string;
   refreshingLabel: string;
 }) {
-  const router = useRouter();
   const [isPending, startTransition] = useTransition();
 
   return (
@@ -36,7 +66,7 @@ export function RefreshButton({
       variant="outline"
       size="sm"
       className="w-fit"
-      onClick={() => startTransition(() => router.refresh())}
+      onClick={() => startTransition(() => refreshRunsPage(window.location))}
       disabled={isPending}
     >
       <RefreshCw className={cn("h-3.5 w-3.5", isPending && "animate-spin")} aria-hidden />
