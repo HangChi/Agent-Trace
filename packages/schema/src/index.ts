@@ -1,5 +1,7 @@
 import { z } from "zod";
 
+export * from "./action-classification.js";
+
 export const traceStatusSchema = z.enum(["running", "success", "error"]);
 
 export const traceEventTypeSchema = z.enum([
@@ -117,7 +119,8 @@ export const runOrganizationSchema = z.object({
 
 export const privacySettingsSchema = z.object({
   sensitiveKeys: z.array(z.string().trim().min(1).max(120)).max(100),
-  replacement: z.string().min(1).max(120)
+  replacement: z.string().min(1).max(120),
+  commandCapture: z.enum(["metadata", "full"]).default("metadata")
 });
 
 const evaluationScoresSchema = z.record(
@@ -195,6 +198,7 @@ export type CreateRun = z.infer<typeof createRunSchema>;
 export type UpdateRun = z.infer<typeof updateRunSchema>;
 export type RunOrganization = z.infer<typeof runOrganizationSchema>;
 export type PrivacySettings = z.infer<typeof privacySettingsSchema>;
+export type CommandCaptureMode = PrivacySettings["commandCapture"];
 export type CreateEvaluationDataset = z.infer<typeof createEvaluationDatasetSchema>;
 export type CreateEvaluationCase = z.infer<typeof createEvaluationCaseSchema>;
 export type CreateEvaluationResult = z.infer<typeof createEvaluationResultSchema>;
@@ -313,6 +317,7 @@ export type DashboardRunSummary = {
 export type DashboardTraceMetadata = TraceMetadata & {
   category?: string;
   command?: string;
+  commandContent?: "omitted" | "stored";
   toolName?: string;
   toolKind?: string;
   mcpServer?: string;

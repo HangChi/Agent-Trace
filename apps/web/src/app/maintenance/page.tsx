@@ -6,6 +6,7 @@ import { Card, CardContent } from "~/components/ui/card";
 import { parseLocale, type Locale } from "~/lib/i18n";
 import {
   compactDatabaseAction,
+  purgeStoredCommandsAction,
   pruneRunsAction,
   restoreTombstoneAction,
   updatePrivacySettingsAction
@@ -26,7 +27,12 @@ type StorageStats = {
 };
 
 type Tombstone = { runId: string; deletedAt: string; reason?: string };
-type PrivacySettings = { sensitiveKeys: string[]; replacement: string };
+type PrivacySettings = {
+  sensitiveKeys: string[];
+  replacement: string;
+  commandCapture: "metadata" | "full";
+};
+type CommandStats = { runs: number; events: number };
 
 export default async function MaintenancePage({
   searchParams
@@ -35,10 +41,11 @@ export default async function MaintenancePage({
 }) {
   const params = await searchParams;
   const locale = parseLocale(params.lang);
-  const [stats, tombstones, privacy] = await Promise.all([
+  const [stats, tombstones, privacy, commandStats] = await Promise.all([
     getJson<StorageStats>("/maintenance/storage"),
     getJson<{ tombstones: Tombstone[] }>("/maintenance/tombstones?limit=50"),
-    getJson<PrivacySettings>("/maintenance/privacy")
+    getJson<PrivacySettings>("/maintenance/privacy"),
+    getJson<CommandStats>("/maintenance/privacy/commands")
   ]);
 
   return (
@@ -99,7 +106,43 @@ export default async function MaintenancePage({
                   {locale === "zh" ? "替换文本" : "Replacement"}
                   <input name="replacement" defaultValue={privacy.replacement} required className="mt-1 h-9 w-full rounded-md border border-input bg-background px-3 text-sm" />
                 </label>
+                <fieldset className="space-y-2 rounded-lg border border-border p-3">
+                  <legend className="px-1 text-xs font-medium text-muted-foreground">
+                    {locale === "zh" ? "\u547d\u4ee4\u6b63\u6587\u91c7\u96c6" : "Command body capture"}
+                  </legend>
+                  <label className="flex items-start gap-2 text-sm">
+                    <input type="radio" name="commandCapture" value="metadata" defaultChecked={privacy.commandCapture !== "full"} className="mt-0.5 size-4 accent-primary" />
+                    <span>
+                      <span className="block font-medium">{locale === "zh" ? "\u4ec5\u5143\u6570\u636e\uff08\u63a8\u8350\uff09" : "Metadata only (recommended)"}</span>
+                      <span className="block text-xs text-muted-foreground">{locale === "zh" ? "\u8ffd\u8e2a\u547d\u4ee4\u7c7b\u578b\u3001\u5de5\u5177\u540d\u548c\u72b6\u6001\uff0c\u4e0d\u4fdd\u5b58\u547d\u4ee4\u6b63\u6587\u3002" : "Track command type, tool name, and status without storing the command body."}</span>
+                    </span>
+                  </label>
+                  <label className="flex items-start gap-2 text-sm">
+                    <input type="radio" name="commandCapture" value="full" defaultChecked={privacy.commandCapture === "full"} className="mt-0.5 size-4 accent-primary" />
+                    <span>
+                      <span className="block font-medium">{locale === "zh" ? "\u4fdd\u5b58\u5b8c\u6574\u6b63\u6587" : "Store full body"}</span>
+                      <span className="block text-xs text-status-error">{locale === "zh" ? "\u547d\u4ee4\u53ef\u80fd\u5305\u542b\u4ee4\u724c\u3001\u5bc6\u7801\u3001\u8def\u5f84\u6216\u5176\u4ed6\u654f\u611f\u4fe1\u606f\u3002" : "Commands may contain tokens, passwords, paths, or other sensitive data."}</span>
+                    </span>
+                  </label>
+                </fieldset>
                 <Button type="submit" size="sm">{locale === "zh" ? "保存脱敏规则" : "Save redaction rules"}</Button>
+              </form>
+              <form action={purgeStoredCommandsAction} className="mt-5 space-y-3 border-t border-border pt-4">
+                <div>
+                  <p className="text-sm font-medium">{locale === "zh" ? "\u6e05\u7406\u5df2\u4fdd\u5b58\u7684\u547d\u4ee4\u6b63\u6587" : "Purge stored command bodies"}</p>
+                  <p className="mt-1 text-xs text-muted-foreground">
+                    {locale === "zh"
+                      ? `\u5f53\u524d\u6709 ${commandStats.events.toLocaleString()} \u4e2a\u4e8b\u4ef6\uff08${commandStats.runs.toLocaleString()} \u4e2a Run\uff09\u4fdd\u5b58\u4e86\u547d\u4ee4\u6b63\u6587\u3002\u6e05\u7406\u540e\u4ecd\u4fdd\u7559\u547d\u4ee4\u5143\u6570\u636e\u3002`
+                      : `${commandStats.events.toLocaleString()} events across ${commandStats.runs.toLocaleString()} Runs currently store command bodies. Metadata is retained after purging.`}
+                  </p>
+                </div>
+                <label className="flex items-start gap-2 text-xs text-muted-foreground">
+                  <input required type="checkbox" name="confirmCommandPurge" className="mt-0.5 size-4 accent-primary" />
+                  {locale === "zh" ? "\u6211\u786e\u8ba4\u6c38\u4e45\u5220\u9664\u73b0\u6709\u547d\u4ee4\u6b63\u6587\uff1b\u6b64\u64cd\u4f5c\u65e0\u6cd5\u64a4\u9500\u3002" : "I confirm permanent deletion of existing command bodies; this cannot be undone."}
+                </label>
+                <Button type="submit" variant="destructive" size="sm" disabled={commandStats.events === 0}>
+                  {locale === "zh" ? "\u6e05\u7406\u547d\u4ee4\u6b63\u6587" : "Purge command bodies"}
+                </Button>
               </form>
             </CardContent>
           </Card>

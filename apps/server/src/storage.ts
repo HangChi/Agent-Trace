@@ -90,7 +90,8 @@ const noEventTimestampSentinel = "<no-events>";
 const privacySettingsKey = "privacy";
 const defaultPrivacySettings: PrivacySettings = {
   sensitiveKeys: [],
-  replacement: "[REDACTED]"
+  replacement: "[REDACTED]",
+  commandCapture: "metadata"
 };
 const privacySettingsCache = new WeakMap<object, PrivacySettings>();
 
@@ -132,7 +133,8 @@ export async function updatePrivacySettings(
       seen.add(normalized);
       return true;
     }),
-    replacement: parsed.replacement
+    replacement: parsed.replacement,
+    commandCapture: parsed.commandCapture
   };
   const updatedAt = new Date().toISOString();
 
@@ -338,19 +340,20 @@ export async function createEvent(
   database: Database = defaultDb
 ) {
   const privacy = getPrivacySettings(database);
+  const prepared = applyCommandCapturePolicy(event, privacy);
   await database.insert(events).values({
-    id: event.id,
-    runId: event.runId,
-    parentId: event.parentId,
-    type: event.type,
-    name: event.name,
-    status: event.status,
-    timestamp: event.timestamp ?? new Date().toISOString(),
-    durationMs: event.durationMs,
-    inputJson: stringifyJson(redactSensitiveValue(event.input, privacy)),
-    outputJson: stringifyJson(redactSensitiveValue(event.output, privacy)),
-    errorJson: stringifyJson(redactSensitiveValue(event.error, privacy)),
-    metadataJson: stringifyJson(redactSensitiveValue(event.metadata, privacy))
+    id: prepared.id,
+    runId: prepared.runId,
+    parentId: prepared.parentId,
+    type: prepared.type,
+    name: prepared.name,
+    status: prepared.status,
+    timestamp: prepared.timestamp ?? new Date().toISOString(),
+    durationMs: prepared.durationMs,
+    inputJson: stringifyJson(redactSensitiveValue(prepared.input, privacy)),
+    outputJson: stringifyJson(redactSensitiveValue(prepared.output, privacy)),
+    errorJson: stringifyJson(redactSensitiveValue(prepared.error, privacy)),
+    metadataJson: stringifyJson(redactSensitiveValue(prepared.metadata, privacy))
   });
   publishChange("event");
 }
@@ -361,18 +364,19 @@ export async function upsertEvent(
 ) {
   const existing = await database.select().from(events).where(eq(events.id, event.id)).limit(1).get();
   const privacy = getPrivacySettings(database);
+  const prepared = applyCommandCapturePolicy(event, privacy);
   const values = {
-    runId: event.runId,
-    parentId: event.parentId,
-    type: event.type,
-    name: event.name,
-    status: event.status,
-    timestamp: event.timestamp ?? new Date().toISOString(),
-    durationMs: event.durationMs,
-    inputJson: stringifyJson(redactSensitiveValue(event.input, privacy)),
-    outputJson: stringifyJson(redactSensitiveValue(event.output, privacy)),
-    errorJson: stringifyJson(redactSensitiveValue(event.error, privacy)),
-    metadataJson: stringifyJson(redactSensitiveValue(event.metadata, privacy))
+    runId: prepared.runId,
+    parentId: prepared.parentId,
+    type: prepared.type,
+    name: prepared.name,
+    status: prepared.status,
+    timestamp: prepared.timestamp ?? new Date().toISOString(),
+    durationMs: prepared.durationMs,
+    inputJson: stringifyJson(redactSensitiveValue(prepared.input, privacy)),
+    outputJson: stringifyJson(redactSensitiveValue(prepared.output, privacy)),
+    errorJson: stringifyJson(redactSensitiveValue(prepared.error, privacy)),
+    metadataJson: stringifyJson(redactSensitiveValue(prepared.metadata, privacy))
   };
 
   if (!existing) {
@@ -1881,18 +1885,19 @@ export function replaceTranscriptSnapshot(
       }
 
       for (const event of trace.events) {
+        const prepared = applyCommandCapturePolicy(event, privacy);
         const values = {
-          runId: event.runId,
-          parentId: event.parentId,
-          type: event.type,
-          name: event.name,
-          status: event.status,
-          timestamp: event.timestamp ?? new Date().toISOString(),
-          durationMs: event.durationMs,
-          inputJson: stringifyJson(redactSensitiveValue(event.input, privacy)),
-          outputJson: stringifyJson(redactSensitiveValue(event.output, privacy)),
-          errorJson: stringifyJson(redactSensitiveValue(event.error, privacy)),
-          metadataJson: stringifyJson(redactSensitiveValue(event.metadata, privacy))
+          runId: prepared.runId,
+          parentId: prepared.parentId,
+          type: prepared.type,
+          name: prepared.name,
+          status: prepared.status,
+          timestamp: prepared.timestamp ?? new Date().toISOString(),
+          durationMs: prepared.durationMs,
+          inputJson: stringifyJson(redactSensitiveValue(prepared.input, privacy)),
+          outputJson: stringifyJson(redactSensitiveValue(prepared.output, privacy)),
+          errorJson: stringifyJson(redactSensitiveValue(prepared.error, privacy)),
+          metadataJson: stringifyJson(redactSensitiveValue(prepared.metadata, privacy))
         };
         transaction
           .insert(events)
@@ -1935,6 +1940,82 @@ export function replaceTranscriptSnapshot(
     }
 
     publishChange("event");
+  });
+}
+
+function applyCommandCapturePolicy(event: CreateTraceEvent, privacy: PrivacySettings): CreateTraceEvent {
+  if (privacy.commandCapture === "full") return event;
+
+  const input = omitCommandField(event.input);
+  const metadata = asRecord(event.metadata);
+  const hasCommand = hasOwnCommand(event.input) || typeof metadata.command === "string";
+  const isCommand = hasCommand || metadata.category === "command" || metadata.toolKind === "command";
+  const nextMetadata = event.metadata === undefined
+    ? undefined
+    : asRecord(omitCommandField(metadata));
+
+  return {
+    ...event,
+    input,
+    metadata: isCommand
+      ? { ...asRecord(nextMetadata), commandContent: "omitted" }
+      : nextMetadata
+  };
+}
+
+function omitCommandField(value: unknown) {
+  if (value === null || typeof value !== "object" || Array.isArray(value)) return value;
+  const result = { ...(value as Record<string, unknown>) };
+  delete result.command;
+  return Object.keys(result).length === 0 ? undefined : result;
+}
+
+function hasOwnCommand(value: unknown) {
+  return value !== null &&
+    typeof value === "object" &&
+    !Array.isArray(value) &&
+    typeof (value as Record<string, unknown>).command === "string";
+}
+
+export async function getStoredCommandStats(database: Database = defaultDb) {
+  const rows = await database
+    .select({ runId: events.runId, inputJson: events.inputJson, metadataJson: events.metadataJson })
+    .from(events);
+  const matched = rows.filter((row) => hasOwnCommand(parseJson(row.inputJson)) || hasOwnCommand(parseJson(row.metadataJson)));
+  return { runs: new Set(matched.map((row) => row.runId)).size, events: matched.length };
+}
+
+export async function purgeStoredCommands(database: Database = defaultDb) {
+  return database.transaction((transaction) => {
+    const rows = transaction
+      .select({ id: events.id, runId: events.runId, inputJson: events.inputJson, metadataJson: events.metadataJson })
+      .from(events)
+      .all();
+    const runIds = new Set<string>();
+    let eventCount = 0;
+
+    for (const row of rows) {
+      const input = parseJson(row.inputJson);
+      const metadata = parseJson(row.metadataJson);
+      if (!hasOwnCommand(input) && !hasOwnCommand(metadata)) continue;
+      runIds.add(row.runId);
+      eventCount += 1;
+      const nextMetadata = asRecord(omitCommandField(metadata));
+      if (nextMetadata.category === "command" || nextMetadata.toolKind === "command") {
+        nextMetadata.commandContent = "omitted";
+      }
+      transaction
+        .update(events)
+        .set({
+          inputJson: stringifyJson(omitCommandField(input)),
+          metadataJson: stringifyJson(nextMetadata)
+        })
+        .where(eq(events.id, row.id))
+        .run();
+    }
+
+    if (eventCount > 0) publishChange("event");
+    return { runs: runIds.size, events: eventCount };
   });
 }
 

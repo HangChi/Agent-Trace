@@ -2,6 +2,7 @@ import { DatabaseSync } from "node:sqlite";
 
 import type { HistoryContentMode, TranscriptEvent, TranscriptTokens } from "./transcript.js";
 import { cleanPromptPreview } from "./transcript.js";
+import { classifyAction } from "@agent-trace/schema";
 
 export function readOpenCodeSession(
   databasePaths: string[],
@@ -113,11 +114,19 @@ function buildEvents(
 
     if (message.role !== "assistant") return [];
     const tokens = makeTokens(message);
+    const tools = [...new Set(toolsByMessage.get(message.id) ?? [])];
     return [{
       kind: "turn",
       timestamp,
       tokens,
-      tools: [...new Set(toolsByMessage.get(message.id) ?? [])],
+      tools,
+      actions: tools.map((name) => ({
+        name,
+        ...classifyAction({ toolName: name }),
+        status: "success" as const,
+        timestamp,
+        resultObserved: false
+      })),
       costUsd: positiveNumber(message.cost)
     }];
   });

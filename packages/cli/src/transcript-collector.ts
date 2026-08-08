@@ -1,6 +1,8 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 
+import type { CommandCaptureMode } from "@agent-trace/schema";
+
 import { readCodexThreadTitles } from "./codex-thread-index.js";
 import { readOpenCodeSession } from "./opencode-session.js";
 import { readWorkBuddySessionTitles } from "./workbuddy-session-index.js";
@@ -41,7 +43,8 @@ export async function collectTranscriptDetails(
   home: string,
   rows: UsageRowLike[],
   contentMode: HistoryContentMode,
-  fingerprints: Map<string, string> = defaultFingerprints
+  fingerprints: Map<string, string> = defaultFingerprints,
+  commandCapture: CommandCaptureMode = "metadata"
 ) {
   const grouped = groupRows(rows);
   const codexFiles = indexJsonlFiles([
@@ -61,7 +64,7 @@ export async function collectTranscriptDetails(
     const first = sessionRows[0]!;
 
     if (client === "opencode") {
-      const fingerprint = databaseFingerprint(openCodeDatabases, contentMode, sessionId);
+      const fingerprint = databaseFingerprint(openCodeDatabases, contentMode, sessionId, commandCapture);
       const detail = readOpenCodeSession(openCodeDatabases, sessionId, contentMode);
       if (!detail.found || detail.events.length === 0) continue;
       sessionKeys.push(key);
@@ -101,13 +104,13 @@ export async function collectTranscriptDetails(
       : client === "workbuddy"
         ? workBuddyTitles.get(sessionId)
         : undefined;
-    const fingerprint = fileFingerprint(file, contentMode, indexedTitle);
+    const fingerprint = fileFingerprint(file, contentMode, indexedTitle, commandCapture);
     const text = readFileSync(file, "utf8");
     const parsed = client === "codex"
-      ? parseCodexTranscript(text, contentMode)
+      ? parseCodexTranscript(text, contentMode, commandCapture)
       : client === "claude"
-        ? parseClaudeTranscript(text, contentMode)
-        : parseWorkBuddyTranscript(text, contentMode);
+        ? parseClaudeTranscript(text, contentMode, commandCapture)
+        : parseWorkBuddyTranscript(text, contentMode, commandCapture);
     if (parsed.length === 0) continue;
 
     sessionKeys.push(key);
@@ -200,19 +203,25 @@ function discoverOpenCodeDatabases(home: string) {
 function fileFingerprint(
   path: string,
   contentMode: HistoryContentMode,
-  indexedTitle: string | undefined
+  indexedTitle: string | undefined,
+  commandCapture: CommandCaptureMode
 ) {
   const stats = statSync(path);
-  return `${path}\0${stats.size}\0${stats.mtimeMs}\0${contentMode}\0${indexedTitle ?? ""}`;
+  return `${path}\0${stats.size}\0${stats.mtimeMs}\0${contentMode}\0${commandCapture}\0${indexedTitle ?? ""}`;
 }
 
-function databaseFingerprint(paths: string[], contentMode: HistoryContentMode, sessionId: string) {
+function databaseFingerprint(
+  paths: string[],
+  contentMode: HistoryContentMode,
+  sessionId: string,
+  commandCapture: CommandCaptureMode
+) {
   return paths
     .map((path) => {
       const stats = statSync(path);
       return `${path}:${stats.size}:${stats.mtimeMs}`;
     })
-    .concat(contentMode, sessionId)
+    .concat(contentMode, commandCapture, sessionId)
     .join("\0");
 }
 

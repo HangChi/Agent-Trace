@@ -620,6 +620,39 @@ paths:
             application/json:
               schema: { $ref: "#/components/schemas/PrivacySettings" }
         "400": { $ref: "#/components/responses/ValidationError" }
+  /maintenance/privacy/commands:
+    get:
+      tags: [Maintenance]
+      summary: Count stored command bodies
+      operationId: getStoredCommandStats
+      responses:
+        "200":
+          description: Run and Event counts only; command bodies are never returned
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommandBodyStats" }
+  /maintenance/privacy/commands/purge:
+    post:
+      tags: [Maintenance]
+      summary: Remove stored command bodies while preserving metadata
+      operationId: purgeStoredCommands
+      requestBody:
+        required: true
+        content:
+          application/json:
+            schema:
+              type: object
+              required: [confirm]
+              properties:
+                confirm: { const: true }
+              additionalProperties: false
+      responses:
+        "200":
+          description: Counts of Runs and Events whose command bodies were removed
+          content:
+            application/json:
+              schema: { $ref: "#/components/schemas/CommandBodyStats" }
+        "400": { $ref: "#/components/responses/ValidationError" }
   /maintenance/storage:
     get:
       tags: [Maintenance]
@@ -950,13 +983,23 @@ components:
   schemas:
     PrivacySettings:
       type: object
-      required: [sensitiveKeys, replacement]
+      required: [sensitiveKeys, replacement, commandCapture]
       properties:
         sensitiveKeys:
           type: array
           maxItems: 100
           items: { type: string, minLength: 1, maxLength: 120 }
         replacement: { type: string, minLength: 1, maxLength: 120 }
+        commandCapture:
+          type: string
+          enum: [metadata, full]
+          default: metadata
+    CommandBodyStats:
+      type: object
+      required: [runs, events]
+      properties:
+        runs: { type: integer, minimum: 0 }
+        events: { type: integer, minimum: 0 }
     Health:
       type: object
       required: [ok, service]

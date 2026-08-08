@@ -63,6 +63,8 @@ Collector 只为来源为 `localhost` 或 `127.0.0.1` 的 HTTP/HTTPS 页面返�
 | GET | `/maintenance/tombstones` | 查询最近删除的 Run 墓碑 |
 | GET | `/maintenance/privacy` | 查询写入前字段脱敏规则 |
 | PUT | `/maintenance/privacy` | 更新写入前字段脱敏规则 |
+| GET | `/maintenance/privacy/commands` | 查询保存命令正文的 Run/Event 数量 |
+| POST | `/maintenance/privacy/commands/purge` | 确认清理已保存的命令正文 |
 | POST | `/maintenance/prune` | 按日期和状态执行保留期清理 |
 | POST | `/maintenance/compact` | WAL checkpoint 并压缩 SQLite |
 
@@ -501,7 +503,9 @@ Run 对比还会按“Event 类型 + 名称 + 出现次序”匹配事件。新�
 - `GET /maintenance/tombstones?limit=50` 返回最近删除的 Run ID、删除时间和原因，最多 200 条；使用既有 `DELETE /runs/:id/tombstone` 允许同 ID 再次采集。
 - `POST /maintenance/prune` 请求例：`{ "before": "2026-01-01T00:00:00Z", "statuses": ["success", "error"], "keepTombstones": true }`。
 - `POST /maintenance/compact` 执行 WAL checkpoint 和 `VACUUM`；建议在本地低流量时调用。
-- `GET /maintenance/privacy` 返回 `{ "sensitiveKeys": [], "replacement": "[REDACTED]" }`。`PUT /maintenance/privacy` 替换该配置；后续 Run/Event/Transcript 写入会递归检查字段名（不区分大小写），命中后在持久化前替换字段值。规则不会追溯修改已经存储的数据。
+- `GET /maintenance/privacy` 返回 `{ "sensitiveKeys": [], "replacement": "[REDACTED]", "commandCapture": "metadata" }`。`PUT /maintenance/privacy` 替换该配置；`commandCapture` 只接受 `metadata` 或 `full`，缺省为 `metadata`。后续 Run/Event/Transcript 写入会递归检查字段名（不区分大小写），并在最终 Event 写入边界执行命令正文策略。
+- `GET /maintenance/privacy/commands` 返回 `{ "runs": 0, "events": 0 }`，只报告含命令正文的数量，不返回正文。
+- `POST /maintenance/privacy/commands/purge` 必须提交 `{ "confirm": true }`。它事务化删除已有 Event 顶层 `input.command` / `metadata.command`，保留命令分类元数据；缺少确认返回 `400`。
 
 ### `GET /changes`
 

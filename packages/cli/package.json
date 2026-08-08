@@ -20,6 +20,7 @@
     "tsx": "^4.21.0"
   },
   "dependencies": {
+    "@agent-trace/schema": "workspace:*",
     "tokscale": "^4.3.0"
   }
 }

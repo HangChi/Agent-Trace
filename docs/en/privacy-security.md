@@ -13,15 +13,17 @@ CORS only controls browser access. It does not protect non-browser clients and m
 | Source | Stored | Not stored by default |
 | --- | --- | --- |
 | TypeScript SDK | Caller-provided input/output, errors, latency, metadata | No automatic redaction; omitted data is not inferred |
-| Codex/Claude Hooks | Lifecycle/session IDs, source, working directory, tool/skill/MCP names, shell commands, status, latency, model, controlled payload sizes | Raw user prompts, normal tool payloads/results, files, full final answer, hidden reasoning |
-| Codex OTel | Normalized session, model, tool, command, token, and status metadata | User prompt logging is configured off |
+| Codex/Claude Hooks | Lifecycle/session IDs, source, working directory, tool/skill/MCP/command classification, status, latency, model, controlled payload sizes | Raw user prompts, normal tool payloads/results, files, full final answer, hidden reasoning; command bodies are omitted by default |
+| Codex OTel | Normalized session, model, tool, command classification, token, and status metadata | User prompt logging is configured off; command bodies are omitted by default |
 | Usage Scanner | Client/session/model/provider, tokens, messages, time, cost, diagnostics | Full source logs are not submitted directly |
 | Transcript preview | Cleaned prompt preview, time, tokens, tools, session metadata | Assistant prose, full tool results, file contents |
 | Transcript metadata | Time, tokens, tools, session metadata | Prompt text |
 
 ## Redaction
 
-Hooks currently use metadata redaction. Shell commands remain visible because they are diagnostic evidence; commands can still contain paths, arguments, or secrets.
+Command-body capture defaults to `metadata`. Before any Event is written, the Collector removes top-level `input.command` and `metadata.command` and records `metadata.commandContent="omitted"`. This final storage boundary applies to Hook, OTel, SDK, Transcript, and older-client writes.
+
+`full` is an explicit high-risk opt-in in **Maintenance**. It stores subsequent complete commands, which may contain paths, arguments, tokens, or passwords. Key-name redaction cannot find secrets embedded inside ordinary command strings. Switching back to `metadata` does not remove existing bodies; use the separately confirmed purge after reviewing its count.
 
 The Dashboard Maintenance page can persist sensitive field names and replacement text. The Collector recursively checks object keys in subsequent Run, Event, and Transcript payloads case-insensitively and replaces matching values before writing SQLite. Rules do not retroactively clean stored data and do not scan secrets embedded inside ordinary strings.
 

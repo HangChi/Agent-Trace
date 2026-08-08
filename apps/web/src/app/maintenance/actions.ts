@@ -36,12 +36,25 @@ export async function updatePrivacySettingsAction(formData: FormData): Promise<v
     .map((key) => key.trim())
     .filter(Boolean);
   const replacement = text(formData.get("replacement")).trim() || "[REDACTED]";
+  const commandCapture = formData.get("commandCapture") === "full" ? "full" : "metadata";
 
   await request("/maintenance/privacy", {
     method: "PUT",
-    body: JSON.stringify({ sensitiveKeys, replacement })
+    body: JSON.stringify({ sensitiveKeys, replacement, commandCapture })
   });
   revalidatePath("/maintenance");
+}
+
+export async function purgeStoredCommandsAction(formData: FormData): Promise<void> {
+  if (formData.get("confirmCommandPurge") !== "on") {
+    throw new Error("Command purge confirmation is required.");
+  }
+
+  await request("/maintenance/privacy/commands/purge", {
+    method: "POST",
+    body: JSON.stringify({ confirm: true })
+  });
+  revalidate();
 }
 
 async function request(path: string, init: RequestInit) {

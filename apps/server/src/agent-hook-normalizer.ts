@@ -1,14 +1,16 @@
 import { randomUUID } from "node:crypto";
 import { closeSync, openSync, readSync, statSync } from "node:fs";
 
-import type {
-  CreateRun,
-  CreateTraceEvent,
-  TokenUsage,
-  TraceEventType,
-  TraceMetadata,
-  TraceStatus,
-  UpdateRun
+import {
+  isCommandToolName,
+  parseMcpToolName,
+  type CreateRun,
+  type CreateTraceEvent,
+  type TokenUsage,
+  type TraceEventType,
+  type TraceMetadata,
+  type TraceStatus,
+  type UpdateRun
 } from "@agent-trace/schema";
 
 import { estimateTextTokenUsage } from "./token-estimator.js";
@@ -644,9 +646,7 @@ function getCommand(body: Record<string, unknown>, toolName: string | undefined)
 }
 
 function isCommandTool(toolName: string) {
-  return /^(bash|shell|command|powershell|cmd|terminal)$/i.test(toolName) ||
-    toolName.toLowerCase().includes("shell_command") ||
-    toolName.toLowerCase().includes("command_execution");
+  return isCommandToolName(toolName);
 }
 
 function getToolKind(toolName: string | undefined) {
@@ -666,18 +666,7 @@ function getToolKind(toolName: string | undefined) {
 }
 
 function parseMcpTool(toolName: string | undefined) {
-  if (!toolName?.startsWith("mcp__")) {
-    return undefined;
-  }
-
-  const [, server, ...toolParts] = toolName.split("__");
-  const tool = toolParts.join("__");
-
-  if (!server || !tool) {
-    return undefined;
-  }
-
-  return { server, tool };
+  return parseMcpToolName(toolName);
 }
 
 function getSkillName(

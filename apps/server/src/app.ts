@@ -39,6 +39,7 @@ import {
   getAnalyticsBudgetAlerts,
   getEvaluationDatasetReport,
   getPrivacySettings,
+  getStoredCommandStats,
   getStorageStats,
   getRunTrends,
   getTraceInsights,
@@ -50,6 +51,7 @@ import {
   listRuns,
   listRunsPage,
   pruneRuns,
+  purgeStoredCommands,
   recordEvaluationResult,
   restoreDeletedRun,
   updatePrivacySettings,
@@ -462,6 +464,14 @@ export function createApp(options: { now?: () => Date } = {}) {
     }
 
     return c.json(await updatePrivacySettings(parsed.data));
+  });
+
+  app.get("/maintenance/privacy/commands", async (c) => c.json(await getStoredCommandStats()));
+
+  app.post("/maintenance/privacy/commands/purge", async (c) => {
+    const body = asRecord(await readJson(c.req));
+    if (body.confirm !== true) return c.json({ error: "command_purge_confirmation_required" }, 400);
+    return c.json(await purgeStoredCommands());
   });
 
   app.post("/maintenance/prune", async (c) => {

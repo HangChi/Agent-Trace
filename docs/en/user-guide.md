@@ -70,6 +70,8 @@ Deleting a Run removes it from Agent-Trace SQLite and cascades to its Events. It
 
 Use **Maintenance** in the header to inspect capacity, prune or compact local data, allow tombstoned Run ids to be collected again, and configure case-insensitive sensitive field names that are replaced before subsequent Run, Event, and Transcript writes.
 
+Command capture defaults to **Metadata only**. Offline scans still recover Command, Tool, MCP, and Skill classifications, but command bodies do not enter the upload payload or SQLite. **Store full body** is an explicit high-risk opt-in for subsequent events. Switching back does not remove existing bodies; the Maintenance page reports their count and provides a separately confirmed purge that preserves classification metadata.
+
 ## Analytics, budgets, and evaluations
 
 Use **Analytics** in the header to group the last 30 days by project, environment, model, or source. UTC daily/monthly budgets can limit cost, tokens, and Run count; current violations are computed from live data.

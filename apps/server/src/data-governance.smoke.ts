@@ -26,7 +26,8 @@ try {
   assert.equal(privacyResponse.status, 200);
   assert.deepEqual(await privacyResponse.json(), {
     sensitiveKeys: ["apiKey"],
-    replacement: "[HIDDEN]"
+    replacement: "[HIDDEN]",
+    commandCapture: "metadata"
   });
   assert.equal(
     await storage.createRun(
@@ -47,6 +48,49 @@ try {
   );
   const [privateEvent] = await storage.listEventsByRunId("private-run", database);
   assert.deepEqual(privateEvent?.input, { apiKey: "[HIDDEN]" });
+
+  const metadataSecret = "sk-metadata-command-secret";
+  await storage.createEvent(commandEvent("private-run", "metadata-command", metadataSecret), database);
+  const metadataCommand = (await storage.listEventsByRunId("private-run", database))
+    .find((entry) => entry.id === "metadata-command");
+  assert.equal(JSON.stringify(metadataCommand).includes(metadataSecret), false);
+  assert.equal(metadataCommand?.metadata?.category, "command");
+  assert.equal(metadataCommand?.metadata?.commandContent, "omitted");
+
+  assert.deepEqual(
+    await storage.updatePrivacySettings({
+      sensitiveKeys: ["apiKey"],
+      replacement: "[HIDDEN]",
+      commandCapture: "full"
+    }, database),
+    { sensitiveKeys: ["apiKey"], replacement: "[HIDDEN]", commandCapture: "full" }
+  );
+  const fullSecret = "sk-full-command-secret";
+  await storage.createEvent(commandEvent("private-run", "full-command", fullSecret), database);
+  assert.equal(
+    JSON.stringify(await storage.listEventsByRunId("private-run", database)).includes(fullSecret),
+    true
+  );
+
+  const commandStatsResponse = await createApp().request("/maintenance/privacy/commands");
+  assert.equal(commandStatsResponse.status, 200);
+  assert.deepEqual(await commandStatsResponse.json(), { runs: 1, events: 1 });
+  const rejectedPurge = await createApp().request("/maintenance/privacy/commands/purge", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ confirm: false })
+  });
+  assert.equal(rejectedPurge.status, 400);
+  const purgeResponse = await createApp().request("/maintenance/privacy/commands/purge", {
+    method: "POST",
+    headers: { "content-type": "application/json" },
+    body: JSON.stringify({ confirm: true })
+  });
+  assert.equal(purgeResponse.status, 200);
+  assert.deepEqual(await purgeResponse.json(), { runs: 1, events: 1 });
+  const purgedEvents = await storage.listEventsByRunId("private-run", database);
+  assert.equal(JSON.stringify(purgedEvents).includes(fullSecret), false);
+  assert.equal(purgedEvents.find((entry) => entry.id === "full-command")?.metadata?.category, "command");
 
   assert.equal(await storage.createRun(run("deleted-run"), database), true);
   await storage.createEvent(event("deleted-run", "deleted-event"), database);
@@ -93,7 +137,7 @@ try {
 
   const stats = await storage.getStorageStats(database);
   assert.equal(stats.runs, 3);
-  assert.equal(stats.events, 1);
+  assert.equal(stats.events, 3);
   assert.equal(stats.tombstones, 1);
 } finally {
   sqlite.close();
@@ -101,6 +145,19 @@ try {
   rmSync(path, { force: true });
   rmSync(`${path}-shm`, { force: true });
   rmSync(`${path}-wal`, { force: true });
+}
+
+function commandEvent(runId: string, id: string, command: string) {
+  return {
+    id,
+    runId,
+    type: "tool_call" as const,
+    name: "Bash command",
+    status: "success" as const,
+    timestamp: "2026-07-15T00:00:02.000Z",
+    input: { command },
+    metadata: { category: "command", toolName: "Bash", toolKind: "command", command }
+  };
 }
 
 console.log("Agent-Trace data governance smoke test passed.");

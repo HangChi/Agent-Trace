@@ -51,6 +51,7 @@ import {
 import { cn } from "~/lib/utils";
 import { AutoRefresh } from "../run-controls";
 import { updateRunOrganizationAction } from "./actions";
+import { getCommandPresentation } from "./command-presentation";
 import { inspectFailures } from "./failure-inspector";
 import { getEventVisibilityPresentation } from "./event-visibility";
 import { TraceLocationFocus } from "./trace-location-focus";
@@ -1014,28 +1015,48 @@ function EventDetails({
 }
 
 function EventPrimaryDetail({ event, locale }: { event: DashboardTraceEvent; locale: Locale }) {
-  const command = event.metadata?.command ?? getObjectString(event.input, "command");
+  const command = getCommandPresentation(event);
   const tokenUsage = event.metadata?.tokenUsage;
-  const category = getEventCategory(event);
-  const toolName = event.metadata?.toolName;
   const skillName = event.metadata?.skillName;
   const mcp =
     event.metadata?.mcpServer && event.metadata?.mcpTool
       ? `${event.metadata.mcpServer}.${event.metadata.mcpTool}`
       : undefined;
 
-  if (command) {
+  if (command.state === "stored") {
     return (
-      <pre className="mt-3 overflow-x-auto rounded-lg border border-border/80 bg-surface-muted px-3 py-2 font-mono text-xs leading-5 text-foreground">
-        {command}
-      </pre>
+      <div className="mt-3 space-y-2">
+        <div className="flex flex-wrap gap-2 font-mono text-xs">
+          <MetadataBadge value={locale === "zh" ? "命令正文 · 已保存" : "command body · stored"} />
+          {command.toolName ? <MetadataBadge value={`command ${command.toolName}`} /> : null}
+        </div>
+        <pre className="overflow-x-auto rounded-lg border border-border/80 bg-surface-muted px-3 py-2 font-mono text-xs leading-5 text-foreground">
+          {command.command}
+        </pre>
+      </div>
     );
   }
 
-  if (category === "command" && toolName) {
+  if (command.state === "omitted") {
+    return (
+      <div className="mt-3 space-y-2">
+        <div className="flex flex-wrap gap-2 font-mono text-xs">
+          {command.toolName ? <MetadataBadge value={`command ${command.toolName}`} /> : null}
+          <MetadataBadge value={locale === "zh" ? "正文未保存" : "body not stored"} />
+        </div>
+        <p className="text-xs text-muted-foreground">
+          {locale === "zh"
+            ? "命令已被追踪，但正文按隐私策略在写入前省略。"
+            : "The command was tracked, but its body was omitted before storage by the privacy policy."}
+        </p>
+      </div>
+    );
+  }
+
+  if (command.state === "metadata" && command.toolName) {
     return (
       <div className="mt-3 flex flex-wrap gap-2 font-mono text-xs">
-        <MetadataBadge value={`command ${toolName}`} />
+        <MetadataBadge value={`command ${command.toolName}`} />
       </div>
     );
   }

@@ -128,6 +128,40 @@ try {
               total: 420
             },
             tools: ["exec_command"],
+            actions: [
+              {
+                callId: "offline-command",
+                name: "Bash",
+                category: "command",
+                toolName: "Bash",
+                toolKind: "command",
+                status: "success",
+                timestamp: "2026-07-12T11:00:01.000Z",
+                resultObserved: true
+              },
+              {
+                callId: "offline-mcp",
+                name: "mcp__ardot__batch_edit",
+                category: "mcp",
+                toolName: "mcp__ardot__batch_edit",
+                toolKind: "mcp",
+                mcpServer: "ardot",
+                mcpTool: "batch_edit",
+                status: "success",
+                timestamp: "2026-07-12T11:00:02.000Z",
+                resultObserved: true
+              },
+              {
+                callId: "offline-tool",
+                name: "Read",
+                category: "tool",
+                toolName: "Read",
+                toolKind: "tool",
+                status: "success",
+                timestamp: "2026-07-12T11:00:03.000Z",
+                resultObserved: true
+              }
+            ],
             costUsd: 0.42,
             costEstimated: true
           }
@@ -256,6 +290,13 @@ try {
     throw new Error("Expected readable transcript titles to upgrade every supported existing run.");
   }
   if (
+    run.metadata?.summary?.commandCount !== 1 ||
+    run.metadata?.summary?.mcpCount !== 1 ||
+    run.metadata?.summary?.toolCount !== 1
+  ) {
+    throw new Error("Expected structured transcript actions to retain command, MCP, and tool categories.");
+  }
+  if (
     liveRun.name !== "Readable Codex title" ||
     liveRun.status !== liveRunBeforeScan.status ||
     liveRun.startedAt !== liveRunBeforeScan.startedAt ||
@@ -345,13 +386,15 @@ try {
     app.request(`/runs/run_codex_${sessionId}/events?visibility=all&page=1&pageSize=100`)
   ));
   if (
-    events.length !== 3 ||
-    events.filter((event: any) => event.metadata?.source === "transcript").length !== 3 ||
+    events.length !== 5 ||
+    events.filter((event: any) => event.metadata?.source === "transcript").length !== 5 ||
     events.find((event: any) => event.name === "user_prompt")?.input?.promptPreview !== "fix the trace" ||
     events.find((event: any) => event.name === "assistant_turn")?.metadata?.tokenUsage?.total !== 420 ||
-    !events.some((event: any) => event.name === "exec_command")
+    !events.some((event: any) => event.name === "Bash" && event.metadata?.category === "command") ||
+    !events.some((event: any) => event.name === "mcp__ardot__batch_edit" && event.metadata?.category === "mcp") ||
+    !events.some((event: any) => event.name === "Read" && event.metadata?.category === "tool")
   ) {
-    throw new Error("Expected one deterministic prompt, turn, and tool event from the transcript.");
+    throw new Error("Expected deterministic prompt, turn, and classified action events from the transcript.");
   }
 
   await expectAccepted(

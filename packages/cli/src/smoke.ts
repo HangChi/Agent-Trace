@@ -9,6 +9,7 @@ import {
   collectUsageClientDiagnostics,
   collectUsageOnce,
   isUsageScannerEnabled,
+  resolveCommandCaptureMode,
   resolveTokscaleCommand,
   syncUsageClients
 } from "./usage.js";
@@ -213,6 +214,7 @@ try {
   const usageHome = join(codexHome, "usage-home");
   let observedUsageHome: string | undefined;
   let observedDefaultClients: string | undefined;
+  let observedPrivacyPath: string | undefined;
 
   await collectUsageOnce({
     collectorUrl: "http://localhost:4319",
@@ -252,6 +254,10 @@ try {
         ]
       };
     },
+    getJson: async (path) => {
+      observedPrivacyPath = path;
+      return { commandCapture: "full" };
+    },
     postJson: async (path, body) => {
       postedUsageScans.push({ path, body: body as Record<string, unknown> });
     }
@@ -267,6 +273,18 @@ try {
 
   if (observedUsageHome !== usageHome) {
     throw new Error("Expected usage scanner to pass the configured home directory to tokscale.");
+  }
+
+  if (observedPrivacyPath !== "/maintenance/privacy") {
+    throw new Error("Expected usage scanner to fetch the collector command-capture policy.");
+  }
+
+  if (
+    await resolveCommandCaptureMode(async () => {
+      throw new Error("collector unavailable");
+    }) !== "metadata"
+  ) {
+    throw new Error("Expected an unavailable privacy endpoint to fail closed to metadata capture.");
   }
 
   if (!Array.isArray(usageRows) || usageRows.length !== 2) {

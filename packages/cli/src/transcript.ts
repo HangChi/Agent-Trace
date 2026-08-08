@@ -1,3 +1,9 @@
+import {
+  classifyAction,
+  type ActionCategory,
+  type CommandCaptureMode
+} from "@agent-trace/schema";
+
 export type HistoryContentMode = "preview" | "metadata";
 
 export type TranscriptTokens = {
@@ -15,8 +21,25 @@ export type TranscriptEvent = {
   text?: string;
   tokens?: TranscriptTokens;
   tools?: string[];
+  actions?: TranscriptAction[];
   costUsd?: number;
   costEstimated?: boolean;
+};
+
+export type TranscriptAction = {
+  callId?: string;
+  name: string;
+  category: ActionCategory;
+  toolName?: string;
+  toolKind: "command" | "tool" | "mcp";
+  mcpServer?: string;
+  mcpTool?: string;
+  skillName?: string;
+  status: "success" | "error";
+  timestamp: string;
+  durationMs?: number;
+  resultObserved: boolean;
+  command?: string;
 };
 
 export function cleanPromptPreview(value: unknown) {
@@ -30,13 +53,16 @@ export function cleanPromptPreview(value: unknown) {
 
 export function parseClaudeTranscript(
   text: string,
-  contentMode: HistoryContentMode
+  contentMode: HistoryContentMode,
+  commandCapture: CommandCaptureMode = "metadata"
 ): TranscriptEvent[] {
   const events: TranscriptEvent[] = [];
   const seenLineIds = new Set<string>();
   const turnsByMessageId = new Map<string, TranscriptEvent>();
+  const records = parseJsonLines(text);
+  const results = indexClaudeToolResults(records);
 
-  for (const record of parseJsonLines(text)) {
+  for (const record of records) {
     const lineId = getString(record.uuid);
     if (lineId) {
       if (seenLineIds.has(lineId)) continue;
@@ -61,11 +87,13 @@ export function parseClaudeTranscript(
     const usage = asRecord(message.usage);
     if (Object.keys(usage).length === 0) continue;
     const messageId = getString(message.id);
-    const tools = getClaudeTools(message.content);
+    const actions = getClaudeActions(message.content, timestamp, results, commandCapture);
+    const tools = actions.map((action) => action.name);
 
     if (messageId && turnsByMessageId.has(messageId)) {
       const existing = turnsByMessageId.get(messageId)!;
       existing.tools = unique([...(existing.tools ?? []), ...tools]);
+      existing.actions = uniqueActions([...(existing.actions ?? []), ...actions]);
       continue;
     }
 
@@ -78,7 +106,8 @@ export function parseClaudeTranscript(
         cacheRead: usage.cache_read_input_tokens,
         cacheWrite: usage.cache_creation_input_tokens
       }),
-      tools
+      tools,
+      actions
     };
     if (messageId) turnsByMessageId.set(messageId, event);
     events.push(event);
@@ -89,10 +118,11 @@ export function parseClaudeTranscript(
 
 export function parseCodexTranscript(
   text: string,
-  contentMode: HistoryContentMode
+  contentMode: HistoryContentMode,
+  commandCapture: CommandCaptureMode = "metadata"
 ): TranscriptEvent[] {
   const events: TranscriptEvent[] = [];
-  let pendingTools: string[] = [];
+  let pendingActions: TranscriptAction[] = [];
 
   for (const record of parseJsonLines(text)) {
     const payload = asRecord(record.payload);
@@ -105,13 +135,34 @@ export function parseCodexTranscript(
       ["function_call", "custom_tool_call", "tool_search_call"].includes(payloadType ?? "")
     ) {
       const tool = getToolName(payload);
-      if (tool) pendingTools.push(tool);
+      if (tool) {
+        pendingActions.push(createTranscriptAction({
+          callId: getString(payload.call_id) ?? getString(payload.callId),
+          toolName: tool,
+          argumentsValue: payload.arguments ?? payload.input,
+          timestamp,
+          commandCapture
+        }));
+      }
       continue;
     }
 
     if (recordType === "event_msg" && payloadType === "mcp_tool_call_end") {
       const tool = getToolName(payload);
-      if (tool) pendingTools.push(tool);
+      if (tool) {
+        const [server, ...toolParts] = tool.split(".");
+        pendingActions.push(createTranscriptAction({
+          callId: getString(payload.call_id) ?? getString(payload.callId),
+          toolName: tool,
+          timestamp,
+          commandCapture,
+          resultObserved: true,
+          explicitCategory: "mcp",
+          explicitMcp: server && toolParts.length > 0
+            ? { server, tool: toolParts.join(".") }
+            : undefined
+        }));
+      }
       continue;
     }
 
@@ -141,7 +192,7 @@ export function parseCodexTranscript(
     });
 
     if (tokens.total === 0) {
-      pendingTools = [];
+      pendingActions = [];
       continue;
     }
 
@@ -149,9 +200,10 @@ export function parseCodexTranscript(
       kind: "turn",
       timestamp,
       tokens,
-      tools: unique(pendingTools)
+      tools: unique(pendingActions.map((action) => action.name)),
+      actions: uniqueActions(pendingActions)
     });
-    pendingTools = [];
+    pendingActions = [];
   }
 
   return events;
@@ -159,13 +211,17 @@ export function parseCodexTranscript(
 
 export function parseWorkBuddyTranscript(
   text: string,
-  contentMode: HistoryContentMode
+  contentMode: HistoryContentMode,
+  commandCapture: CommandCaptureMode = "metadata"
 ): TranscriptEvent[] {
   const events: TranscriptEvent[] = [];
   const pendingTools: string[] = [];
+  const pendingActions: TranscriptAction[] = [];
   const seenCallIds = new Set<string>();
+  const records = parseJsonLines(text);
+  const results = indexWorkBuddyResults(records);
 
-  for (const record of parseJsonLines(text)) {
+  for (const record of records) {
     const timestamp = isoTimestamp(record.timestamp);
 
     if (record.type === "message" && record.role === "user") {
@@ -182,7 +238,18 @@ export function parseWorkBuddyTranscript(
     if (record.type === "function_call") {
       const callId = getString(record.callId);
       const name = getString(record.name);
-      if (name && (!callId || !seenCallIds.has(callId))) pendingTools.push(name);
+      if (name && (!callId || !seenCallIds.has(callId))) {
+        pendingTools.push(name);
+        const result = callId ? results.get(callId) : undefined;
+        pendingActions.push(createTranscriptAction({
+          callId,
+          toolName: name,
+          argumentsValue: record.arguments ?? record.input ?? record.tool_input,
+          timestamp,
+          commandCapture,
+          result
+        }));
+      }
       if (callId) seenCallIds.add(callId);
     }
 
@@ -203,9 +270,11 @@ export function parseWorkBuddyTranscript(
       kind: "turn",
       timestamp,
       tokens,
-      tools: unique(pendingTools)
+      tools: unique(pendingTools),
+      actions: uniqueActions(pendingActions)
     });
     pendingTools.length = 0;
+    pendingActions.length = 0;
   }
 
   return events;
@@ -297,15 +366,125 @@ function isSyntheticClaudePrompt(value: string) {
   );
 }
 
-function getClaudeTools(content: unknown) {
+function getClaudeActions(
+  content: unknown,
+  timestamp: string,
+  results: Map<string, IndexedToolResult>,
+  commandCapture: CommandCaptureMode
+) {
   if (!Array.isArray(content)) return [];
-  return unique(
-    content
-      .map(asRecord)
-      .filter((part) => part.type === "tool_use")
-      .map((part) => getString(part.name))
-      .filter((name): name is string => Boolean(name))
-  );
+  return content
+    .map(asRecord)
+    .filter((part) => part.type === "tool_use")
+    .map((part) => {
+      const callId = getString(part.id);
+      const result = callId ? results.get(callId) : undefined;
+      return createTranscriptAction({
+        callId,
+        toolName: getString(part.name),
+        argumentsValue: part.input,
+        timestamp,
+        commandCapture,
+        result
+      });
+    })
+    .filter((action) => action.name !== "unknown_tool");
+}
+
+type IndexedToolResult = { timestamp: string; status: "success" | "error" };
+
+function indexClaudeToolResults(records: Record<string, unknown>[]) {
+  const results = new Map<string, IndexedToolResult>();
+  for (const record of records) {
+    const timestamp = getString(record.timestamp) ?? "";
+    const message = asRecord(record.message);
+    if (!Array.isArray(message.content)) continue;
+    for (const value of message.content) {
+      const part = asRecord(value);
+      if (part.type !== "tool_result") continue;
+      const callId = getString(part.tool_use_id) ?? getString(part.toolUseId);
+      if (callId) {
+        results.set(callId, { timestamp, status: part.is_error === true ? "error" : "success" });
+      }
+    }
+  }
+  return results;
+}
+
+function indexWorkBuddyResults(records: Record<string, unknown>[]) {
+  const results = new Map<string, IndexedToolResult>();
+  for (const record of records) {
+    if (record.type !== "function_call_result") continue;
+    const callId = getString(record.callId);
+    if (!callId) continue;
+    const status = getString(record.status)?.toLowerCase();
+    results.set(callId, {
+      timestamp: isoTimestamp(record.timestamp),
+      status: status === "error" || status === "failed" || status === "cancelled" ? "error" : "success"
+    });
+  }
+  return results;
+}
+
+function createTranscriptAction(input: {
+  callId?: string;
+  toolName?: string;
+  argumentsValue?: unknown;
+  timestamp: string;
+  commandCapture: CommandCaptureMode;
+  result?: IndexedToolResult;
+  resultObserved?: boolean;
+  explicitCategory?: ActionCategory;
+  explicitMcp?: { server: string; tool: string };
+}): TranscriptAction {
+  const argumentsRecord = parseArgumentsRecord(input.argumentsValue);
+  const skillName = /^(slashcommand|skill)$/i.test(input.toolName ?? "")
+    ? getString(argumentsRecord.skill) ?? getString(argumentsRecord.skill_name) ?? getString(argumentsRecord.name)
+    : undefined;
+  const classified = classifyAction({
+    toolName: input.toolName,
+    argumentKeys: Object.keys(argumentsRecord),
+    skillName
+  });
+  const category = input.explicitCategory ?? classified.category;
+  const started = new Date(input.timestamp).getTime();
+  const ended = new Date(input.result?.timestamp ?? "").getTime();
+  const command = category === "command" && input.commandCapture === "full"
+    ? getCommandValue(argumentsRecord)
+    : undefined;
+
+  return {
+    ...(input.callId ? { callId: input.callId } : {}),
+    name: input.toolName ?? "unknown_tool",
+    category,
+    toolName: classified.toolName,
+    toolKind: category === "mcp" ? "mcp" : category === "command" ? "command" : "tool",
+    mcpServer: input.explicitMcp?.server ?? classified.mcpServer,
+    mcpTool: input.explicitMcp?.tool ?? classified.mcpTool,
+    skillName: classified.skillName,
+    status: input.result?.status ?? "success",
+    timestamp: input.timestamp,
+    ...(Number.isFinite(started) && Number.isFinite(ended) && ended >= started
+      ? { durationMs: ended - started }
+      : {}),
+    resultObserved: input.resultObserved === true || input.result !== undefined,
+    ...(command ? { command } : {})
+  };
+}
+
+function parseArgumentsRecord(value: unknown): Record<string, unknown> {
+  if (typeof value === "string") {
+    try {
+      return asRecord(JSON.parse(value));
+    } catch {
+      return {};
+    }
+  }
+  return asRecord(value);
+}
+
+function getCommandValue(value: Record<string, unknown>) {
+  return getString(value.command) ?? getString(value.cmd) ?? getString(value.script) ?? getString(value.shell_command);
 }
 
 function stripCodexPreamble(value: string) {
@@ -360,6 +539,16 @@ function parseJsonLines(text: string) {
 
 function unique(values: string[]) {
   return [...new Set(values.filter(Boolean))];
+}
+
+function uniqueActions(values: TranscriptAction[]) {
+  const seen = new Set<string>();
+  return values.filter((action) => {
+    const key = action.callId ?? `${action.category}\0${action.name}\0${action.timestamp}`;
+    if (seen.has(key)) return false;
+    seen.add(key);
+    return true;
+  });
 }
 
 function numberValue(value: unknown) {

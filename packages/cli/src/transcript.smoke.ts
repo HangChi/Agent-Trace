@@ -145,7 +145,14 @@ const codexTranscript = [
       local_images: ["C:\\private\\shot.png"]
     }
   }),
-  JSON.stringify({ type: "response_item", payload: { type: "function_call", name: "exec_command" } }),
+  JSON.stringify({
+    type: "response_item",
+    payload: {
+      type: "function_call",
+      name: "exec_command",
+      arguments: JSON.stringify({ command: "echo collector-secret" })
+    }
+  }),
   JSON.stringify({
     type: "event_msg",
     timestamp: "2026-07-12T11:00:01.000Z",
@@ -191,6 +198,13 @@ if (
   codexTurns[0]?.tools?.join(",") !== "exec_command,github.search"
 ) {
   throw new Error("Expected Codex token subsets and pending tools to produce one exact turn.");
+}
+
+if (
+  codexTurns[0]?.actions?.[0]?.category !== "command" ||
+  codexTurns[0]?.actions?.[1]?.category !== "mcp"
+) {
+  throw new Error("Expected Codex offline actions to distinguish commands and explicit MCP calls.");
 }
 
 if (parseCodexTranscript(codexTranscript, "metadata").some((event) => event.text !== undefined)) {
@@ -242,6 +256,58 @@ if (
   workBuddyTurn.tools?.join(",") !== "Read"
 ) {
   throw new Error("Expected WorkBuddy JSONL to provide title, prompts, deduplicated tools, and tokens.");
+}
+
+const offlineSecret = "sk-offline-secret";
+const classifiedWorkBuddyTranscript = [
+  JSON.stringify({
+    type: "function_call",
+    timestamp: workBuddyStartedAt,
+    callId: "bash-call",
+    name: "Bash",
+    arguments: JSON.stringify({ command: `echo ${offlineSecret}`, description: "test" })
+  }),
+  JSON.stringify({
+    type: "function_call_result",
+    timestamp: workBuddyStartedAt + 50,
+    callId: "bash-call",
+    name: "Bash",
+    status: "completed"
+  }),
+  JSON.stringify({
+    type: "function_call",
+    timestamp: workBuddyStartedAt + 100,
+    callId: "mcp-call",
+    name: "mcp__ardot__batch_edit",
+    arguments: JSON.stringify({ operations: [] }),
+    message: { usage: { input_tokens: 10, output_tokens: 2 } }
+  })
+].join("\n");
+const classifiedMetadataTurn = parseWorkBuddyTranscript(
+  classifiedWorkBuddyTranscript,
+  "metadata",
+  "metadata"
+).find((event) => event.kind === "turn");
+if (
+  classifiedMetadataTurn?.actions?.[0]?.category !== "command" ||
+  classifiedMetadataTurn.actions[0]?.resultObserved !== true ||
+  classifiedMetadataTurn.actions[0]?.durationMs !== 50 ||
+  classifiedMetadataTurn.actions[0]?.command !== undefined ||
+  classifiedMetadataTurn.actions[1]?.category !== "mcp" ||
+  classifiedMetadataTurn.actions[1]?.mcpServer !== "ardot" ||
+  classifiedMetadataTurn.actions[1]?.mcpTool !== "batch_edit" ||
+  JSON.stringify(classifiedMetadataTurn).includes(offlineSecret)
+) {
+  throw new Error("Expected metadata transcript actions to classify calls without retaining command text.");
+}
+
+const classifiedFullTurn = parseWorkBuddyTranscript(
+  classifiedWorkBuddyTranscript,
+  "metadata",
+  "full"
+).find((event) => event.kind === "turn");
+if (classifiedFullTurn?.actions?.[0]?.command !== `echo ${offlineSecret}`) {
+  throw new Error("Expected full command capture to require explicit opt-in.");
 }
 
 const workBuddyPromptOnlyTranscript = [
@@ -386,6 +452,21 @@ try {
     second.sessionKeys.length !== 5
   ) {
     throw new Error("Expected every transcript client to use the unified readable-title policy.");
+  }
+
+  if (JSON.stringify(first).includes("collector-secret")) {
+    throw new Error("Expected transcript collection to omit command text by default.");
+  }
+
+  const fullCapture = await collectTranscriptDetails(
+    transcriptHome,
+    rows,
+    "preview",
+    new Map<string, string>(),
+    "full"
+  );
+  if (!JSON.stringify(fullCapture).includes("collector-secret")) {
+    throw new Error("Expected transcript collection to include command text only after full opt-in.");
   }
 
   const workBuddyTitleDatabase = new DatabaseSync(workBuddyDatabase);

@@ -325,7 +325,6 @@ try {
 
   for (const [query, expectedId] of [
     ["needle event", "read-model-event-3"],
-    ["find needle", "read-model-event-3"],
     ["error-only-sentinel", "read-model-event-5"],
     ["metadata-only-sentinel", "read-model-event-4"]
   ] as const) {
@@ -338,6 +337,17 @@ try {
     assert.equal(filteredEventPage.counts.matching, 1);
     assert.equal(filteredEventPage.pagination.pageSize, 500);
   }
+
+  const omittedCommandSearch = await storage.listEventsPageByRunId(
+    "read-model-events",
+    { visibility: "all", q: "find needle", pageSize: 10_000 },
+    database
+  );
+  assert.deepEqual(omittedCommandSearch.events, []);
+  assert.equal(omittedCommandSearch.counts.matching, 0);
+  const omittedCommandEvent = legacyEvents.find((event) => event.id === "read-model-event-3");
+  assert.equal((omittedCommandEvent?.input as { command?: unknown } | undefined)?.command, undefined);
+  assert.equal(omittedCommandEvent?.metadata?.commandContent, "omitted");
 
   for (const [filters, expectedIds] of [
     [{ status: "error" }, ["read-model-event-5"]],

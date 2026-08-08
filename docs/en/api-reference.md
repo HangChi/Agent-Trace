@@ -60,6 +60,8 @@ The Collector must not be exposed directly to an untrusted network. CORS restric
 | GET | `/maintenance/tombstones` | List deleted Run tombstones |
 | GET | `/maintenance/privacy` | Read pre-storage redaction settings |
 | PUT | `/maintenance/privacy` | Update pre-storage redaction settings |
+| GET | `/maintenance/privacy/commands` | Count Runs and Events with stored command bodies |
+| POST | `/maintenance/privacy/commands/purge` | Confirm removal of stored command bodies |
 | POST | `/maintenance/prune` | Retention cleanup by date and status |
 | POST | `/maintenance/compact` | Checkpoint WAL and vacuum SQLite |
 

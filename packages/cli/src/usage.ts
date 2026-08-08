@@ -5,6 +5,8 @@ import { homedir, tmpdir } from "node:os";
 import { basename, dirname, join, posix, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 
+import type { CommandCaptureMode } from "@agent-trace/schema";
+
 import { findUncoveredCodexHistories } from "./codex-history.js";
 import { collectTranscriptDetails } from "./transcript-collector.js";
 import type { HistoryContentMode } from "./transcript.js";
@@ -20,6 +22,7 @@ export type UsageScanOptions = {
   runTokscale?: (clients: string | undefined, commandTimeoutMs: number, home: string | undefined) => Promise<unknown>;
   runTokscaleClients?: (home: string | undefined, commandTimeoutMs: number) => Promise<unknown>;
   runTokscaleCommand?: (args: string[], commandTimeoutMs: number) => Promise<TokscaleCommandResult>;
+  getJson?: (path: string) => Promise<unknown>;
   postJson?: (path: string, body: unknown) => Promise<void>;
 };
 
@@ -115,6 +118,7 @@ export async function collectUsageOnce(options: UsageScanOptions = {}) {
   const home = normalizeHome(options.home ?? process.env.AGENT_TRACE_USAGE_HOME ?? process.env.TOKSCALE_HOME ?? homedir());
   const runTokscale = options.runTokscale ?? ((clientCsv, timeoutMs, scanHome) =>
     runTokscaleJson(clientCsv, timeoutMs, scanHome, options.tokscaleCommand));
+  const getJson = options.getJson ?? ((path) => getCollectorJson(collectorUrl, path));
   const postJson = options.postJson ?? ((path, body) => postCollectorJson(collectorUrl, path, body));
   const historyContent = normalizeHistoryContent(
     options.historyContent ?? process.env.AGENT_TRACE_HISTORY_CONTENT
@@ -174,8 +178,9 @@ export async function collectUsageOnce(options: UsageScanOptions = {}) {
   const reconciledClients = configuredClients === undefined && diagnosticsHaveClientList
     ? getDiagnosticClientIds(clientDiagnostics)
     : clients?.split(",").filter(Boolean);
+  const commandCapture = await resolveCommandCaptureMode(getJson);
   const transcriptSnapshot = home
-    ? await collectTranscriptDetails(home, rows, historyContent)
+    ? await collectTranscriptDetails(home, rows, historyContent, undefined, commandCapture)
     : { clients: [], sessionKeys: [], transcripts: [] };
   const transcriptClients = transcriptSnapshot.clients.filter((client) =>
     reconciledClients?.includes(client)
@@ -201,6 +206,25 @@ export async function collectUsageOnce(options: UsageScanOptions = {}) {
     diagnostics: diagnostics.length,
     transcripts: transcriptSnapshot.transcripts.length
   };
+}
+
+export async function resolveCommandCaptureMode(
+  getJson: (path: string) => Promise<unknown>
+): Promise<CommandCaptureMode> {
+  try {
+    const response = await getJson("/maintenance/privacy");
+    if (
+      response !== null &&
+      typeof response === "object" &&
+      (response as { commandCapture?: unknown }).commandCapture === "full"
+    ) {
+      return "full";
+    }
+  } catch {
+    // A missing or unavailable collector must never enable command-body capture.
+  }
+
+  return "metadata";
 }
 
 export async function watchUsage(options: UsageScanOptions & { intervalMs?: number; signal?: AbortSignal } = {}) {
@@ -652,6 +676,26 @@ async function postCollectorJson(collectorUrl: string, path: string, body: unkno
 
   if (!response.ok) {
     throw new Error(`collector returned ${response.status}`);
+  }
+}
+
+async function getCollectorJson(collectorUrl: string, path: string) {
+  const controller = new AbortController();
+  const timeout = setTimeout(() => controller.abort(), 1_500);
+
+  try {
+    const response = await fetch(`${collectorUrl}${path}`, {
+      headers: { accept: "application/json" },
+      signal: controller.signal
+    });
+
+    if (!response.ok) {
+      throw new Error(`collector returned ${response.status}`);
+    }
+
+    return await response.json() as unknown;
+  } finally {
+    clearTimeout(timeout);
   }
 }
 

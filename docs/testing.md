@@ -73,7 +73,8 @@ Web `run-sorting.smoke.ts` 锁定 Tokens、成本、开始时间和耗时表头�
 - Windows/Posix Hook 命令及超时。
 - `tokscale` 行、客户端诊断、总 Token 和成本规范化。
 - Codex active/archived 历史去重与补扫。
-- Claude/Codex/OpenCode transcript 的 preview/metadata 行为。
+- Claude/Codex/OpenCode/WorkBuddy transcript 的 preview/metadata 行为，以及离线 Command/Tool/MCP/Skill 分类。
+- 命令正文默认不进入 transcript payload 或 SQLite，显式 `full` 模式可保存，策略读取失败时安全降级。
 - Prompt 预览清理、240 字符截断和工具/Token 提取。
 
 ## Web 测试重点
@@ -83,6 +84,7 @@ Web `run-sorting.smoke.ts` 锁定 Tokens、成本、开始时间和耗时表头�
 - Trace tree 的父子排序、孤儿、环、自引用和所有事件不丢失。
 - 五类确定性诊断的中英文标题与证据格式。
 - 诊断位置锚点的稳定性，以及定位链接对事件 ID、全部可见范围、当前视图和语言的保留。
+- 命令详情能区分“正文已保存”“按隐私策略省略”和旧版仅元数据事件。
 
 ## 需求覆盖
 

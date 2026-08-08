@@ -747,8 +747,11 @@ if (codexEventsJson.includes("Done.")) {
   throw new Error("Expected Codex hook ingestion to redact raw assistant output.");
 }
 
-if (!codexEventsJson.includes(codexSecretCommand)) {
-  throw new Error("Expected Codex hook ingestion to store executed command text.");
+if (
+  codexEventsJson.includes(codexSecretCommand) ||
+  !codexEvents.some((event) => event.metadata?.category === "command" && event.metadata?.commandContent === "omitted")
+) {
+  throw new Error("Expected Codex hook ingestion to classify commands without storing text by default.");
 }
 
 const codexPromptEvent = Array.isArray(codexEvents)
@@ -1610,8 +1613,11 @@ if (claudeEventsJson.includes(claudeSecretPrompt)) {
   throw new Error("Expected Claude Code hook ingestion to redact raw prompt.");
 }
 
-if (!claudeEventsJson.includes(claudeSecretCommand)) {
-  throw new Error("Expected Claude Code hook ingestion to store executed command text.");
+if (
+  claudeEventsJson.includes(claudeSecretCommand) ||
+  !claudeEvents.some((event) => event.metadata?.category === "command" && event.metadata?.commandContent === "omitted")
+) {
+  throw new Error("Expected Claude Code hooks to classify commands without storing text by default.");
 }
 
 await expectAccepted(

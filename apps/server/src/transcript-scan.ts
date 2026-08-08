@@ -81,6 +81,47 @@ function normalizeSession(session: Record<string, unknown>): TranscriptTrace | u
       }
     });
 
+    const actions = Array.isArray(event.actions)
+      ? event.actions.map(asRecord).filter((action) => getString(action.name))
+      : [];
+
+    actions.forEach((action, actionIndex) => {
+      const name = getString(action.name) ?? "unknown_tool";
+      const category = normalizeActionCategory(getString(action.category));
+      const command = getString(action.command);
+      events.push({
+        id: createEventId(
+          client,
+          sessionId,
+          index,
+          `action-${actionIndex}-${getString(action.callId) ?? name}`
+        ),
+        runId,
+        parentId: turnId,
+        type: "tool_call",
+        name,
+        status: getString(action.status) === "error" ? "error" : "success",
+        timestamp: getIso(action.timestamp) ?? timestamp,
+        durationMs: getNonnegativeInteger(action.durationMs),
+        input: command ? { command } : undefined,
+        metadata: {
+          ...baseMetadata,
+          category,
+          toolName: getString(action.toolName) ?? name,
+          toolKind: getString(action.toolKind) ?? (category === "command" || category === "mcp" ? category : "tool"),
+          mcpServer: getString(action.mcpServer),
+          mcpTool: getString(action.mcpTool),
+          skillName: getString(action.skillName),
+          command,
+          commandContent: category === "command" && !command ? "omitted" : undefined,
+          toolUseId: getString(action.callId),
+          resultObserved: action.resultObserved === true
+        }
+      });
+    });
+
+    if (actions.length > 0) return;
+
     getStringArray(event.tools).forEach((tool, toolIndex) => {
       events.push({
         id: createEventId(client, sessionId, index, `tool-${toolIndex}-${tool}`),
@@ -115,6 +156,10 @@ function normalizeSession(session: Record<string, unknown>): TranscriptTrace | u
     },
     events
   };
+}
+
+function normalizeActionCategory(value: string | undefined): "command" | "tool" | "mcp" | "skill" {
+  return value === "command" || value === "mcp" || value === "skill" ? value : "tool";
 }
 
 function normalizeTokens(value: Record<string, unknown>): TokenUsage {
@@ -160,6 +205,11 @@ function getIso(value: unknown) {
 function getInteger(value: unknown) {
   const number = Number(value);
   return Number.isFinite(number) && number > 0 ? Math.floor(number) : 0;
+}
+
+function getNonnegativeInteger(value: unknown) {
+  const number = Number(value);
+  return Number.isFinite(number) && number >= 0 ? Math.floor(number) : undefined;
 }
 
 function getNumber(value: unknown) {

@@ -76,7 +76,7 @@ Event 表示 Run 内的步骤：
 
 ### settings
 
-保存 Collector 本地设置的键、JSON 值和更新时间。当前 `privacy` 键保存写入前敏感字段名与替换文本；配置由 Storage Module 缓存，并在设置更新后失效。
+保存 Collector 本地设置的键、JSON 值和更新时间。当前 `privacy` 键保存写入前敏感字段名、替换文本和 `commandCapture`；命令正文策略默认 `metadata`，配置由 Storage Module 缓存，并在设置更新后失效。
 
 ## 写入数据流
 
@@ -92,7 +92,7 @@ Event 表示 Run 内的步骤：
 
 1. CLI 把带管理标记的命令 Hook 写入 Codex/Claude Code 用户配置。
 2. Hook 使用 `curl` 将事件发送到对应 integration endpoint，最多等待 5 秒且失败退出码不阻塞 Agent。
-3. Normalizer 从受信任位置提取生命周期、工具、命令、Token、状态和来源信息，并生成 Run/Event。
+3. Normalizer 从受信任位置提取生命周期、工具、命令、Token、状态和来源信息，使用共享分类器生成 Command/Tool/MCP/Skill Run/Event。
 4. 普通工具 payload 只保存大小或受控摘要。
 5. Ingestion 出错时接口仍返回 202，并把失败信息放入响应体。
 
@@ -101,9 +101,10 @@ Event 表示 Run 内的步骤：
 1. CLI 查询 `tokscale clients --json`，确定本机可用数据源。
 2. `tokscale --json --group-by client,session,model` 生成会话级用量。
 3. Codex 协调逻辑检查 active 与 archived 历史，对等价 Token/模型序列去重，并补扫遗漏历史。
-4. Transcript Collector 为 Claude、Codex、OpenCode 匹配本地会话，生成 preview 或 metadata 事件。
-5. Scanner 把 rows、diagnostics、协调客户端和 transcript 一次提交给 Collector。
-6. Collector 事务化替换已协调客户端的 usage 行，并更新 transcript-scan 事件；Hook/OTel 数据不参与替换。
+4. Scanner 从 Collector 获取命令正文策略；请求失败、超时或响应无效时安全降级为 `metadata`。
+5. Transcript Collector 为 Claude、Codex、OpenCode、WorkBuddy 匹配本地会话，并按来源结构恢复 Command/Tool/MCP/Skill 动作；恢复能力取决于源历史实际保留的字段。
+6. Scanner 把 rows、diagnostics、协调客户端和 transcript 一次提交给 Collector；`metadata` 模式的 payload 不含命令正文。
+7. Collector 事务化替换已协调客户端的 usage 行，并更新 transcript-scan 事件；Hook/OTel 数据不参与替换。
 
 ## 查询数据流
 
@@ -113,7 +114,7 @@ Dashboard 不直接访问 SQLite，而是调用 Collector：
 - Event 读模型在 SQL 内完成 display/hidden、筛选、facet、汇总、排序和分页；完整 Trace 诊断通过独立 `/runs/:id/insights` Interface 计算。
 - Run Comparison 将查询限制为 2–5 个 ID，复用相同的 Event/Usage 摘要语义；Run Trend 通过日期窗口 SQL CTE 聚合 Event 与 Usage Snapshot，并只在内存中补齐最多 90 个日期点。
 - Redacted Export Module 集中维护允许导出的 metadata 字段和稳定化名规则；路由与 Dashboard 不接触原始脱敏实现。
-- Storage Module 在 Run、Event 和 Transcript 序列化前应用持久化隐私字段规则；组织信息继续保存在 Run metadata 中，避免增加只服务单一来源的列。
+- Storage Module 在 Run、Event 和 Transcript 序列化前应用持久化隐私字段规则，并在最终 Event 写入边界执行命令正文策略；组织信息继续保存在 Run metadata 中，避免增加只服务单一来源的列。
 - Collector 通过 `/changes` 发布 SSE 修改通知，Dashboard 仅在有数据变化时刷新，连接失败才启用低频轮询。
 - 确定性诊断返回关联 `eventIds`；Web 端使用事件 ID 精确查询并生成 Trace Rail 锚点，实现跨分页、筛选和 display/hidden 范围的定位，不增加新的 Collector API 或持久化字段。
 - 存在会话级 scan snapshot 时，Run Token/成本摘要优先使用该快照，避免和事件估算重复相加。

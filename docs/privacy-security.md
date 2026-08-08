@@ -13,17 +13,19 @@ Agent-Trace 面向单机开发环境。Collector 默认监听 `127.0.0.1`，Dash
 | 来源 | 会保存的内容 | 默认不会保存的内容 |
 | --- | --- | --- |
 | TypeScript SDK | 调用方传入的 Run/Event input、成功 output、错误、耗时和 metadata | SDK 不主动脱敏；调用方未传入的内容不会被推断。 |
-| Codex/Claude Hooks | 生命周期、会话/轮次 ID、来源、工作目录、工具/Skill/MCP 名、Shell 命令、状态、耗时、模型、Token、普通工具 payload 字节数 | 原始用户 Prompt、普通工具完整输入/输出、文件内容、最终回答全文、隐藏推理。 |
-| Codex OTel | OTel 记录中的会话、来源、模型、工具、命令、Token 和状态等规范化元数据 | Agent-Trace 配置 Codex `log_user_prompt = false`；普通 payload 只保留受控摘要。 |
+| Codex/Claude Hooks | 生命周期、会话/轮次 ID、来源、工作目录、工具/Skill/MCP/命令分类、状态、耗时、模型、Token、普通工具 payload 字节数 | 原始用户 Prompt、普通工具完整输入/输出、文件内容、最终回答全文、隐藏推理；命令正文默认不保存。 |
+| Codex OTel | OTel 记录中的会话、来源、模型、工具、命令分类、Token 和状态等规范化元数据 | Agent-Trace 配置 Codex `log_user_prompt = false`；普通 payload 只保留受控摘要；命令正文默认不保存。 |
 | Usage scan | 客户端、会话 ID、模型、provider、Token 分类、消息数、时间、扫描成本、诊断路径和提示 | `tokscale` 源日志全文不会直接提交给 Collector。 |
-| Transcript scan（preview） | 清理后的 Prompt 短预览、Prompt/Turn 时间、Token、工具名、会话元数据 | Assistant 正文、工具结果全文、文件内容；Prompt 预览截断为最多 240 个字符。 |
-| Transcript scan（metadata） | Prompt/Turn 时间、Token、工具名和会话元数据 | Prompt 文本。 |
+| Transcript scan（preview） | 清理后的 Prompt 短预览、Prompt/Turn 时间、Token、Command/Tool/MCP/Skill 分类与名称、会话元数据 | Assistant 正文、工具结果全文、文件内容、普通工具参数；Prompt 预览截断为最多 240 个字符，命令正文默认不保存。 |
+| Transcript scan（metadata） | Prompt/Turn 时间、Token、Command/Tool/MCP/Skill 分类与名称、会话元数据 | Prompt 文本、普通工具参数、命令正文。 |
 
 SDK 是显式埋点接口，会原样序列化调用方交给它的 input/output。处理密钥、个人信息或受保护内容时，应在调用 SDK 前自行移除或摘要化。
 
 ## Hooks 脱敏
 
-当前 CLI 只接受 `metadata` 脱敏级别。它保留执行过的 Shell 命令，因为命令本身用于诊断；命令可能包含路径、参数或秘密，使用者应避免把凭据直接写入命令行。
+命令正文采集由 Collector 的 `commandCapture` 设置控制，默认值为 `metadata`。该模式在所有 Event 写入 SQLite 前删除顶层 `input.command` 和 `metadata.command`，并保留 `metadata.commandContent="omitted"` 供详情页说明。该存储边界同样约束 Hook、OTel、SDK、Transcript 和旧客户端写入。
+
+`full` 只能在 Dashboard“维护”页显式开启。它会保存后续完整命令并在详情页展示，可能包含路径、参数、令牌或密码；字段名脱敏无法清理普通命令字符串内部的秘密。切换回 `metadata` 不会自动删除既有正文，必须在维护页查看数量并显式确认清理。
 
 Dashboard 的“维护”页面可配置写入前敏感字段名和替换文本。Collector 会递归检查后续 Run、Event 与 Transcript payload 的对象字段名，不区分大小写；命中字段在写入 SQLite 前替换。该规则不会追溯清理已有数据，也不会检查普通字符串内容中的秘密。
 
@@ -56,6 +58,8 @@ node packages/cli/dist/index.js usage --once --home C:\Users\alice
 - Hook 安装或卸载修改既有配置前会生成 `.agent-trace-backup.<timestamp>`。
 
 SQLite 数据库、WAL/SHM 文件、环境文件、桌面资源和构建产物均由仓库 `.gitignore` 排除。
+
+同时运行 CLI Scanner、Collector 或桌面进程时，应让所有进程使用同一个绝对 `AGENT_TRACE_DB_PATH`。相对路径会按各进程工作目录解析，可能形成多个数据库，使隐私设置、统计和清理作用于不同文件。
 
 ## 外部网络访问
 
