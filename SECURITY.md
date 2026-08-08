@@ -33,6 +33,7 @@ Agent-Trace 面向单机开发环境：
 2. 撤销可能泄露的凭据。
 3. 备份证据后，清理 Agent-Trace 数据库及对应 WAL/SHM。
 4. 检查 Codex、Claude Code、OpenCode 或其他源历史；删除 Agent-Trace Run 不会删除源历史。
-5. 将 `AGENT_TRACE_HISTORY_CONTENT` 切换为 `metadata`，并审查 SDK 输入输出和 Shell 命令。
+5. 将 `AGENT_TRACE_HISTORY_CONTENT` 切换为 `metadata`，在维护页把命令正文采集切换为“仅元数据”，并审查 SDK 输入输出和其他可能含敏感内容的字段。
+6. 先查询已保存命令正文的数量，再使用维护页的显式确认清理；该操作只清除 Agent-Trace 中的命令正文，不会修改源客户端历史。
 
 详细采集范围见[隐私与安全](docs/privacy-security.md)。

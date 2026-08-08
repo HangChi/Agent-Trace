@@ -21,12 +21,12 @@ Agent-Trace collects model calls, tool execution, tokens, API-equivalent cost, l
 - Python SDK with nested steps, sync/async decorators, and OpenAI/LangChain adapters.
 - Global Codex and Claude Code Hooks for lifecycle and tool metadata.
 - Codex OTLP/HTTP JSON ingestion for model and official token telemetry.
-- Local `tokscale` scanning for multi-client sessions, tokens, and cost.
+- Local `tokscale` scanning for multi-client sessions, tokens, and cost, plus source-supported Command/Tool/MCP/Skill classification.
 - Run analysis with event filters, timelines, parent-child trace trees, failure inspection, retries, slow steps, and token hotspots.
 - Token Trace views for daily, weekly, and monthly activity, trends, model usage, and client distribution.
 - Quality and cost governance through Run comparison, project analytics, budgets, evaluation datasets, and weighted scores.
 - Safe replay with a built-in mock worker for input overrides, simulated output, errors, latency, and timeouts—without executing user code or real tools.
-- Local governance with Run projects/tags, retention maintenance, tombstone recovery, and configurable pre-storage field redaction.
+- Local governance with Run projects/tags, retention maintenance, tombstone recovery, configurable pre-storage field redaction, and command-body capture policy.
 - Local Hono collector, bilingual Next.js dashboard, and Windows Electron packaging.
 
 ## Data flow
@@ -65,7 +65,7 @@ After startup, open the interface that matches your task:
 | Analytics | <http://localhost:3000/analytics> | Analyze quality and cost by project, environment, model, or source |
 | Evaluations | <http://localhost:3000/evaluations> | Manage evaluation datasets, cases, and weighted scores |
 | Safe replay | <http://localhost:3000/sandbox> | Replay a Run with the fixed mock worker |
-| Maintenance | <http://localhost:3000/maintenance> | Clean, restore, compact, and configure field redaction |
+| Maintenance | <http://localhost:3000/maintenance> | Clean, restore, compact, and configure field redaction and command capture |
 
 The collector listens on <http://127.0.0.1:4319> by default.
 
@@ -173,7 +173,7 @@ This runs build, test, type checking, lint, and documentation consistency checks
 
 - Data is stored in local SQLite by default.
 - The SDK stores caller-provided input/output and does not redact it automatically.
-- Hooks use metadata redaction, but shell commands may still contain sensitive arguments.
+- Commands store classification metadata but omit their body by default. Explicit full-body capture may store sensitive paths, arguments, tokens, or passwords.
 - Local history may store cleaned prompt previews unless metadata-only mode is selected.
 - All displayed costs are API-equivalent estimates, not subscription invoices.
 

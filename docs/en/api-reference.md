@@ -120,6 +120,8 @@ Event pagination performs filtering, facets, aggregates, ordering, and paginatio
 
 Deleting a Run creates a tombstone, preventing Hook, OTel, and Transcript Scanner ingestion from recreating it. Delete `/runs/:id/tombstone` before intentionally collecting that id again. Maintenance routes expose capacity, retention cleanup, compaction, tombstone listing, and persistent field-name redaction for subsequent writes.
 
+`GET /maintenance/privacy` returns the persistent redaction settings and `commandCapture`, which defaults to `metadata` and accepts only `metadata` or `full`. The default removes top-level `input.command` and `metadata.command` before Event storage. `GET /maintenance/privacy/commands` returns only affected Run/Event counts; `POST /maintenance/privacy/commands/purge` requires explicit confirmation and removes stored command bodies without deleting their classification metadata.
+
 ## Examples
 
 ```bash

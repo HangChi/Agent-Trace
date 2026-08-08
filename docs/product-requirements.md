@@ -39,7 +39,7 @@ Agent-Trace 是面向 AI Agent 开发者和本地 AI 编程工具使用者的运
 
 ### 本地用量与会话汇总
 
-CLI 调用 `tokscale` 扫描支持的本地客户端，按客户端、会话和模型汇总 Token 与成本。Codex 活跃/归档历史会被协调去重，Claude、Codex 和 OpenCode 可额外生成 Prompt/Turn 元数据或清理后的短预览。
+CLI 调用 `tokscale` 扫描支持的本地客户端，按客户端、会话和模型汇总 Token 与成本。Codex 活跃/归档历史会被协调去重；支持的会话历史可生成 Prompt/Turn 元数据、清理后的短预览，以及 Command/Tool/MCP/Skill 动作分类。
 
 ### 运行分析
 
@@ -61,6 +61,7 @@ CLI 调用 `tokscale` 扫描支持的本地客户端，按客户端、会话和�
 - 通用 SDK Step 与自动父子链路。
 - Run 项目、环境、版本、标签、备注和收藏。
 - Dashboard 维护与隐私控制中心。
+- 离线 Command/Tool/MCP/Skill 分类、命令正文默认省略、显式完整采集与历史正文清理。
 - Event 级 Run 差异与回归检测。
 - Agent 评测集、加权质量评分、多维分析、预算与告警。
 - Python SDK、通用 OTLP Trace、OpenAI 与 LangChain 适配。
@@ -83,6 +84,7 @@ CLI 调用 `tokscale` 扫描支持的本地客户端，按客户端、会话和�
 - 完整 usage snapshot 只替换本次明确协调过的客户端数据，不删除 Hook 或 OTel 事件。
 - Scanner 提供的 `costUsd` 优先；缺少扫描成本时只使用精确配置的模型价格，不按相似名称猜价。
 - 成本始终解释为 API 等价估算，而非订阅账单。
+- 命令正文默认不进入 Scanner 上传 payload 或 SQLite；用户显式启用完整采集后只影响后续写入，既有正文必须单独确认清理。
 
 ## 验收结果
 
@@ -91,4 +93,5 @@ CLI 调用 `tokscale` 扫描支持的本地客户端，按客户端、会话和�
 - Run 列表和事件详情在大数据量下支持有界分页。
 - 本地历史扫描失败不会阻止 Collector、Dashboard 或桌面窗口启动。
 - metadata Hooks 不保存原始 Prompt、普通工具完整输入/输出或隐藏推理。
+- 离线历史可展示来源能够恢复的 Command/Tool/MCP/Skill 分类；仅元数据模式不保存命令正文。
 - 仓库的构建、测试、类型检查、Lint 和差异检查提供可重复的验证入口。

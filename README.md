@@ -21,12 +21,12 @@ Agent-Trace 把模型调用、工具执行、Token、成本、耗时、错误和
 - Python SDK：嵌套 Step、同步/异步装饰器，以及 OpenAI 和 LangChain 适配。
 - Codex/Claude Code Hooks：无需修改 Agent 源码即可采集生命周期与工具元数据。
 - Codex OTel：接收 OTLP/HTTP JSON 日志中的模型与官方 Token 用量。
-- 本地 Usage Scanner：通过 `tokscale` 汇总多客户端会话、Token 与 API 等价成本。
+- 本地 Usage Scanner：通过 `tokscale` 汇总多客户端会话、Token 与 API 等价成本，并恢复来源支持的 Command/Tool/MCP/Skill 分类。
 - Run 分析：事件筛选、时间线、父子调用树、失败检查，以及重试、慢步骤和 Token 热点诊断。
 - Token Trace：按日、周、月查看 Token 活跃度、趋势、模型与客户端分布。
 - 质量与成本治理：Run 对比、项目分析、预算告警、评测集和多维评分。
 - 安全回放：使用内置 Mock Worker 覆盖输入、模拟输出、错误、延迟与超时，不执行用户代码或真实工具。
-- 本地治理：Run 项目与标签、维护中心、保留期清理、墓碑恢复和可配置写入前字段脱敏。
+- 本地治理：Run 项目与标签、维护中心、保留期清理、墓碑恢复、写入前字段脱敏和命令正文采集策略。
 - 本地交付：Hono Collector、双语 Next.js Dashboard 和 Windows Electron 桌面包。
 
 ## 数据流
@@ -65,7 +65,7 @@ node packages/cli/dist/index.js dev
 | 分析 | <http://localhost:3000/analytics> | 按项目、环境、模型或来源分析质量与成本 |
 | 评测 | <http://localhost:3000/evaluations> | 管理评测集、用例和多维评分 |
 | 安全回放 | <http://localhost:3000/sandbox> | 在固定 Mock Worker 中回放 Run |
-| 维护 | <http://localhost:3000/maintenance> | 清理、恢复、压缩和配置字段脱敏 |
+| 维护 | <http://localhost:3000/maintenance> | 清理、恢复、压缩，以及配置字段脱敏与命令正文采集 |
 
 Collector 默认监听 <http://127.0.0.1:4319>。
 

@@ -5,8 +5,9 @@
 Agent-Trace 仍处于内部迭代阶段，仓库没有 Git Tag 或正式稳定发行线。
 
 - 根 `package.json` 的 `0.0.0` 表示私有工作区，不是用户发行版本。
-- `apps/desktop/package.json` 的版本用于 Windows 桌面安装包文件名与升级识别。
+- `apps/desktop/package.json` 的版本用于 Windows 桌面安装包文件名与升级识别；当前工作版本为 `0.6.0`。
 - 在建立正式发布流程前，不承诺语义化版本兼容或长期支持周期。
+- 当前 Windows 安装包未配置代码签名，不应把本地生成的 `0.6.0` 安装包描述为正式稳定发行版。
 
 ## 版本来源
 
@@ -21,6 +22,8 @@ Agent-Trace 仍处于内部迭代阶段，仓库没有 Git Tag 或正式稳定�
 
 - [ ] `pnpm verify` 在干净 checkout 中通过。
 - [ ] Windows 解包目录和 NSIS 安装/卸载手工验收通过。
+- [ ] 安装包文件名、FileVersion 和 ProductVersion 与 `apps/desktop/package.json` 一致。
+- [ ] 已记录安装包 SHA-256；正式外部分发前已配置并验证 Authenticode 签名。
 - [ ] 数据库升级、未来版本拒绝和数据保留测试通过。
 - [ ] README、用户手册、API/OpenAPI、部署、安全与变更记录已同步。
 - [ ] 安装包不包含开发数据库、WAL/SHM、环境文件或用户配置。

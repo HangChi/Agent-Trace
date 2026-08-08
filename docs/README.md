@@ -5,7 +5,7 @@
 [English documentation](en/README.md)
 
 > [!NOTE]
-> 文档最后完成代码交叉校验的日期为 2026-07-15。`pnpm docs:check` 会检查相对链接、Collector 路由、OpenAPI、环境变量和 CLI 命令的一致性。
+> 文档最后完成代码交叉校验的日期为 2026-08-08。`pnpm docs:check` 会检查相对链接、Collector 路由、OpenAPI、环境变量和 CLI 命令的一致性。
 
 ## 按角色阅读
 
@@ -59,6 +59,6 @@
 - **Collector**：接收、规范化并持久化数据的本地 Hono 服务。
 - **Dashboard**：读取 Collector 数据的 Next.js 界面。
 - **Usage snapshot**：由 `tokscale` 扫描得到的本地会话 Token 与成本快照。
-- **Transcript event**：从支持的本地历史中提取的 Prompt/Turn 元数据或清理后预览。
+- **Transcript event**：从支持的本地历史中提取的 Prompt/Turn 元数据、清理后预览或 Command/Tool/MCP/Skill 动作元数据。
 
 完整定义及不变量见[领域词汇表](../CONTEXT.md)。

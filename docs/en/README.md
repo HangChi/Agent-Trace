@@ -4,6 +4,8 @@
 
 These pages describe the implemented Agent-Trace behavior. Shared Schema, Collector routes, CLI Help, and automated tests are the source of truth when behavior and prose differ.
 
+Last cross-checked against the code on 2026-08-08.
+
 ## Start here
 
 | Goal | Document |
@@ -24,6 +26,6 @@ These pages describe the implemented Agent-Trace behavior. Shared Schema, Collec
 - **Collector**: local Hono process that normalizes and stores data.
 - **Dashboard**: Next.js interface that reads bounded Collector read models.
 - **Usage Snapshot**: session-level token and cost aggregation from `tokscale`.
-- **Transcript Event**: prompt/turn metadata or cleaned preview extracted from local history.
+- **Transcript Event**: prompt/turn metadata, a cleaned preview, or Command/Tool/MCP/Skill action metadata extracted from supported local history.
 
 The complete vocabulary is maintained in the [domain glossary](../../CONTEXT.md).

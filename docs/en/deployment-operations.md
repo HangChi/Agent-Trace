@@ -21,6 +21,8 @@ node packages/cli/dist/index.js dev
 
 ## Windows desktop
 
+The desktop version comes from `apps/desktop/package.json`. The current version is `0.6.0`, producing `Agent-Trace-Setup-0.6.0.exe`.
+
 ```bash
 pnpm build
 pnpm desktop:dev
@@ -29,6 +31,14 @@ pnpm desktop:build:win
 ```
 
 Artifacts are written to `apps/desktop/release`. The installer is per-user and currently removes Electron `userData` during uninstall, including the database and preferences.
+
+Desktop and source Web code are synchronized at build time, not at runtime. Each `desktop:pack:win` or `desktop:build:win` run rebuilds and archives the current Server, Web, and CLI workspace. An installed desktop copy does not pick up later source changes; rebuild and reinstall it after code changes.
+
+Electron Builder uses the installed runtime at `apps/desktop/node_modules/electron/dist`, avoiding a second Electron archive download during packaging. Dependency installation or workspace deployment may still require npm registry access, so prepare the lockfile install and cache before an offline build.
+
+`release/win-unpacked`, blockmaps, and `resources/archives` are reproducible intermediates. After preserving the installer, they may be removed while Agent-Trace and file indexers are closed. Both `apps/desktop/release` and `apps/desktop/resources` are Git-ignored.
+
+Code signing is not currently configured. Before distributing an installer, record its SHA-256 hash and verify that its file/product versions match `apps/desktop/package.json`; also inspect its Authenticode status.
 
 ## Ports
 

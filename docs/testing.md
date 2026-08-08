@@ -135,7 +135,8 @@ Web `run-sorting.smoke.ts` 锁定 Tokens、成本、开始时间和耗时表头�
 2. 确认单实例、Collector、Dashboard 和 Scanner 生命周期。
 3. 验证退出与最小化到托盘两种关闭行为。
 4. 修改显式端口验证冲突提示。
-5. 生成 NSIS 包并完成安装/卸载检查。
+5. 生成 NSIS 包，确认安装包文件名、FileVersion 和 ProductVersion 与 `apps/desktop/package.json` 一致。
+6. 记录 SHA-256 和 Authenticode 状态，再完成安装、升级与卸载检查。
 
 ## 完整验证
 

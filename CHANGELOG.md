@@ -24,6 +24,7 @@
 - Run/Event 查询默认返回有界分页 Read Model；旧客户端可使用 `legacy=1|true`。
 - 成本统一解释为 API 等价估算，模型价格只做精确匹配。
 - Node.js 基线明确为 `>=22.12.0`，pnpm 支持 `>=11.0.7 <12` 并在 CI 固定为 11.0.7。
+- Windows 桌面工作版本更新为 `0.6.0`；打包时重新构建当前 Server/Web/CLI，并复用本地 Electron 运行时，避免重复下载 Electron 压缩包。
 
 ### Fixed
 

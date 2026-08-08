@@ -48,7 +48,7 @@ curl http://127.0.0.1:4319/health
 
 ## Windows 桌面构建
 
-桌面包只配置 Windows x64 和 NSIS。
+桌面包只配置 Windows x64 和 NSIS。桌面版本以 `apps/desktop/package.json` 为准；当前版本为 `0.6.0`，NSIS 文件名为 `Agent-Trace-Setup-0.6.0.exe`。
 
 开发运行：
 
@@ -72,6 +72,21 @@ pnpm desktop:build:win
 构建产物位于 `apps/desktop/release`。安装器按用户安装，允许选择目录；当前 NSIS 配置在卸载时删除 Electron `userData`，因此数据库和偏好也会被删除。
 
 打包流程先把 Server、Web 和 CLI 生产运行时制作为归档，再由 Electron 放入 `resources/archives`。首次启动或归档变化时，桌面端把它们解压到 `userData/runtime`。
+
+桌面端与源码 Web 是构建时同步的快照：每次运行 `desktop:pack:win` 或 `desktop:build:win` 都会重新构建并打包当前工作树中的 Server、Web 和 CLI。已经安装的桌面端不会自动读取后续源码改动，源码变化后必须重新生成并安装新版安装包。
+
+Electron Builder 使用已安装在 `apps/desktop/node_modules/electron/dist` 的 Electron 运行时，避免打包阶段重复下载 Electron 压缩包。首次安装依赖或工作区部署仍可能访问 npm registry；离线构建前应先完成 `pnpm install --frozen-lockfile` 并准备完整缓存。
+
+`release/win-unpacked`、Blockmap 和 `resources/archives` 都是可重新生成的中间产物。保留最终安装包后可清理这些目录；清理前应先退出 Agent-Trace，并关闭正在索引这些文件的程序。`apps/desktop/release` 和 `apps/desktop/resources` 已被 Git 忽略。
+
+当前安装包未配置代码签名。分发前应从可信构建机生成 SHA-256 校验值，并检查文件版本与签名状态：
+
+```powershell
+Get-FileHash .\apps\desktop\release\Agent-Trace-Setup-0.6.0.exe -Algorithm SHA256
+(Get-Item .\apps\desktop\release\Agent-Trace-Setup-0.6.0.exe).VersionInfo |
+  Select-Object FileVersion, ProductVersion
+Get-AuthenticodeSignature .\apps\desktop\release\Agent-Trace-Setup-0.6.0.exe
+```
 
 ## 端口行为
 
