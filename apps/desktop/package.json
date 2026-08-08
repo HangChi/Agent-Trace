@@ -1,6 +1,6 @@
 {
   "name": "@agent-trace/desktop",
-  "version": "0.5.0",
+  "version": "0.6.0",
   "description": "Local-first AI agent debugging dashboard.",
   "author": "Agent-Trace",
   "private": true,
@@ -15,7 +15,7 @@
     "prepare:resources": "node scripts/prepare-dist.mjs",
     "test": "node scripts/check.mjs",
     "test:e2e": "node scripts/lifecycle.e2e.mjs",
-    "test:upgrade": "powershell -ExecutionPolicy Bypass -File scripts/installer-upgrade.e2e.ps1 -PreviousInstaller release/Agent-Trace-Setup-0.3.0.exe -CurrentInstaller release/Agent-Trace-Setup-0.5.0.exe"
+    "test:upgrade": "powershell -ExecutionPolicy Bypass -File scripts/installer-upgrade.e2e.ps1 -PreviousInstaller release/Agent-Trace-Setup-0.3.0.exe -CurrentInstaller release/Agent-Trace-Setup-0.6.0.exe"
   },
   "devDependencies": {
     "@agent-trace/cli": "workspace:*",
@@ -29,6 +29,7 @@
     "appId": "dev.agent-trace.desktop",
     "productName": "Agent-Trace",
     "compression": "maximum",
+    "electronDist": "node_modules/electron/dist",
     "afterPack": "scripts/after-pack.cjs",
     "electronLanguages": [
       "en-US",
