@@ -34,4 +34,4 @@ jobs:
         run: >-
           ./apps/desktop/scripts/installer-upgrade.e2e.ps1
           -PreviousInstaller ./apps/desktop/release/Agent-Trace-Setup-0.3.0.exe
-          -CurrentInstaller ./apps/desktop/release/Agent-Trace-Setup-0.5.0.exe
+          -CurrentInstaller ./apps/desktop/release/Agent-Trace-Setup-0.6.0.exe
