@@ -211,7 +211,7 @@ export function parseWorkBuddyTranscript(
   return events;
 }
 
-export function parseWorkBuddyTitle(text: string) {
+export function parseTranscriptAiTitle(text: string) {
   for (const record of parseJsonLines(text)) {
     if (record.type !== "ai-title") continue;
     const title = cleanPromptPreview(record.aiTitle);
@@ -219,6 +219,25 @@ export function parseWorkBuddyTitle(text: string) {
   }
 
   return "";
+}
+
+export function resolveTranscriptTitle(options: {
+  client: string;
+  sessionId: string;
+  nativeTitle?: string;
+  aiTitle?: string;
+  promptTitle?: string;
+}) {
+  for (const candidate of [options.nativeTitle, options.promptTitle, options.aiTitle]) {
+    const title = cleanPromptPreview(candidate);
+    if (title) return title;
+  }
+
+  return transcriptPlaceholder(options.client, options.sessionId);
+}
+
+export function transcriptPlaceholder(client: string, sessionId: string) {
+  return `${client === "claude" ? "claude-code" : client}:${sessionId}`;
 }
 
 function getClaudePrompt(content: unknown) {
@@ -245,16 +264,28 @@ function getClaudePrompt(content: unknown) {
 }
 
 function getWorkBuddyPrompt(content: unknown) {
-  if (typeof content === "string") return cleanPromptPreview(content);
-  if (!Array.isArray(content)) return "";
-
-  return cleanPromptPreview(
-    content
+  const raw = typeof content === "string"
+    ? content
+    : Array.isArray(content)
+      ? content
       .map(asRecord)
       .filter((part) => part.type === "input_text" || part.type === "text")
       .map((part) => getString(part.text) ?? "")
       .join(" ")
-  );
+      : "";
+  const normalized = raw.toLowerCase();
+  const openMarker = "<user_query>";
+  const closeMarker = "</user_query>";
+  const queryStart = normalized.lastIndexOf(openMarker);
+  const queryEnd = queryStart >= 0
+    ? normalized.indexOf(closeMarker, queryStart + openMarker.length)
+    : -1;
+  const embeddedQuery = queryStart >= 0
+    ? raw.slice(queryStart + openMarker.length, queryEnd >= 0 ? queryEnd : undefined)
+    : "";
+  if (embeddedQuery) return cleanPromptPreview(embeddedQuery);
+  if (/<system-reminder\b/i.test(raw)) return "";
+  return cleanPromptPreview(raw);
 }
 
 function isSyntheticClaudePrompt(value: string) {

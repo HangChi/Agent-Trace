@@ -1837,6 +1837,14 @@ export function replaceTranscriptSnapshot(
         error: trace.run.error,
         metadataJson: stringifyJson(redactSensitiveValue(trace.run.metadata, privacy))
       };
+      const transcriptSessionId = trace.run.metadata?.sessionId;
+      const displayClient = trace.client === "claude" ? "claude-code" : trace.client;
+      const transcriptPlaceholder = typeof transcriptSessionId === "string"
+        ? `${displayClient}:${transcriptSessionId}`
+        : undefined;
+      const hasReadableTranscriptTitle =
+        transcriptPlaceholder !== undefined &&
+        trace.run.name !== transcriptPlaceholder;
 
       if (!existingRun) {
         transaction.insert(runs).values(runValues).run();
@@ -1844,12 +1852,18 @@ export function replaceTranscriptSnapshot(
         transaction
           .update(runs)
           .set({
-            name: runValues.name,
+            name: hasReadableTranscriptTitle ? runValues.name : existingRun.name,
             status: runValues.status,
             startedAt: runValues.startedAt,
             endedAt: runValues.endedAt,
             metadataJson: runValues.metadataJson
           })
+          .where(eq(runs.id, trace.run.id))
+          .run();
+      } else if (hasReadableTranscriptTitle) {
+        transaction
+          .update(runs)
+          .set({ name: runValues.name })
           .where(eq(runs.id, trace.run.id))
           .run();
       }

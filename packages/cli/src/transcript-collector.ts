@@ -1,12 +1,15 @@
 import { existsSync, readFileSync, readdirSync, statSync } from "node:fs";
 import { basename, join } from "node:path";
 
+import { readCodexThreadTitles } from "./codex-thread-index.js";
 import { readOpenCodeSession } from "./opencode-session.js";
+import { readWorkBuddySessionTitles } from "./workbuddy-session-index.js";
 import {
   parseClaudeTranscript,
   parseCodexTranscript,
-  parseWorkBuddyTitle,
+  parseTranscriptAiTitle,
   parseWorkBuddyTranscript,
+  resolveTranscriptTitle,
   type HistoryContentMode,
   type TranscriptEvent
 } from "./transcript.js";
@@ -48,6 +51,8 @@ export async function collectTranscriptDetails(
   const claudeFiles = indexJsonlFiles([join(home, ".claude", "projects")]);
   const workBuddyFiles = indexJsonlFiles([join(home, ".workbuddy", "projects")]);
   const openCodeDatabases = discoverOpenCodeDatabases(home);
+  const codexTitles = readCodexThreadTitles(home);
+  const workBuddyTitles = readWorkBuddySessionTitles(home);
   const transcripts: TranscriptDetail[] = [];
   const sessionKeys: string[] = [];
 
@@ -62,10 +67,18 @@ export async function collectTranscriptDetails(
       sessionKeys.push(key);
       if (fingerprints.get(key) === fingerprint) continue;
       fingerprints.set(key, fingerprint);
+      const promptTitle = contentMode === "preview"
+        ? detail.events.find((event) => event.kind === "prompt")?.text
+        : undefined;
       transcripts.push({
         client,
         sessionId,
-        title: detail.title || `opencode:${sessionId}`,
+        title: resolveTranscriptTitle({
+          client,
+          sessionId,
+          nativeTitle: detail.title,
+          promptTitle
+        }),
         model: first.model,
         provider: first.provider,
         contentMode,
@@ -83,7 +96,12 @@ export async function collectTranscriptDetails(
         : resolveWorkBuddyFile(workBuddyFiles, sessionId);
     if (!file) continue;
 
-    const fingerprint = fileFingerprint(file, contentMode);
+    const indexedTitle = client === "codex"
+      ? codexTitles.get(sessionId.toLowerCase())
+      : client === "workbuddy"
+        ? workBuddyTitles.get(sessionId)
+        : undefined;
+    const fingerprint = fileFingerprint(file, contentMode, indexedTitle);
     const text = readFileSync(file, "utf8");
     const parsed = client === "codex"
       ? parseCodexTranscript(text, contentMode)
@@ -96,12 +114,19 @@ export async function collectTranscriptDetails(
     if (fingerprints.get(key) === fingerprint) continue;
     fingerprints.set(key, fingerprint);
     const events = distributeSessionCost(parsed, sumCost(sessionRows));
+    const promptTitle = contentMode === "preview"
+      ? events.find((event) => event.kind === "prompt")?.text
+      : undefined;
     transcripts.push({
       client,
       sessionId,
-      title: client === "workbuddy"
-        ? parseWorkBuddyTitle(text) || `workbuddy:${sessionId}`
-        : `${client === "claude" ? "claude-code" : client}:${sessionId}`,
+      title: resolveTranscriptTitle({
+        client,
+        sessionId,
+        nativeTitle: indexedTitle,
+        aiTitle: client === "claude" ? undefined : parseTranscriptAiTitle(text),
+        promptTitle
+      }),
       model: first.model,
       provider: first.provider,
       contentMode,
@@ -172,9 +197,13 @@ function discoverOpenCodeDatabases(home: string) {
     .map((name) => join(directory, name));
 }
 
-function fileFingerprint(path: string, contentMode: HistoryContentMode) {
+function fileFingerprint(
+  path: string,
+  contentMode: HistoryContentMode,
+  indexedTitle: string | undefined
+) {
   const stats = statSync(path);
-  return `${path}\0${stats.size}\0${stats.mtimeMs}\0${contentMode}`;
+  return `${path}\0${stats.size}\0${stats.mtimeMs}\0${contentMode}\0${indexedTitle ?? ""}`;
 }
 
 function databaseFingerprint(paths: string[], contentMode: HistoryContentMode, sessionId: string) {

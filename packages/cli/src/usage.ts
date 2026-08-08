@@ -2,7 +2,7 @@ import { spawn } from "node:child_process";
 import { existsSync, readdirSync, realpathSync } from "node:fs";
 import { copyFile, mkdir, mkdtemp, rm } from "node:fs/promises";
 import { homedir, tmpdir } from "node:os";
-import { basename, dirname, join, resolve } from "node:path";
+import { basename, dirname, join, posix, resolve, win32 } from "node:path";
 import { fileURLToPath } from "node:url";
 
 import { findUncoveredCodexHistories } from "./codex-history.js";
@@ -415,7 +415,9 @@ function normalizeClientDiagnostic(record: Record<string, unknown>): UsageDiagno
     "headlessMessageCount",
     "headless_message_count"
   ]);
-  const path = getString(record, "sessionsPath", "sessions_path", "path", "cachePath", "cache_path");
+  const path = normalizeDiagnosticPath(
+    getString(record, "sessionsPath", "sessions_path", "path", "cachePath", "cache_path")
+  );
   const primaryPathExists = getBoolean(
     record,
     "sessionsPathExists",
@@ -437,6 +439,20 @@ function normalizeClientDiagnostic(record: Record<string, unknown>): UsageDiagno
     pathExists,
     actionHint: status === "needs_sync" || status === "needs_login" ? getSyncActionHint(client) : undefined
   };
+}
+
+function normalizeDiagnosticPath(value: string | undefined) {
+  if (!value) return undefined;
+
+  if (/^[A-Za-z]:[\\/]/.test(value) || value.startsWith("\\\\")) {
+    return win32.normalize(value);
+  }
+
+  if (posix.isAbsolute(value)) {
+    return posix.normalize(value);
+  }
+
+  return process.platform === "win32" ? win32.normalize(value) : posix.normalize(value);
 }
 
 function getUsageWarningDiagnostics(value: unknown): UsageDiagnostic[] {

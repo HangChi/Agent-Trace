@@ -472,6 +472,40 @@ try {
     throw new Error("Expected usage client diagnostics to explain missing Cursor sync cache.");
   }
 
+  const crossPlatformPathDiagnostics = await collectUsageClientDiagnostics({
+    home: usageHome,
+    runTokscaleClients: async () => ({
+      clients: [
+        {
+          client: "claude",
+          sessionsPath: "C:\\Users\\song/.claude//projects",
+          sessionsPathExists: true
+        },
+        {
+          client: "codex",
+          sessionsPath: "/Users/song/.codex//sessions",
+          sessionsPathExists: true
+        },
+        {
+          client: "workbuddy",
+          sessionsPath: "\\\\server\\share/.workbuddy",
+          sessionsPathExists: true
+        }
+      ]
+    })
+  });
+
+  if (
+    crossPlatformPathDiagnostics.find((diagnostic) => diagnostic.client === "claude")?.path !==
+      "C:\\Users\\song\\.claude\\projects" ||
+    crossPlatformPathDiagnostics.find((diagnostic) => diagnostic.client === "codex")?.path !==
+      "/Users/song/.codex/sessions" ||
+    crossPlatformPathDiagnostics.find((diagnostic) => diagnostic.client === "workbuddy")?.path !==
+      "\\\\server\\share\\.workbuddy"
+  ) {
+    throw new Error("Expected scanner paths to use the separators of their native platform.");
+  }
+
   const syncCalls: string[][] = [];
   const syncResults = await syncUsageClients({
     clients: "cursor,antigravity,trae",
