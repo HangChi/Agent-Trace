@@ -72,9 +72,8 @@ if (dailyChart.includes("index % 7")) {
 
 const homeEntry = header.indexOf('localizedHref("/runs", locale)');
 const tokenTraceEntry = header.indexOf('localizedHref("/token-trace", locale)');
-const analyticsEntry = header.indexOf('localizedHref("/analytics", locale)');
 
-if (!header.includes("Token-Trace") || homeEntry === -1 || tokenTraceEntry <= homeEntry || analyticsEntry <= tokenTraceEntry) {
+if (!header.includes("Token-Trace") || homeEntry === -1 || tokenTraceEntry <= homeEntry) {
   throw new Error("Console header must place Home and Token-Trace together on the left.");
 }
 

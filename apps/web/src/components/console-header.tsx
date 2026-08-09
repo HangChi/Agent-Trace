@@ -11,7 +11,9 @@ import {
   HardDrive,
   House,
   ShieldCheck,
-  TrendingUp
+  Sparkles,
+  TrendingUp,
+  X
 } from "lucide-react";
 
 import { BrandMark } from "~/components/brand-mark";
@@ -30,6 +32,7 @@ export function ConsoleHeader({
   const isTokenCalendar = isTokenTrace && path.includes("view=calendar");
   const isTokenOverview = isTokenTrace && !isTokenCalendar;
   const tokenText = copy[locale].tokenTrace;
+  const comingSoonText = locale === "zh" ? "敬请期待" : "Coming soon";
   const tokenMenuRef = useRef<HTMLDetailsElement>(null);
 
   const closeTokenMenu = () => {
@@ -163,35 +166,68 @@ export function ConsoleHeader({
         </div>
 
         <div className="flex min-w-0 shrink-0 items-center gap-2">
-          <Link
-            href={localizedHref("/analytics", locale)}
+          <button
+            type="button"
+            popoverTarget="coming-soon-notice"
             className="hidden h-9 items-center gap-1.5 rounded-lg border border-border bg-surface-raised px-2.5 text-xs font-medium text-muted-foreground shadow-[var(--shadow-control)] transition-colors hover:bg-accent hover:text-foreground sm:inline-flex"
           >
             <BarChart3 className="size-3.5" aria-hidden />
             <span className="hidden lg:inline">{locale === "zh" ? "分析" : "Analytics"}</span>
-          </Link>
-          <Link
-            href={localizedHref("/evaluations", locale)}
+          </button>
+          <button
+            type="button"
+            popoverTarget="coming-soon-notice"
             className="hidden h-9 items-center gap-1.5 rounded-lg border border-border bg-surface-raised px-2.5 text-xs font-medium text-muted-foreground shadow-[var(--shadow-control)] transition-colors hover:bg-accent hover:text-foreground sm:inline-flex"
           >
             <FlaskConical className="size-3.5" aria-hidden />
             <span className="hidden lg:inline">{locale === "zh" ? "评测" : "Evaluations"}</span>
-          </Link>
-          <Link
-            href={localizedHref("/sandbox", locale)}
+          </button>
+          <button
+            type="button"
+            popoverTarget="coming-soon-notice"
             className="hidden h-9 items-center gap-1.5 rounded-lg border border-border bg-surface-raised px-2.5 text-xs font-medium text-muted-foreground shadow-[var(--shadow-control)] transition-colors hover:bg-accent hover:text-foreground md:inline-flex"
           >
             <ShieldCheck className="size-3.5" aria-hidden />
             <span className="hidden xl:inline">{locale === "zh" ? "回放" : "Replay"}</span>
-          </Link>
-          <Link
-            href={localizedHref("/maintenance", locale)}
+          </button>
+          <button
+            type="button"
+            popoverTarget="coming-soon-notice"
             className="hidden h-9 items-center gap-1.5 rounded-lg border border-border bg-surface-raised px-2.5 text-xs font-medium text-muted-foreground shadow-[var(--shadow-control)] transition-colors hover:bg-accent hover:text-foreground sm:inline-flex"
           >
             <HardDrive className="size-3.5" aria-hidden />
             <span className="hidden sm:inline">{locale === "zh" ? "维护" : "Maintenance"}</span>
-          </Link>
+          </button>
           <ConsoleSettings locale={locale} path={path} />
+        </div>
+      </div>
+
+      <div
+        id="coming-soon-notice"
+        popover="auto"
+        role="status"
+        aria-live="polite"
+        className="fixed inset-auto right-4 top-20 m-0 w-[min(22rem,calc(100vw-2rem))] overflow-hidden rounded-2xl border border-primary/25 bg-popover p-0 text-popover-foreground shadow-[var(--shadow-panel)] backdrop:bg-black/10 sm:right-6"
+      >
+        <div className="relative flex items-start gap-3 p-4 pr-12">
+          <span className="flex size-9 shrink-0 items-center justify-center rounded-xl border border-primary/20 bg-primary/10 text-primary">
+            <Sparkles className="size-4" aria-hidden />
+          </span>
+          <div className="min-w-0 pt-0.5">
+            <p className="text-sm font-semibold tracking-[-0.02em]">{comingSoonText}</p>
+            <p className="mt-1 text-xs leading-5 text-muted-foreground">
+              {locale === "zh" ? "功能正在准备中，感谢关注。" : "This feature is on the way."}
+            </p>
+          </div>
+          <button
+            type="button"
+            popoverTarget="coming-soon-notice"
+            popoverTargetAction="hide"
+            aria-label={locale === "zh" ? "关闭提示" : "Close notice"}
+            className="absolute right-3 top-3 inline-flex size-8 items-center justify-center rounded-lg text-muted-foreground transition-colors hover:bg-accent hover:text-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring"
+          >
+            <X className="size-4" aria-hidden />
+          </button>
         </div>
       </div>
     </header>
