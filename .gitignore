@@ -22,3 +22,6 @@ CLAUDE.md
 AGENTS.md
 .claude/
 .mimocode/
+
+# macOS
+.DS_Store

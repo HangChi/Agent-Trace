@@ -1,0 +1,10 @@
+# 统一换行符：仓库与工作区一律使用 LF
+# 防止编辑器（如 VS Code 的 files.eol: \r\n）把整仓文件改成 CRLF 后产生大范围伪改动
+* text=auto eol=lf
+
+# 二进制资源不做换行符转换
+*.png binary
+*.jpg binary
+*.ico binary
+*.icns binary
+*.db binary
