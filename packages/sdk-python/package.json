@@ -6,6 +6,6 @@
     "build": "python3 -m compileall -q agent_trace",
     "lint": "python3 -m compileall -q agent_trace tests",
     "test": "python3 -m unittest discover -s tests -v",
-    "typecheck": "python -m compileall -q agent_trace tests"
+    "typecheck": "python3 -m compileall -q agent_trace tests"
   }
 }
